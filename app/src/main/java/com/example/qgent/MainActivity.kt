@@ -1,20 +1,68 @@
 package com.example.qgent
 
 import android.os.Bundle
+import android.view.View
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.GravityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.navigation.NavController
+import androidx.navigation.fragment.NavHostFragment
+import androidx.navigation.ui.setupWithNavController
+import com.example.qgent.databinding.ActivityMainBinding
+import com.example.qgent.ui.personal.PersonalCenterFragment
 
 class MainActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var navController: NavController
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContentView(R.layout.activity_main)
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        // 抽屉宽度 = 屏幕宽度 75%
+        val drawerWidth = (resources.displayMetrics.widthPixels * 0.75f).toInt()
+        binding.drawerPersonalCenter.layoutParams.width = drawerWidth
+
+        // 个人中心（抽屉内容）注入抽屉容器
+        if (savedInstanceState == null) {
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.drawerPersonalCenter, PersonalCenterFragment())
+                .commit()
+        }
+
+        // 状态栏 / 手势导航栏 insets：内容区顶部避让状态栏，底部导航避让手势条，抽屉同样避让
+        ViewCompat.setOnApplyWindowInsetsListener(binding.drawerLayout) { _, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            binding.contentContainer.setPadding(0, bars.top, 0, 0)
+            binding.bottomNav.setPadding(0, 0, 0, bars.bottom)
+            binding.drawerPersonalCenter.setPadding(0, bars.top, 0, bars.bottom)
             insets
         }
+
+        // NavHostFragment 的视图在 onCreate 时可能尚未创建完成，
+        // 延迟到视图创建并挂载后再绑定导航，避免 "does not have a NavController set"。
+        binding.root.post {
+            navController = (supportFragmentManager
+                .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
+            binding.bottomNav.setupWithNavController(navController)
+
+            // 非三 Tab 页面（如群聊详情）隐藏底部导航栏
+            navController.addOnDestinationChangedListener { _, destination, _ ->
+                val isTabPage = destination.id == R.id.chatListFragment ||
+                    destination.id == R.id.tasksFragment ||
+                    destination.id == R.id.agentFragment
+                binding.bottomNav.visibility = if (isTabPage) View.VISIBLE else View.GONE
+            }
+        }
+    }
+
+    /** 群聊列表页左上角头像点击时调用，打开个人中心抽屉 */
+    fun openDrawer() {
+        binding.drawerLayout.openDrawer(GravityCompat.START)
     }
 }

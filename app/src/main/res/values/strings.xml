@@ -1,3 +1,46 @@
 <resources>
     <string name="app_name">Qgent</string>
+
+    <string name="nav_chat">群聊</string>
+    <string name="nav_tasks">任务</string>
+    <string name="nav_agent">Agent</string>
+
+    <string name="search_hint">搜索</string>
+    <string name="chat_list_placeholder">群聊列表页（待开发）</string>
+    <string name="tasks_placeholder">任务页（待开发）</string>
+    <string name="agent_placeholder">Agent 页（待开发）</string>
+
+    <string name="user_name_placeholder">用户昵称</string>
+    <string name="team_name_placeholder">所在团队</string>
+    <string name="chat_list_empty">暂无群聊，点击右上角 + 创建</string>
+
+    <string name="action_create_group">创建群聊</string>
+    <string name="action_add_member">添加成员</string>
+    <string name="todo_placeholder">功能待实现</string>
+
+    <string name="search_placeholder">搜索群聊</string>
+    <string name="search_cancel">取消</string>
+    <string name="action_back">返回</string>
+
+    <string name="team_manage">团队管理</string>
+    <string name="settings">设置</string>
+    <string name="notification">通知</string>
+
+    <string name="create_group_subtitle">输入成员邮箱发送邀请链接，对方同意后加入群聊</string>
+    <string name="email_hint">邮箱</string>
+    <string name="send_invite">发送邀请</string>
+    <string name="cancel">取消</string>
+    <string name="invite_sent_placeholder">邀请已发送（待接入后端）</string>
+
+    <string name="chat_input_hint">输入消息…</string>
+    <string name="send">发送</string>
+    <string name="image">图片</string>
+    <string name="file">文件</string>
+    <string name="chat_settings_title">群聊设置</string>
+    <string name="chat_settings_placeholder">群聊设置页（待开发）</string>
+    <string name="placeholder_image">图片（占位）</string>
+    <string name="placeholder_file">文件（占位）</string>
+    <string name="search_history_title">搜索历史</string>
+    <string name="search_history_clear">清空</string>
+    <string name="search_history_empty">暂无搜索历史</string>
 </resources>

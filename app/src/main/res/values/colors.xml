@@ -2,4 +2,14 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <color name="primary">#2563EB</color>
+    <color name="primary_container">#DBEAFE</color>
+    <color name="on_primary">#FFFFFFFF</color>
+    <color name="on_primary_container">#001B3C</color>
+    <color name="text_primary">#1F2329</color>
+    <color name="text_secondary">#8A8A8E</color>
+    <color name="divider">#EEEFF1</color>
+    <color name="unread_badge">#FF3B30</color>
+    <color name="bg_search">#F2F3F5</color>
 </resources>
