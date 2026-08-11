@@ -80,6 +80,7 @@
                 app:layout_constraintTop_toTopOf="parent" />
 
             <LinearLayout
+                android:id="@+id/card"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
@@ -103,17 +104,16 @@
                     android:text="当前团队："
                     android:textColor="@color/gray"
                     android:textSize="12sp" />
-
-                <TextView
-                    android:id="@+id/tvTeamName"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:textColor="@color/gray"
-                    android:textSize="12sp"
-                    tools:text="团队A" />
             </LinearLayout>
-
+            <TextView
+                android:id="@+id/tvTeamName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/gray"
+                android:textSize="12sp"
+                tools:text="团队A"
+                app:layout_constraintTop_toBottomOf="@+id/card"
+                app:layout_constraintLeft_toLeftOf="@+id/card"/>
             <ImageView
                 android:id="@+id/btnNotification"
                 android:layout_width="30dp"
