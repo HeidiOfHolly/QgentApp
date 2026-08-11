@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_main_graph"
+    app:startDestination="@id/chatListFragment">
+
+    <fragment
+        android:id="@+id/chatListFragment"
+        android:name="com.example.qgent.ui.chat.ChatListFragment"
+        android:label="@string/nav_chat"
+        tools:layout="@layout/fragment_chat_list">
+        <action
+            android:id="@+id/action_chatList_to_search"
+            app:destination="@id/searchFragment" />
+        <action
+            android:id="@+id/action_chatList_to_chatDetail"
+            app:destination="@id/chatDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/searchFragment"
+        android:name="com.example.qgent.ui.search.SearchFragment"
+        android:label="@string/search_placeholder"
+        tools:layout="@layout/fragment_search" />
+
+    <fragment
+        android:id="@+id/tasksFragment"
+        android:name="com.example.qgent.ui.tasks.TasksFragment"
+        android:label="@string/nav_tasks"
+        tools:layout="@layout/fragment_tasks" />
+
+    <fragment
+        android:id="@+id/agentFragment"
+        android:name="com.example.qgent.ui.agent.AgentFragment"
+        android:label="@string/nav_agent"
+        tools:layout="@layout/fragment_agent" />
+
+    <fragment
+        android:id="@+id/chatDetailFragment"
+        android:name="com.example.qgent.ui.chat.ChatDetailFragment"
+        android:label="@string/nav_chat"
+        tools:layout="@layout/fragment_chat_detail">
+        <argument
+            android:name="groupName"
+            android:defaultValue="" />
+        <action
+            android:id="@+id/action_chatDetail_to_chatSettings"
+            app:destination="@id/chatSettingsFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/chatSettingsFragment"
+        android:name="com.example.qgent.ui.chat.ChatSettingsFragment"
+        android:label="@string/chat_settings_title"
+        tools:layout="@layout/fragment_chat_settings" />
+</navigation>

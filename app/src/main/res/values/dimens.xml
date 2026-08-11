@@ -1,0 +1,8 @@
+<resources>
+    <dimen name="space_4">4dp</dimen>
+    <dimen name="space_8">8dp</dimen>
+    <dimen name="space_12">12dp</dimen>
+    <dimen name="space_16">16dp</dimen>
+    <dimen name="avatar_size">44dp</dimen>
+    <dimen name="top_bar_height">48dp</dimen>
+</resources>
