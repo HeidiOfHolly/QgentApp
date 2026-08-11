@@ -53,6 +53,7 @@ description: 当用户需要设计界面、创建或调整 UI 布局、页面风
 
 ### 落地指南
 - XML 布局优先使用 Material 组件(MaterialButton、TextInputLayout、MaterialCardView)
+- 只生成模版，不要有具体静态样例
 
 ## 流程
 
