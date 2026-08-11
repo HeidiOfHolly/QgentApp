@@ -32,11 +32,8 @@ class PersonalCenterFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // mock 团队数据，后续接入接口
-        val teams = listOf("团队A", "团队B", "团队C", "团队D")
-
         // 左列：团队列表（点击切换当前团队）
-        teamAdapter = TeamAdapter(teams) { teamName, _ ->
+        teamAdapter = TeamAdapter(emptyList()) { teamName, _ ->
             mainViewModel.setCurrentTeam(teamName)
         }
         binding.rvTeams.layoutManager = LinearLayoutManager(requireContext())
@@ -51,12 +48,31 @@ class PersonalCenterFragment : Fragment() {
 
         binding.tvUserName.setText(R.string.user_name_placeholder)
 
-        // 当前团队变化：左列高亮同步、右上团队名同步、项目列表跟着切换
+        // 团队列表加载完成后更新 adapter
+        mainViewModel.teams.observe(viewLifecycleOwner) { teams ->
+            if (teams.isNotEmpty()) {
+                teamAdapter = TeamAdapter(teams) { teamName, _ ->
+                    mainViewModel.setCurrentTeam(teamName)
+                }
+                binding.rvTeams.adapter = teamAdapter
+                // 恢复当前团队高亮
+                val curTeam = mainViewModel.currentTeam.value
+                val index = teams.indexOf(curTeam)
+                if (index >= 0) teamAdapter.selectedPosition = index
+            }
+        }
+
+        // 当前团队变化：左列高亮同步、右上团队名同步
         mainViewModel.currentTeam.observe(viewLifecycleOwner) { team ->
+            val teams = mainViewModel.teams.value ?: emptyList()
             val index = teams.indexOf(team)
-            if (index >= 0) teamAdapter.selectedPosition = index
+            if (index >= 0 && ::teamAdapter.isInitialized) teamAdapter.selectedPosition = index
             binding.tvTeamName.text = team
-            projectAdapter.submitList(mainViewModel.projectsOf(team))
+        }
+
+        // 项目列表随团队切换
+        mainViewModel.projects.observe(viewLifecycleOwner) { projects ->
+            projectAdapter.submitList(projects)
         }
 
         // 当前项目变化：右列项目高亮同步

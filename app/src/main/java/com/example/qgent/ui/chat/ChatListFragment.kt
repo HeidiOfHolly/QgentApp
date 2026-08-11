@@ -63,9 +63,8 @@ class ChatListFragment : Fragment() {
             DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL)
         )
 
-        // 群聊列表随项目切换而变化
-        mainViewModel.currentProject.observe(viewLifecycleOwner) { project ->
-            val groups = mainViewModel.groupsOf(project)
+        // 群聊列表随项目切换而变化（API → mock fallback）
+        mainViewModel.groups.observe(viewLifecycleOwner) { groups ->
             binding.rvChatList.adapter = ChatListAdapter(groups) { group ->
                 findNavController().navigate(
                     R.id.action_chatList_to_chatDetail,
