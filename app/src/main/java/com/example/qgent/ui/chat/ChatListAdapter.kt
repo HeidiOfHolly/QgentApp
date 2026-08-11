@@ -1,16 +1,28 @@
 package com.example.qgent.ui.chat
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
+import com.example.qgent.R
 import com.example.qgent.databinding.ItemChatBinding
 import com.example.qgent.model.ChatGroup
 
 class ChatListAdapter(
-    private val items: List<ChatGroup>,
-    private val onGroupClick: (ChatGroup) -> Unit
+    private var items: List<ChatGroup>,
+    private val onGroupClick: (ChatGroup) -> Unit,
+    private val onGroupLongClick: ((View, ChatGroup) -> Unit)? = null
 ) : RecyclerView.Adapter<ChatListAdapter.VH>() {
+
+    fun submitList(newItems: List<ChatGroup>) {
+        items = newItems.sortedWith(
+            compareByDescending<ChatGroup> { it.isPinned }
+                .thenByDescending { it.lastActiveTime }
+        )
+        notifyDataSetChanged()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val binding = ItemChatBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -20,6 +32,10 @@ class ChatListAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         holder.bind(items[position])
         holder.itemView.setOnClickListener { onGroupClick(items[position]) }
+        holder.itemView.setOnLongClickListener {
+            onGroupLongClick?.invoke(it, items[position])
+            true
+        }
     }
 
     override fun getItemCount(): Int = items.size
@@ -32,6 +48,12 @@ class ChatListAdapter(
             binding.tvTime.text = group.time
             binding.tvUnread.isVisible = group.unread > 0
             binding.tvUnread.text = if (group.unread > 99) "99+" else group.unread.toString()
+            binding.root.setBackgroundColor(
+                ContextCompat.getColor(
+                    binding.root.context,
+                    if (group.isPinned) R.color.bg_chat_pinned else android.R.color.transparent
+                )
+            )
         }
     }
 }

@@ -63,14 +63,23 @@ class ChatListFragment : Fragment() {
             DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL)
         )
 
-        // 群聊列表随项目切换而变化（API → mock fallback）
-        mainViewModel.groups.observe(viewLifecycleOwner) { groups ->
-            binding.rvChatList.adapter = ChatListAdapter(groups) { group ->
+        val adapter = ChatListAdapter(
+            items = emptyList(),
+            onGroupClick = { group ->
                 findNavController().navigate(
                     R.id.action_chatList_to_chatDetail,
                     bundleOf("groupName" to group.name)
                 )
+            },
+            onGroupLongClick = { anchor, group ->
+                showLongPressMenu(anchor, group)
             }
+        )
+        binding.rvChatList.adapter = adapter
+
+        // 群聊列表随项目切换而变化（API → mock fallback）
+        mainViewModel.groups.observe(viewLifecycleOwner) { groups ->
+            adapter.submitList(groups)
             binding.tvChatListEmpty.isVisible = groups.isEmpty()
         }
     }
@@ -82,6 +91,32 @@ class ChatListFragment : Fragment() {
             when (item.itemId) {
                 R.id.action_create_group -> showCreateGroupDialog()
                 else -> Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
+            }
+            true
+        }
+        popup.show()
+    }
+
+    private fun showLongPressMenu(anchor: View, group: ChatGroup) {
+        val popup = PopupMenu(requireContext(), anchor)
+        popup.menuInflater.inflate(R.menu.menu_chat_long_press, popup.menu)
+        // 切换置顶 / 取消置顶文案
+        popup.menu.findItem(R.id.action_pin).isVisible = !group.isPinned
+        popup.menu.findItem(R.id.action_unpin).isVisible = group.isPinned
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_pin, R.id.action_unpin -> {
+                    mainViewModel.togglePin(group.id)
+                    Toast.makeText(
+                        requireContext(),
+                        if (group.isPinned) "已置顶" else "已取消置顶",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                R.id.action_delete_chat,
+                R.id.action_hide_chat -> {
+                    Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
+                }
             }
             true
         }

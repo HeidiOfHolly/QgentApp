@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_pin"
+        android:title="置顶" />
+    <item
+        android:id="@+id/action_unpin"
+        android:title="取消置顶" />
+    <item
+        android:id="@+id/action_delete_chat"
+        android:title="删除聊天" />
+    <item
+        android:id="@+id/action_hide_chat"
+        android:title="不显示该聊天" />
+</menu>

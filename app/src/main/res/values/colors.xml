@@ -35,4 +35,5 @@
     <color name="exit_red">#FF3B30</color>
 
     <color name="team_item_normal">#8896AE</color>
+    <color name="bg_chat_pinned">#ECEEF2</color>
 </resources>

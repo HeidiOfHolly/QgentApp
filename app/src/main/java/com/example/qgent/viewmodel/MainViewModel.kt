@@ -14,7 +14,6 @@ import kotlinx.coroutines.launch
  * 个人中心抽屉（切团队/切项目）与群聊列表页（显示所在团队）共用。
  *
  * 数据源策略：优先 API（需登录 token），失败或无 token 时回退 mock。
- * 当 AuthInterceptor.token 为 null 时，所有 API 调用会自动走 mock fallback。
  */
 class MainViewModel : ViewModel() {
 
@@ -32,28 +31,40 @@ class MainViewModel : ViewModel() {
         "团队D" to listOf("运营后台")
     )
 
+    private val now = System.currentTimeMillis()
+
     private val mockGroupsByProject = mapOf(
         "Qgents Web" to listOf(
-            ChatGroup("1", "登录功能", "李四：好的没问题", "14:05", 3),
-            ChatGroup("2", "认证安全", "我：RSA 公钥我看一下", "13:40", 0)
+            ChatGroup("1", "登录功能", "李四：好的没问题", "14:05", 3,
+                isPinned = true, lastActiveTime = now - 1000 * 60 * 30),
+            ChatGroup("2", "认证安全", "我：RSA 公钥我看一下", "13:40", 0,
+                lastActiveTime = now - 1000 * 60 * 90)
         ),
         "Qgents Mobile" to listOf(
-            ChatGroup("3", "任务编排", "王五：Planner 已完成", "昨天", 5),
-            ChatGroup("4", "移动端 UI", "赵六：设置页改好了", "昨天", 0)
+            ChatGroup("3", "任务编排", "王五：Planner 已完成", "昨天", 5,
+                isPinned = true, lastActiveTime = now - 1000 * 60 * 60),
+            ChatGroup("4", "移动端 UI", "赵六：设置页改好了", "昨天", 0,
+                lastActiveTime = now - 1000 * 60 * 120)
         ),
         "认证服务" to listOf(
-            ChatGroup("5", "OAuth 对接", "张三：回调地址已更新", "周一", 2),
-            ChatGroup("6", "Token 刷新", "我：异常情况如何处理", "周一", 0)
+            ChatGroup("5", "OAuth 对接", "张三：回调地址已更新", "周一", 2,
+                lastActiveTime = now - 1000 * 60 * 60 * 24),
+            ChatGroup("6", "Token 刷新", "我：异常情况如何处理", "周一", 0,
+                lastActiveTime = now - 1000 * 60 * 60 * 48)
         ),
         "网关" to listOf(
-            ChatGroup("7", "限流策略", "李四：阈值需要讨论", "周二", 1)
+            ChatGroup("7", "限流策略", "李四：阈值需要讨论", "周二", 1,
+                lastActiveTime = now - 1000 * 60 * 60 * 72)
         ),
         "数据平台" to listOf(
-            ChatGroup("8", "数据接入", "王五：Schema 已对齐", "周三", 0),
-            ChatGroup("9", "报表需求", "赵六：新增 3 个维度", "周三", 4)
+            ChatGroup("8", "数据接入", "王五：Schema 已对齐", "周三", 0,
+                lastActiveTime = now - 1000 * 60 * 60 * 96),
+            ChatGroup("9", "报表需求", "赵六：新增 3 个维度", "周三", 4,
+                lastActiveTime = now - 1000 * 60 * 60 * 100)
         ),
         "运营后台" to listOf(
-            ChatGroup("10", "权限管理", "张三：角色树已更新", "周四", 0)
+            ChatGroup("10", "权限管理", "张三：角色树已更新", "周四", 0,
+                lastActiveTime = now - 1000 * 60 * 60 * 120)
         )
     )
 
@@ -79,6 +90,10 @@ class MainViewModel : ViewModel() {
 
     private val _projects = MutableLiveData<List<String>>()
     val projects: LiveData<List<String>> = _projects
+
+    // ── 缓存：name → id 映射（用于 API 调用时反查） ──
+
+    private var projectNameToId = mutableMapOf<String, String>()
 
     init {
         _currentProject.value = mockProjectsByTeam.getValue("团队A").first()
@@ -113,6 +128,23 @@ class MainViewModel : ViewModel() {
             if (it.isNotEmpty()) it else mockGroupsByProject[project] ?: emptyList()
         } ?: mockGroupsByProject[project] ?: emptyList()
 
+    /** 切换群聊置顶状态，重新排序后发出 */
+    fun togglePin(groupId: String) {
+        val current = _groups.value ?: return
+        val updated = current.map {
+            if (it.id == groupId) it.copy(isPinned = !it.isPinned) else it
+        }
+        _groups.value = sortGroups(updated)
+    }
+
+    // ── 排序：置顶优先（按 lastActiveTime 倒序），非置顶按 lastActiveTime 倒序 ──
+
+    private fun sortGroups(groups: List<ChatGroup>): List<ChatGroup> =
+        groups.sortedWith(
+            compareByDescending<ChatGroup> { it.isPinned }
+                .thenByDescending { it.lastActiveTime }
+        )
+
     // ── 数据加载（API → mock fallback） ──
 
     private fun loadTeams() {
@@ -127,44 +159,32 @@ class MainViewModel : ViewModel() {
 
     private fun loadProjects(team: String) {
         viewModelScope.launch {
-            // 需要 teamId，mock 阶段用 team name 反查
             userRepo.getTeams().onSuccess { teamDtos ->
                 val teamDto = teamDtos.find { it.name == team }
                 if (teamDto != null) {
                     userRepo.getProjects(teamDto.id).onSuccess { projectDtos ->
                         _projects.postValue(projectDtos.map { it.name })
+                        projectDtos.forEach { projectNameToId[it.name] = it.id }
                         return@launch
                     }
                 }
             }
-            // fallback to mock
             _projects.postValue(mockProjectsByTeam[team] ?: emptyList())
         }
     }
 
-    private fun loadGroups(project: String) {
+    private fun loadGroups(projectName: String) {
         viewModelScope.launch {
-            // 需要 projectId，mock 阶段用 project name 反查
-            // 先尝试从已加载的项目列表中找 id，找不到回退 mock
-            val projectId = resolveProjectId(project)
-            if (projectId != null) {
-                chatRepo.getGroups(projectId).onSuccess { dtos ->
-                    _groups.postValue(dtos.map { dto ->
-                        ChatGroup(dto.id, dto.name, dto.lastMessage ?: "", dto.updatedAt, 0)
-                    })
+            val pid = projectNameToId[projectName]
+            if (pid != null) {
+                chatRepo.getGroups(pid).onSuccess { dtos ->
+                    _groups.postValue(sortGroups(dtos.map { dto ->
+                        ChatGroup(dto.id, dto.title, dto.lastMessage ?: "", dto.updatedAt, 0)
+                    }))
                     return@launch
                 }
             }
-            _groups.postValue(mockGroupsByProject[project] ?: emptyList())
+            _groups.postValue(sortGroups(mockGroupsByProject[projectName] ?: emptyList()))
         }
-    }
-
-    /** 尝试根据项目名解析 projectId（需要先通过 teams API 拿到项目的真实 id） */
-    private suspend fun resolveProjectId(projectName: String): String? {
-        val team = _currentTeam.value ?: return null
-        val teamDtos = userRepo.getTeams().getOrNull() ?: return null
-        val teamDto = teamDtos.find { it.name == team } ?: return null
-        val projectDtos = userRepo.getProjects(teamDto.id).getOrNull() ?: return null
-        return projectDtos.find { it.name == projectName }?.id
     }
 }
