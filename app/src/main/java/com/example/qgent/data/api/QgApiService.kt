@@ -1,8 +1,12 @@
 package com.example.qgent.data.api
 
 import com.example.qgent.data.model.ApiResponse
+import com.example.qgent.data.model.AuthSessionDto
 import com.example.qgent.data.model.GroupMessageDto
+import com.example.qgent.data.model.LoginRequest
+import com.example.qgent.data.model.PasswordPublicKeyDto
 import com.example.qgent.data.model.ProjectDto
+import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.RequirementGroupDto
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.UserProfileDto
@@ -15,10 +19,21 @@ import retrofit2.http.Query
 
 /**
  * QG 后端 API 接口定义。
- * 接口文档 v1.0.1 —— 仅覆盖已实现页面所需接口。
+ * 接口文档 v1.1.2 —— 仅覆盖已实现页面所需接口。
  * 未实现页面/缺失接口见 memory 或与后端对接后补充。
  */
 interface QgApiService {
+
+    // ── 认证与账户（§4）──
+
+    @GET("auth/password-public-key")
+    suspend fun getPasswordPublicKey(): ApiResponse<PasswordPublicKeyDto>
+
+    @POST("auth/register")
+    suspend fun register(@Body body: RegisterRequest): ApiResponse<AuthSessionDto>
+
+    @POST("auth/login")
+    suspend fun login(@Body body: LoginRequest): ApiResponse<AuthSessionDto>
 
     // ── 用户 ──
 

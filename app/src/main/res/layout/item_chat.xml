@@ -28,7 +28,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="top|end"
-            android:background="@drawable/bg_unread_badge"
+
             android:minWidth="18dp"
             android:minHeight="18dp"
             android:gravity="center"

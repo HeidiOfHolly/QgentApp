@@ -1,5 +1,6 @@
 package com.example.qgent
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import androidx.activity.enableEdgeToEdge
@@ -10,7 +11,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
+import com.example.qgent.data.SessionStore
 import com.example.qgent.databinding.ActivityMainBinding
+import com.example.qgent.ui.auth.LoginActivity
 import com.example.qgent.ui.personal.PersonalCenterFragment
 
 class MainActivity : AppCompatActivity() {
@@ -20,6 +23,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 未登录时跳转登录页
+        if (!SessionStore.isLoggedIn()) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
+
         enableEdgeToEdge()
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)

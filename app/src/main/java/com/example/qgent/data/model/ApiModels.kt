@@ -23,6 +23,57 @@ data class PageInfo(
     val hasMore: Boolean
 )
 
+/** API 异常：包含服务端返回的错误码与提示 */
+class ApiException(
+    val code: String,
+    override val message: String
+) : Exception("[$code] $message")
+
+/** 解析统一响应：优先抛服务端错误，其次要求 data 非空 */
+fun <T> ApiResponse<T>.requireData(): T {
+    error?.let { throw ApiException(it.code, it.message) }
+    return data ?: throw ApiException("EMPTY_RESPONSE", "响应为空")
+}
+
+// ── 认证 DTO ──
+
+/** 注册/登录前获取的 RSA 公钥 */
+data class PasswordPublicKeyDto(
+    @SerializedName("keyId") val keyId: String,
+    val algorithm: String,
+    @SerializedName("publicKeyPem") val publicKeyPem: String
+)
+
+/** 注册请求：密码需用平台 RSA 公钥加密后 Base64 */
+data class RegisterRequest(
+    val email: String,
+    @SerializedName("passwordKeyId") val passwordKeyId: String,
+    val password: String,
+    @SerializedName("displayName") val displayName: String
+)
+
+/** 登录请求：密码需用平台 RSA 公钥加密后 Base64 */
+data class LoginRequest(
+    val email: String,
+    @SerializedName("passwordKeyId") val passwordKeyId: String,
+    val password: String
+)
+
+/** 登录/注册成功后的会话 */
+data class AuthSessionDto(
+    @SerializedName("accessToken") val accessToken: String,
+    @SerializedName("accessTokenExpiresIn") val accessTokenExpiresIn: Long,
+    @SerializedName("refreshToken") val refreshToken: String,
+    @SerializedName("refreshTokenExpiresIn") val refreshTokenExpiresIn: Long,
+    val user: AuthUserDto
+)
+
+data class AuthUserDto(
+    val id: String,
+    val email: String,
+    @SerializedName("displayName") val displayName: String
+)
+
 // ── 业务 DTO ──
 
 data class UserProfileDto(
