@@ -76,4 +76,9 @@ class MainActivity : AppCompatActivity() {
     fun openDrawer() {
         binding.drawerLayout.openDrawer(GravityCompat.START)
     }
+
+    /** 抽屉内跳转主内容页前调用，收起个人中心抽屉 */
+    fun closeDrawer() {
+        binding.drawerLayout.closeDrawer(GravityCompat.START)
+    }
 }

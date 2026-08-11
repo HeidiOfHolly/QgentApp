@@ -54,4 +54,10 @@
         android:name="com.example.qgent.ui.chat.ChatSettingsFragment"
         android:label="@string/chat_settings_title"
         tools:layout="@layout/fragment_chat_settings" />
+
+    <fragment
+        android:id="@+id/profileFragment"
+        android:name="com.example.qgent.ui.personal.ProfileFragment"
+        android:label="个人信息"
+        tools:layout="@layout/fragment_profile" />
 </navigation>

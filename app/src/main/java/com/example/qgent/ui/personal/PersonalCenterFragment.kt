@@ -7,7 +7,9 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.navigation.fragment.NavHostFragment
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.qgent.MainActivity
 import com.example.qgent.R
 import com.example.qgent.databinding.FragmentPersonalCenterBinding
 import com.example.qgent.viewmodel.MainViewModel
@@ -80,10 +82,20 @@ class PersonalCenterFragment : Fragment() {
             projectAdapter.selectedPosition = projectAdapter.indexOf(project)
         }
 
+        // 头像 → 收起抽屉并进入个人信息页
+        binding.btnAvatar.setOnClickListener { openProfile() }
+
         // 以下跳转均为占位，后续实现
         binding.btnTeamManage.setOnClickListener { showTodoToast() }
-        binding.btnAvatar.setOnClickListener { showTodoToast() }
         binding.btnNotification.setOnClickListener { showTodoToast() }
+    }
+
+    /** 收起个人中心抽屉，并在主内容区打开个人信息页 */
+    private fun openProfile() {
+        (activity as? MainActivity)?.closeDrawer()
+        val navController = (requireActivity().supportFragmentManager
+            .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
+        navController.navigate(R.id.profileFragment)
     }
 
     private fun showTodoToast() {
