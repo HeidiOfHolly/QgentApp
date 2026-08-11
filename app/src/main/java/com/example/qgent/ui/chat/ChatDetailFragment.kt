@@ -53,6 +53,7 @@ class ChatDetailFragment : Fragment() {
         // 键盘 / 手势栏 insets：输入栏底部避让，消息列表不被遮住
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            //获取键盘非法占用的高度
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
             binding.inputBar.setPadding(0, 0, 0, bars.bottom + ime.bottom)
             insets

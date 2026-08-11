@@ -49,22 +49,67 @@ data class ProjectDto(
     val status: String
 )
 
-data class RequirementGroupDto(
+// ── 群（Group）— 统一建模：PROJECT_MAIN + REQUIREMENT ──
+
+data class GroupDto(
     val id: String,
     @SerializedName("projectId") val projectId: String,
-    val name: String,
+    val title: String,
+    val description: String?,
+    val type: String,               // PROJECT_MAIN / REQUIREMENT
+    val status: String,             // ACTIVE / ARCHIVED
     @SerializedName("memberCount") val memberCount: Int,
+    @SerializedName("repositoryIds") val repositoryIds: List<String>?,
     @SerializedName("lastMessage") val lastMessage: String?,
     @SerializedName("lastMessageSender") val lastMessageSender: String?,
     @SerializedName("updatedAt") val updatedAt: String
 )
+
+data class GroupMemberDto(
+    val id: String,
+    val nickname: String,
+    val avatar: String?
+)
+
+// ── 消息 ──
 
 data class GroupMessageDto(
     val id: String,
     @SerializedName("groupId") val groupId: String,
     @SerializedName("senderId") val senderId: String,
     @SerializedName("senderName") val senderName: String,
-    val content: String,
-    val type: String,           // TEXT / IMAGE / FILE
+    val type: String,               // TEXT / CODE / IMAGE / FILE / SYSTEM / QUOTE
+    val content: MessageContentDto?,
+    val mentions: List<String>?,
+    @SerializedName("replyToId") val replyToId: String?,
+    @SerializedName("clientMessageId") val clientMessageId: String?,
+    val sequence: Long,
     @SerializedName("createdAt") val createdAt: String
+)
+
+data class MessageContentDto(
+    val text: String?
+)
+
+// ── 请求体 ──
+
+data class CreateGroupRequest(
+    val title: String,
+    val description: String? = null,
+    @SerializedName("repositoryIds") val repositoryIds: List<String>? = null,
+    val type: String = "REQUIREMENT"
+)
+
+data class UpdateGroupRequest(
+    val title: String? = null,
+    val description: String? = null,
+    @SerializedName("repositoryIds") val repositoryIds: List<String>? = null
+)
+
+data class SendMessageRequest(
+    val type: String,
+    val content: MessageContentDto,
+    val mentions: List<String>? = null,
+    @SerializedName("replyToId") val replyToId: String? = null,
+    @SerializedName("clientMessageId") val clientMessageId: String? = null
 )
