@@ -10,7 +10,6 @@ import com.example.qgent.data.model.LoginRequest
 import com.example.qgent.data.model.PasswordPublicKeyDto
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.RegisterRequest
-import com.example.qgent.data.model.RequirementGroupDto
 import com.example.qgent.data.model.SendMessageRequest
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.UpdateGroupRequest

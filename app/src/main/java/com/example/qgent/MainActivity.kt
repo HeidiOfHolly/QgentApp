@@ -24,19 +24,19 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 未登录时跳转登录页
-        if (!SessionStore.isLoggedIn()) {
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
-            return
-        }
+//        // 未登录时跳转登录页
+//        if (!SessionStore.isLoggedIn()) {
+//            startActivity(Intent(this, LoginActivity::class.java))
+//            finish()
+//            return
+//        }
 
         enableEdgeToEdge()
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 抽屉宽度 = 屏幕宽度 75%
-        val drawerWidth = (resources.displayMetrics.widthPixels * 0.75f).toInt()
+        // 抽屉宽度 = 屏幕宽度 85%
+        val drawerWidth = (resources.displayMetrics.widthPixels * 0.85f).toInt()
         binding.drawerPersonalCenter.layoutParams.width = drawerWidth
 
         // 个人中心（抽屉内容）注入抽屉容器

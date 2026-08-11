@@ -33,7 +33,7 @@
     <!-- 左侧抽屉：宽度由 MainActivity 设为屏幕 75%，内容为个人中心（PersonalCenterFragment 注入） -->
     <FrameLayout
         android:id="@+id/drawerPersonalCenter"
-        android:layout_width="300dp"
+        android:layout_width="350dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:background="?attr/colorSurface"
