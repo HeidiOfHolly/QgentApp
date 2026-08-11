@@ -1,8 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Base.Theme.Qgent" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+        <item name="colorPrimary">@color/navy</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorPrimaryContainer">@color/blue_tint</item>
+        <item name="colorOnPrimaryContainer">@color/navy</item>
+        <item name="colorSecondary">@color/slate_gray</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="android:colorBackground">@color/off_white</item>
+        <item name="colorSurface">@color/white</item>
+        <item name="colorOnSurface">@color/charcoal</item>
+        <item name="colorOnBackground">@color/charcoal</item>
+        <item name="colorOutline">@color/gray</item>
+        <item name="colorSurfaceVariant">@color/light_gray</item>
+        <item name="colorOnSurfaceVariant">@color/gray_dark</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
     </style>
 
     <style name="Theme.Qgent" parent="Base.Theme.Qgent" />
