@@ -68,7 +68,6 @@ class PersonalCenterFragment : Fragment() {
         binding.btnTeamManage.setOnClickListener { showTodoToast() }
         binding.btnAvatar.setOnClickListener { showTodoToast() }
         binding.btnNotification.setOnClickListener { showTodoToast() }
-        binding.btnSettings.setOnClickListener { showTodoToast() }
     }
 
     private fun showTodoToast() {

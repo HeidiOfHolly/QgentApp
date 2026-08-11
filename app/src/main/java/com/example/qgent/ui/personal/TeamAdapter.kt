@@ -42,12 +42,12 @@ class TeamAdapter(
         fun bind(name: String, selected: Boolean) {
             binding.tvTeamName.text = name
             binding.tvTeamName.setBackgroundResource(
-                if (selected) R.drawable.bg_team_selected else 0
+                if (selected) R.drawable.bg_team_selected_navy else 0
             )
             binding.tvTeamName.setTextColor(
                 ContextCompat.getColor(
                     binding.root.context,
-                    if (selected) R.color.on_primary_container else R.color.text_secondary
+                    if (selected) R.color.white else R.color.team_item_normal
                 )
             )
         }

@@ -43,4 +43,14 @@
     <string name="search_history_title">搜索历史</string>
     <string name="search_history_clear">清空</string>
     <string name="search_history_empty">暂无搜索历史</string>
+
+    <string name="group_name_label">群聊名称</string>
+    <string name="group_member_count">群成员 (%d)</string>
+    <string name="manage_group">管理群</string>
+    <string name="view_chat_history">查看聊天记录</string>
+    <string name="exit_group">退出群聊</string>
+    <string name="exit_group_placeholder">退出群聊（待接入后端）</string>
+    <string name="action_enter">进入</string>
+    <string name="avatar">头像</string>
+    <string name="group_avatar">群头像</string>
 </resources>

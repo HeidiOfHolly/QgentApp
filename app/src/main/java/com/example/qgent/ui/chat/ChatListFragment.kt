@@ -58,24 +58,22 @@ class ChatListFragment : Fragment() {
             binding.tvTeamName.text = team
         }
 
-        // mock 群聊列表，数据接入后替换
-        val groups = listOf(
-            ChatGroup("1", "登录功能", "李四：好的没问题", "14:05", 3),
-            ChatGroup("2", "认证安全", "我：RSA 公钥我看一下", "13:40", 0),
-            ChatGroup("3", "任务编排", "王五：Planner 已完成", "昨天", 5),
-            ChatGroup("4", "测试群", "李四：用例写好了", "昨天", 0)
-        )
         binding.rvChatList.layoutManager = LinearLayoutManager(requireContext())
-        binding.rvChatList.adapter = ChatListAdapter(groups) { group ->
-            findNavController().navigate(
-                R.id.action_chatList_to_chatDetail,
-                bundleOf("groupName" to group.name)
-            )
-        }
         binding.rvChatList.addItemDecoration(
             DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL)
         )
-        binding.tvChatListEmpty.isVisible = groups.isEmpty()
+
+        // 群聊列表随项目切换而变化
+        mainViewModel.currentProject.observe(viewLifecycleOwner) { project ->
+            val groups = mainViewModel.groupsOf(project)
+            binding.rvChatList.adapter = ChatListAdapter(groups) { group ->
+                findNavController().navigate(
+                    R.id.action_chatList_to_chatDetail,
+                    bundleOf("groupName" to group.name)
+                )
+            }
+            binding.tvChatListEmpty.isVisible = groups.isEmpty()
+        }
     }
 
     private fun showMoreMenu() {

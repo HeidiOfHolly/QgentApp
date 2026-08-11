@@ -1,164 +1,144 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 个人中心抽屉内容：左侧团队栏（navy）+ 右侧个人主页（off_white） -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface"
+    android:background="@color/off_white"
     android:orientation="horizontal"
     tools:context=".ui.personal.PersonalCenterFragment">
 
-    <!-- 左列：团队管理 + 加入的团队 -->
+    <!-- ===== 左侧团队栏 ===== -->
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="104dp"
         android:layout_height="match_parent"
-        android:layout_weight="1"
-        android:background="?attr/colorSurfaceContainerLow"
-        android:orientation="vertical">
+        android:background="@color/navy"
+        android:orientation="vertical"
+        android:paddingTop="48dp">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnTeamManage"
-            style="?attr/materialButtonOutlinedStyle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_margin="8dp"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="10dp"
+            android:minHeight="40dp"
             android:text="@string/team_manage"
-            android:textSize="14sp"
-            app:icon="@drawable/ic_group"
-            app:iconGravity="textStart" />
+            android:textColor="@color/mint"
+            android:textSize="15sp"
+            app:backgroundTint="@color/navy_light"
+            app:cornerRadius="20dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="5dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="6dp"
+            android:text="我的团队"
+            android:textColor="#8896AE"
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvTeams"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:paddingTop="4dp"
-            android:paddingBottom="8dp"
-            android:clipToPadding="false" />
+            android:layout_height="match_parent"
+            android:layout_marginStart="5dp" />
     </LinearLayout>
 
-    <View
-        android:layout_width="1dp"
-        android:layout_height="match_parent"
-        android:background="@color/divider" />
-
-    <!-- 右列：个人名片 + 项目列表 + 设置 -->
+    <!-- ===== 右侧个人主页 ===== -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
-        android:layout_weight="2"
-        android:orientation="vertical">
+        android:layout_weight="1"
+        android:background="@color/off_white"
+        android:orientation="vertical"
+        android:paddingTop="40dp">
 
-        <!-- 个人名片 -->
-        <LinearLayout
+        <!-- 个人名片卡片 -->
+        <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="12dp"
-            android:paddingTop="12dp"
-            android:paddingEnd="8dp"
-            android:paddingBottom="12dp">
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/bg_card"
+            android:padding="12dp">
 
             <ImageView
                 android:id="@+id/btnAvatar"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="@drawable/bg_avatar"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:clickable="true"
                 android:contentDescription="@string/user_name_placeholder"
                 android:focusable="true"
-                android:src="@drawable/ic_avatar_default" />
+                android:padding="10dp"
+                android:src="@drawable/ic_person"
+                app:layout_constraintLeft_toLeftOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
 
             <LinearLayout
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
-                android:orientation="vertical">
+                android:orientation="vertical"
+                app:layout_constraintLeft_toRightOf="@+id/btnAvatar"
+                app:layout_constraintRight_toLeftOf="@+id/btnNotification"
+                app:layout_constraintTop_toTopOf="@+id/btnAvatar">
 
                 <TextView
                     android:id="@+id/tvUserName"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="17sp"
+                    android:textColor="@color/charcoal"
+                    android:textSize="16sp"
                     android:textStyle="bold"
-                    tools:text="@string/user_name_placeholder" />
+                    tools:text="张三" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="当前团队："
+                    android:textColor="@color/gray"
+                    android:textSize="12sp" />
 
                 <TextView
                     android:id="@+id/tvTeamName"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:textColor="@color/text_secondary"
+                    android:layout_marginTop="3dp"
+                    android:textColor="@color/gray"
                     android:textSize="12sp"
-                    tools:text="@string/team_name_placeholder" />
+                    tools:text="团队A" />
             </LinearLayout>
 
-            <Space
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <ImageButton
+            <ImageView
                 android:id="@+id/btnNotification"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:background="@drawable/bg_oval"
+                android:clickable="true"
                 android:contentDescription="@string/notification"
+                android:focusable="true"
+                android:padding="4dp"
                 android:src="@drawable/ic_bell"
-                app:tint="?attr/colorControlNormal" />
-        </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/divider" />
+                app:layout_constraintRight_toRightOf="parent"
+                app:layout_constraintTop_toTopOf="@+id/btnAvatar" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
         <!-- 项目列表 -->
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvProjects"
             android:layout_width="match_parent"
             android:layout_height="0dp"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="12dp"
             android:layout_weight="1"
-            android:paddingTop="4dp"
-            android:clipToPadding="false" />
+            android:orientation="vertical" />
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/divider" />
-
-        <!-- 设置 -->
-        <LinearLayout
-            android:id="@+id/btnSettings"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="16dp"
-            android:paddingTop="14dp"
-            android:paddingEnd="16dp"
-            android:paddingBottom="14dp">
-
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:contentDescription="@string/settings"
-                android:src="@drawable/ic_settings"
-                app:tint="@color/text_secondary" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:text="@string/settings"
-                android:textColor="?android:attr/textColorPrimary"
-                android:textSize="16sp" />
-        </LinearLayout>
     </LinearLayout>
 
 </LinearLayout>

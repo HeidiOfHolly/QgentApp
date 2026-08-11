@@ -12,4 +12,15 @@
     <color name="divider">#EEEFF1</color>
     <color name="unread_badge">#FF3B30</color>
     <color name="bg_search">#F2F3F5</color>
+    <color name="exit_red">#FF3B30</color>
+
+    <!-- 个人中心抽屉配色（同事设计） -->
+    <color name="navy">#1B2D4F</color>
+    <color name="navy_light">#253D6E</color>
+    <color name="mint">#4FD1C5</color>
+    <color name="off_white">#F8F9FC</color>
+    <color name="charcoal">#1F2329</color>
+    <color name="gray">#8A8A8E</color>
+    <color name="blue_tint">#DBEAFE</color>
+    <color name="team_item_normal">#8896AE</color>
 </resources>
