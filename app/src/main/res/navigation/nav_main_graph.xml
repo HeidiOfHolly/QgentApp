@@ -22,7 +22,11 @@
         android:id="@+id/searchFragment"
         android:name="com.example.qgent.ui.search.SearchFragment"
         android:label="@string/search_placeholder"
-        tools:layout="@layout/fragment_search" />
+        tools:layout="@layout/fragment_search">
+        <action
+            android:id="@+id/action_search_to_chatDetail"
+            app:destination="@id/chatDetailFragment" />
+    </fragment>
 
     <fragment
         android:id="@+id/tasksFragment"
@@ -34,7 +38,33 @@
         android:id="@+id/agentFragment"
         android:name="com.example.qgent.ui.agent.AgentFragment"
         android:label="@string/nav_agent"
-        tools:layout="@layout/fragment_agent" />
+        tools:layout="@layout/fragment_agent">
+        <action
+            android:id="@+id/action_agent_to_agentDetail"
+            app:destination="@id/agentDetailFragment" />
+        <action
+            android:id="@+id/action_agent_to_memoryPool"
+            app:destination="@id/memoryPoolFragment" />
+        <action
+            android:id="@+id/action_agent_to_skillPool"
+            app:destination="@id/skillPoolFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/agentDetailFragment"
+        android:name="com.example.qgent.ui.agent.AgentDetailFragment"
+        android:label="Agent 详情"
+        tools:layout="@layout/fragment_agent_detail">
+        <argument
+            android:name="agentId"
+            android:defaultValue="" />
+        <argument
+            android:name="agentName"
+            android:defaultValue="" />
+        <argument
+            android:name="agentDescription"
+            android:defaultValue="" />
+    </fragment>
 
     <fragment
         android:id="@+id/chatDetailFragment"
@@ -54,6 +84,18 @@
         android:name="com.example.qgent.ui.chat.ChatSettingsFragment"
         android:label="@string/chat_settings_title"
         tools:layout="@layout/fragment_chat_settings" />
+
+    <fragment
+        android:id="@+id/memoryPoolFragment"
+        android:name="com.example.qgent.ui.agent.MemoryPoolFragment"
+        android:label="Memory 池"
+        tools:layout="@layout/fragment_memory_pool" />
+
+    <fragment
+        android:id="@+id/skillPoolFragment"
+        android:name="com.example.qgent.ui.agent.SkillPoolFragment"
+        android:label="Skill 池"
+        tools:layout="@layout/fragment_skill_pool" />
 
     <fragment
         android:id="@+id/profileFragment"

@@ -66,6 +66,7 @@ class ChatListFragment : Fragment() {
         val adapter = ChatListAdapter(
             items = emptyList(),
             onGroupClick = { group ->
+                mainViewModel.markAsRead(group.id)
                 findNavController().navigate(
                     R.id.action_chatList_to_chatDetail,
                     bundleOf("groupName" to group.name)
