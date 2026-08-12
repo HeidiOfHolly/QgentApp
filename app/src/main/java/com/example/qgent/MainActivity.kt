@@ -24,12 +24,12 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-//        // 未登录时跳转登录页
-//        if (!SessionStore.isLoggedIn()) {
-//            startActivity(Intent(this, LoginActivity::class.java))
-//            finish()
-//            return
-//        }
+        // 未登录时跳转登录页
+        if (!SessionStore.isLoggedIn()) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
 
         enableEdgeToEdge()
         binding = ActivityMainBinding.inflate(layoutInflater)

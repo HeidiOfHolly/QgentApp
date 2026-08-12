@@ -1,23 +1,27 @@
 package com.example.qgent.data.api
 
+import com.example.qgent.data.model.AgentDto
+import com.example.qgent.data.model.AgentSkillBindingsRequest
 import com.example.qgent.data.model.ApiResponse
+import com.example.qgent.data.model.CreateAgentRequest
 import com.example.qgent.data.model.CreateGroupRequest
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.AuthSessionDto
 import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.model.LoginRequest
-import com.example.qgent.data.model.PasswordPublicKeyDto
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.SendMessageRequest
 import com.example.qgent.data.model.TeamDto
+import com.example.qgent.data.model.UpdateAgentRequest
 import com.example.qgent.data.model.UpdateGroupRequest
 import com.example.qgent.data.model.UserProfileDto
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -31,9 +35,6 @@ import retrofit2.http.Query
 interface QgApiService {
 
     // ── 认证与账户（§4）──
-
-    @GET("auth/password-public-key")
-    suspend fun getPasswordPublicKey(): ApiResponse<PasswordPublicKeyDto>
 
     @POST("auth/register")
     suspend fun register(@Body body: RegisterRequest): ApiResponse<AuthSessionDto>
@@ -122,4 +123,55 @@ interface QgApiService {
         @Path("groupId") groupId: String,
         @Body body: SendMessageRequest
     ): ApiResponse<GroupMessageDto>
+
+    // ── Agent（§11）──
+
+    @GET("teams/{teamId}/agents")
+    suspend fun getAgents(
+        @Path("teamId") teamId: String
+    ): ApiResponse<List<AgentDto>>
+
+    @POST("teams/{teamId}/agents")
+    suspend fun createAgent(
+        @Path("teamId") teamId: String,
+        @Body body: CreateAgentRequest
+    ): ApiResponse<AgentDto>
+
+    @GET("teams/{teamId}/agents/{agentId}")
+    suspend fun getAgent(
+        @Path("teamId") teamId: String,
+        @Path("agentId") agentId: String
+    ): ApiResponse<AgentDto>
+
+    @PATCH("teams/{teamId}/agents/{agentId}")
+    suspend fun updateAgent(
+        @Path("teamId") teamId: String,
+        @Path("agentId") agentId: String,
+        @Body body: UpdateAgentRequest
+    ): ApiResponse<AgentDto>
+
+    @POST("teams/{teamId}/agents/{agentId}/publish")
+    suspend fun publishAgent(
+        @Path("teamId") teamId: String,
+        @Path("agentId") agentId: String
+    ): ApiResponse<AgentDto>
+
+    @POST("teams/{teamId}/agents/{agentId}/unpublish")
+    suspend fun unpublishAgent(
+        @Path("teamId") teamId: String,
+        @Path("agentId") agentId: String
+    ): ApiResponse<AgentDto>
+
+    @POST("teams/{teamId}/agents/{agentId}/archive")
+    suspend fun archiveAgent(
+        @Path("teamId") teamId: String,
+        @Path("agentId") agentId: String
+    ): ApiResponse<AgentDto>
+
+    @PUT("projects/{projectId}/agent-skill-bindings/{agentId}")
+    suspend fun bindAgentSkills(
+        @Path("projectId") projectId: String,
+        @Path("agentId") agentId: String,
+        @Body body: AgentSkillBindingsRequest
+    ): ApiResponse<AgentDto>
 }

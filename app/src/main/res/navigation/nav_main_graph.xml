@@ -64,6 +64,12 @@
         <argument
             android:name="agentDescription"
             android:defaultValue="" />
+        <argument
+            android:name="agentRole"
+            android:defaultValue="" />
+        <argument
+            android:name="agentCapabilities"
+            android:defaultValue="" />
     </fragment>
 
     <fragment

@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.example.qgent.R
@@ -33,12 +34,13 @@ class ChatSettingsFragment : Fragment() {
         // mock 群名
         binding.tvGroupName.text = "登录功能开发组"
 
-        // mock 群成员（群聊内所有成员平等，均为 member）
-        val members = listOf("张三", "李四", "王五", "赵六")
+        // mock 群成员（群聊内所有成员平等，均为 member）+ AgentOrchestrator
+        val members = listOf("张三", "李四", "王五", "赵六", "AgentOrchestrator")
         binding.tvMemberCount.text = getString(R.string.group_member_count, members.size)
         for (name in members) {
             val row = layoutInflater.inflate(R.layout.item_chat_member, binding.containerMembers, false)
             row.findViewById<TextView>(R.id.tvMemberName)?.text = name
+            row.findViewById<TextView>(R.id.tvAgentTag)?.isVisible = name == "AgentOrchestrator"
             binding.containerMembers.addView(row)
         }
 
