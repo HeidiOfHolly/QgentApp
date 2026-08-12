@@ -2,28 +2,39 @@ package com.example.qgent.ui.auth
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import android.widget.Toast
-import androidx.activity.viewModels
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.doAfterTextChanged
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
 import com.example.qgent.MainActivity
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
-import com.example.qgent.databinding.ActivityRegisterBinding
+import com.example.qgent.databinding.FragmentRegisterBinding
 import java.util.regex.Pattern
 
-class RegisterActivity : AppCompatActivity() {
+class RegisterFragment : Fragment() {
 
-    private lateinit var binding: ActivityRegisterBinding
+    private var _binding: FragmentRegisterBinding? = null
+    private val binding get() = _binding!!
     private val viewModel: AuthViewModel by viewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding = ActivityRegisterBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        _binding = FragmentRegisterBinding.inflate(inflater, container, false)
+        return binding.root
+    }
 
-        binding.ivBack.setOnClickListener { finish() }
-        binding.tvLoginLink.setOnClickListener { finish() }
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        binding.ivBack.setOnClickListener { popBackToLogin() }
+        binding.tvLoginLink.setOnClickListener { popBackToLogin() }
 
         listOf(
             binding.emailLayout,
@@ -49,20 +60,28 @@ class RegisterActivity : AppCompatActivity() {
         observeViewModel()
     }
 
+    private fun popBackToLogin() {
+        parentFragmentManager.popBackStack()
+    }
+
     private fun observeViewModel() {
-        viewModel.uiState.observe(this) { state ->
+        viewModel.uiState.observe(viewLifecycleOwner) { state ->
             binding.btnRegister.isEnabled = !state.loading
             state.error?.let {
-                Toast.makeText(this, it, Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
                 viewModel.consumeError()
             }
             if (state.success) {
                 viewModel.consumeSuccess()
                 SessionStore.saveRememberedEmail(binding.etEmail.text.toString())
                 val name = SessionStore.user()?.displayName ?: ""
-                Toast.makeText(this, getString(R.string.register_success, name), Toast.LENGTH_SHORT).show()
-                startActivity(Intent(this, MainActivity::class.java))
-                finish()
+                Toast.makeText(
+                    requireContext(),
+                    getString(R.string.register_success, name),
+                    Toast.LENGTH_SHORT
+                ).show()
+                startActivity(Intent(requireContext(), MainActivity::class.java))
+                requireActivity().finish()
             }
         }
     }
@@ -94,6 +113,11 @@ class RegisterActivity : AppCompatActivity() {
             valid = false
         }
         return valid
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
     }
 
     private companion object {

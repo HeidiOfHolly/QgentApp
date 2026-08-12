@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/login_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="?android:attr/colorBackground"
-    android:fillViewport="true"
-    android:scrollbars="none">
+    android:layout_height="match_parent">
+
+    <ScrollView
+        android:id="@+id/login_root"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="?android:attr/colorBackground"
+        android:fillViewport="true"
+        android:scrollbars="none">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
@@ -111,7 +115,7 @@
             android:layout_marginTop="32dp"
             android:minHeight="52dp"
             android:text="@string/login_button"
-            android:textSize="16sp"
+            android:textSize="20sp"
             android:textStyle="bold"
             app:cornerRadius="12dp"
             app:layout_constraintEnd_toEndOf="parent"
@@ -130,4 +134,10 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/btn_login" />
     </androidx.constraintlayout.widget.ConstraintLayout>
-</ScrollView>
+    </ScrollView>
+
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/register_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+</FrameLayout>

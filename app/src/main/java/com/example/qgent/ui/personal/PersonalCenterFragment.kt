@@ -85,8 +85,10 @@ class PersonalCenterFragment : Fragment() {
         // 头像 → 收起抽屉并进入个人信息页
         binding.btnAvatar.setOnClickListener { openProfile() }
 
+        // 团队管理 → 收起抽屉并进入团队管理页
+        binding.btnTeamManage.setOnClickListener { openTeamManage() }
+
         // 以下跳转均为占位，后续实现
-        binding.btnTeamManage.setOnClickListener { showTodoToast() }
         binding.btnNotification.setOnClickListener { showTodoToast() }
     }
 
@@ -96,6 +98,14 @@ class PersonalCenterFragment : Fragment() {
         val navController = (requireActivity().supportFragmentManager
             .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
         navController.navigate(R.id.profileFragment)
+    }
+
+    /** 收起个人中心抽屉，并在主内容区打开团队管理页 */
+    private fun openTeamManage() {
+        (activity as? MainActivity)?.closeDrawer()
+        val navController = (requireActivity().supportFragmentManager
+            .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
+        navController.navigate(R.id.teamManageFragment)
     }
 
     private fun showTodoToast() {

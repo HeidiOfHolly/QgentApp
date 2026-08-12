@@ -42,7 +42,10 @@ class LoginActivity : AppCompatActivity() {
         }
 
         binding.tvRegister.setOnClickListener {
-            startActivity(Intent(this, RegisterActivity::class.java))
+            supportFragmentManager.beginTransaction()
+                .add(R.id.register_container, RegisterFragment())
+                .addToBackStack("register")
+                .commit()
         }
 
         binding.tvForgotPassword.setOnClickListener {

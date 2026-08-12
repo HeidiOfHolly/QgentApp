@@ -60,4 +60,10 @@
         android:name="com.example.qgent.ui.personal.ProfileFragment"
         android:label="个人信息"
         tools:layout="@layout/fragment_profile" />
+
+    <fragment
+        android:id="@+id/teamManageFragment"
+        android:name="com.example.qgent.ui.personal.TeamManageFragment"
+        android:label="@string/team_manage"
+        tools:layout="@layout/fragment_team_manage" />
 </navigation>

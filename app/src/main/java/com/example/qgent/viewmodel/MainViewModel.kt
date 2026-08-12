@@ -4,6 +4,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.model.ChatGroup
@@ -23,6 +24,14 @@ class MainViewModel : ViewModel() {
     // ── Mock 数据（API 不可用时回退） ──
 
     private val mockTeams = listOf("团队A", "团队B", "团队C", "团队D")
+
+    // Mock 团队详情：role 区分“我创建的 / 我加入的”
+    private val mockTeamDtos = listOf(
+        TeamDto("1", "团队A", "TEAM_OWNER", 8, "2026-06-01"),
+        TeamDto("2", "团队B", "TEAM_MEMBER", 12, "2026-06-10"),
+        TeamDto("3", "团队C", "TEAM_MEMBER", 5, "2026-07-02"),
+        TeamDto("4", "团队D", "TEAM_OWNER", 15, "2026-07-20")
+    )
 
     private val mockProjectsByTeam = mapOf(
         "团队A" to listOf("Qgents Web", "Qgents Mobile"),
@@ -80,6 +89,11 @@ class MainViewModel : ViewModel() {
 
     private val _teams = MutableLiveData<List<String>>()
     val teams: LiveData<List<String>> = _teams
+
+    // ── 团队详情列表（含 role，用于区分“我创建的 / 我加入的”） ──
+
+    private val _teamDtos = MutableLiveData<List<TeamDto>>()
+    val teamDtos: LiveData<List<TeamDto>> = _teamDtos
 
     // ── 当前项目下的群聊列表 ──
 
@@ -151,8 +165,10 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch {
             userRepo.getTeams().onSuccess { dtos ->
                 _teams.postValue(dtos.map { it.name })
+                _teamDtos.postValue(dtos)
             }.onFailure {
                 _teams.postValue(mockTeams)
+                _teamDtos.postValue(mockTeamDtos)
             }
         }
     }

@@ -61,6 +61,11 @@
     <string name="action_back">返回</string>
 
     <string name="team_manage">团队管理</string>
+    <string name="action_create_team">创建团队</string>
+    <string name="team_joined">我加入的团队</string>
+    <string name="team_created">我创建的团队</string>
+    <string name="team_member_count">%1$d 名成员</string>
+    <string name="error_team_name_required">请输入团队名称</string>
     <string name="settings">设置</string>
     <string name="notification">通知</string>
 

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 下拉展开箭头：实心三角，方向朝下（收起时旋转 90° 朝右） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="12dp"
+    android:height="12dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@color/charcoal"
+        android:pathData="M12,7.5 L18,16.5 L6,16.5 Z" />
+</vector>
