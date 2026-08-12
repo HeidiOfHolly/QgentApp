@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
     <LinearLayout
@@ -26,12 +27,15 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="消息列表"
+            android:text="@string/message_list"
             android:textAppearance="@style/TextAppearance.Material3.HeadlineSmall"
             android:textColor="@color/blue_tint"
             android:textStyle="bold" />
     </LinearLayout>
         <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvMessageList"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="10dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"/>
 </LinearLayout>

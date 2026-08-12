@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.NavHostFragment
@@ -93,8 +92,16 @@ class PersonalCenterFragment : Fragment() {
         // 团队管理 → 收起抽屉并进入团队管理页
         binding.btnTeamManage.setOnClickListener { openTeamManage() }
 
-        // 以下跳转均为占位，后续实现
-        binding.btnNotification.setOnClickListener { showTodoToast() }
+        // 铃铛 → 消息列表
+        binding.btnNotification.setOnClickListener { openMessageList() }
+    }
+
+    /** 收起个人中心抽屉，并在主内容区打开消息列表页 */
+    private fun openMessageList() {
+        (activity as? MainActivity)?.closeDrawer()
+        val navController = (requireActivity().supportFragmentManager
+            .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
+        navController.navigate(R.id.messageListFragment)
     }
 
     /** 收起个人中心抽屉，并在主内容区打开个人信息页 */
@@ -111,10 +118,6 @@ class PersonalCenterFragment : Fragment() {
         val navController = (requireActivity().supportFragmentManager
             .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
         navController.navigate(R.id.teamManageFragment)
-    }
-
-    private fun showTodoToast() {
-        Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroyView() {

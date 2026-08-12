@@ -28,8 +28,8 @@ class TeamManageFragment : Fragment() {
     private val binding get() = _binding!!
     private val mainViewModel: MainViewModel by activityViewModels()
 
-    private val joinedAdapter = TeamManageAdapter { onTeamClick(it) }
-    private val createdAdapter = TeamManageAdapter { onTeamClick(it) }
+    private val joinedAdapter = TeamManageAdapter { onJoinTeamClick(it) }
+    private val createdAdapter = TeamManageAdapter { onCreateTeamClick(it) }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -85,9 +85,17 @@ class TeamManageFragment : Fragment() {
         }
     }
 
-    private fun onTeamClick(team: TeamDto) {
+    private fun onJoinTeamClick(team: TeamDto) {
         mainViewModel.setCurrentTeam(team.name)
         findNavController().navigateUp()
+    }
+
+    /** 我创建的团队 → 进入团队详情页管理成员 / 项目 */
+    private fun onCreateTeamClick(team: TeamDto) {
+        val bundle = Bundle().apply {
+            putString(TeamDetailFragment.ARG_TEAM_NAME, team.name)
+        }
+        findNavController().navigate(R.id.teamDetailFragment, bundle)
     }
 
     /** 创建团队：弹出输入团队名称 / 简介的弹窗（创建 API 待后端就绪后接入） */
