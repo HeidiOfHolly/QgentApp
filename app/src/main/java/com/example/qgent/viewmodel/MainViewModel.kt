@@ -95,6 +95,18 @@ class MainViewModel : ViewModel() {
 
     private var projectNameToId = mutableMapOf<String, String>()
 
+    // ── 已读群聊 ID 集合（跨项目切换保持） ──
+
+    private val readGroupIds = mutableSetOf<String>()
+
+    // ── 当前已加载 projects 对应的团队（防止串数据） ──
+
+    private var loadedProjectsTeam: String? = null
+
+    // ── 用户权限（mock 阶段默认 Project Admin） ──
+
+    val isProjectAdmin: Boolean = true
+
     init {
         _currentProject.value = mockProjectsByTeam.getValue("团队A").first()
         loadTeams()
@@ -105,10 +117,12 @@ class MainViewModel : ViewModel() {
     fun setCurrentTeam(team: String) {
         if (_currentTeam.value == team) return
         _currentTeam.value = team
-        val firstProject = projectsOf(team).firstOrNull() ?: ""
-        _currentProject.value = firstProject
-        loadProjects(team)
-        if (firstProject.isNotEmpty()) loadGroups(firstProject)
+        loadedProjectsTeam = null  // 失效旧缓存，防止 projectsOf 串数据
+        loadProjects(team) {
+            val firstProject = projectsOf(team).firstOrNull() ?: ""
+            _currentProject.value = firstProject
+            if (firstProject.isNotEmpty()) loadGroups(firstProject)
+        }
     }
 
     fun setCurrentProject(project: String) {
@@ -119,14 +133,24 @@ class MainViewModel : ViewModel() {
     }
 
     fun projectsOf(team: String): List<String> =
-        _projects.value?.let {
-            if (it.isNotEmpty()) it else mockProjectsByTeam[team] ?: emptyList()
-        } ?: mockProjectsByTeam[team] ?: emptyList()
+        if (loadedProjectsTeam == team) (_projects.value ?: emptyList()).ifEmpty {
+            mockProjectsByTeam[team] ?: emptyList()
+        } else mockProjectsByTeam[team] ?: emptyList()
 
     fun groupsOf(project: String): List<ChatGroup> =
         _groups.value?.let {
             if (it.isNotEmpty()) it else mockGroupsByProject[project] ?: emptyList()
         } ?: mockGroupsByProject[project] ?: emptyList()
+
+    /** 标记群聊为已读（未读数清零，并持久化到已读集合） */
+    fun markAsRead(groupId: String) {
+        readGroupIds.add(groupId)
+        val current = _groups.value ?: return
+        val updated = current.map {
+            if (it.id == groupId) it.copy(unread = 0) else it
+        }
+        _groups.value = updated
+    }
 
     /** 切换群聊置顶状态，重新排序后发出 */
     fun togglePin(groupId: String) {
@@ -150,26 +174,30 @@ class MainViewModel : ViewModel() {
     private fun loadTeams() {
         viewModelScope.launch {
             userRepo.getTeams().onSuccess { dtos ->
-                _teams.postValue(dtos.map { it.name })
+                _teams.value = dtos.map { it.name }
             }.onFailure {
-                _teams.postValue(mockTeams)
+                _teams.value = mockTeams
             }
         }
     }
 
-    private fun loadProjects(team: String) {
+    private fun loadProjects(team: String, onLoaded: (() -> Unit)? = null) {
         viewModelScope.launch {
             userRepo.getTeams().onSuccess { teamDtos ->
                 val teamDto = teamDtos.find { it.name == team }
                 if (teamDto != null) {
                     userRepo.getProjects(teamDto.id).onSuccess { projectDtos ->
-                        _projects.postValue(projectDtos.map { it.name })
+                        _projects.value = projectDtos.map { it.name }
                         projectDtos.forEach { projectNameToId[it.name] = it.id }
+                        loadedProjectsTeam = team
+                        onLoaded?.invoke()
                         return@launch
                     }
                 }
             }
-            _projects.postValue(mockProjectsByTeam[team] ?: emptyList())
+            _projects.value = mockProjectsByTeam[team] ?: emptyList()
+            loadedProjectsTeam = team
+            onLoaded?.invoke()
         }
     }
 
@@ -178,13 +206,18 @@ class MainViewModel : ViewModel() {
             val pid = projectNameToId[projectName]
             if (pid != null) {
                 chatRepo.getGroups(pid).onSuccess { dtos ->
-                    _groups.postValue(sortGroups(dtos.map { dto ->
+                    _groups.value = applyReadState(sortGroups(dtos.map { dto ->
                         ChatGroup(dto.id, dto.title, dto.lastMessage ?: "", dto.updatedAt, 0)
                     }))
                     return@launch
                 }
             }
-            _groups.postValue(sortGroups(mockGroupsByProject[projectName] ?: emptyList()))
+            val raw = mockGroupsByProject[projectName] ?: emptyList()
+            _groups.value = applyReadState(sortGroups(raw.map { it.copy() }))
         }
     }
+
+    /** 对已读群聊清零未读数 */
+    private fun applyReadState(groups: List<ChatGroup>): List<ChatGroup> =
+        groups.map { if (it.id in readGroupIds) it.copy(unread = 0) else it }
 }

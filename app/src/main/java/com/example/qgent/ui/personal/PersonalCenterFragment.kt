@@ -75,6 +75,11 @@ class PersonalCenterFragment : Fragment() {
         // 项目列表随团队切换
         mainViewModel.projects.observe(viewLifecycleOwner) { projects ->
             projectAdapter.submitList(projects)
+            // 列表刷新后恢复当前项目高亮
+            val curProject = mainViewModel.currentProject.value
+            if (!curProject.isNullOrEmpty()) {
+                projectAdapter.selectedPosition = projectAdapter.indexOf(curProject)
+            }
         }
 
         // 当前项目变化：右列项目高亮同步

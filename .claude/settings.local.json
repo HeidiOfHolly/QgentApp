@@ -9,7 +9,9 @@
       "PowerShell(& \"C:\\\\Users\\\\24772\\\\.gradle\\\\wrapper\\\\dists\\\\gradle-8.13-bin\\\\5xuhj0ry160q40clulazy9h7d\\\\gradle-8.13\\\\bin\\\\gradle.bat\" wrapper --gradle-version 8.13 --distribution-type bin --console=plain)",
       "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:Path = \"$env:JAVA_HOME\\\\bin;\" + $env:Path; & \"C:\\\\Users\\\\24772\\\\.gradle\\\\wrapper\\\\dists\\\\gradle-8.13-bin\\\\5xuhj0ry160q40clulazy9h7d\\\\gradle-8.13\\\\bin\\\\gradle.bat\" wrapper --gradle-version 8.13 --distribution-type bin --console=plain)",
       "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:Path = \"$env:JAVA_HOME\\\\bin;\" + $env:Path; .\\\\gradlew.bat :app:compileDebugKotlin --console=plain)",
-      "PowerShell($env:JAVA_HOME = 'C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr'; .\\\\gradlew assembleDebug 2>&1)"
+      "PowerShell($env:JAVA_HOME = 'C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr'; .\\\\gradlew assembleDebug 2>&1)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(cd \"D:\\\\Android Studio\\\\qgentApp\"; $env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; .\\\\gradlew assembleDebug 2>&1)"
     ]
   }
 }

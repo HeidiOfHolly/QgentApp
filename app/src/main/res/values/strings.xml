@@ -47,6 +47,23 @@
     <string name="chat_list_placeholder">群聊列表页（待开发）</string>
     <string name="tasks_placeholder">任务页（待开发）</string>
     <string name="agent_placeholder">Agent 页（待开发）</string>
+    <string name="agent_status_idle">闲置</string>
+    <string name="agent_status_running">运行中</string>
+    <string name="agent_status_error">异常</string>
+    <string name="agent_detail_title">Agent 详情</string>
+    <string name="agent_bound_memory">已绑定 Memory</string>
+    <string name="agent_bound_skill">已绑定 Skill</string>
+    <string name="agent_add">添加</string>
+    <string name="agent_remove">移除</string>
+    <string name="memory_pool_label">共享 Memory 池</string>
+    <string name="memory_review_label">草稿审核</string>
+    <string name="skill_pool_label">共享 Skill 池</string>
+    <string name="skill_review_label">草稿审核</string>
+    <string name="review_permission_denied">仅项目管理员可审核草稿</string>
+    <string name="review_approve">已通过</string>
+    <string name="review_reject">已驳回</string>
+    <string name="review_reject_title">驳回草稿</string>
+    <string name="review_reject_hint">请输入驳回原因</string>
 
     <string name="user_name_placeholder">用户昵称</string>
     <string name="team_name_placeholder">所在团队</string>
@@ -81,6 +98,7 @@
     <string name="search_history_title">搜索历史</string>
     <string name="search_history_clear">清空</string>
     <string name="search_history_empty">暂无搜索历史</string>
+    <string name="search_no_results">未找到相关群聊</string>
 
     <string name="group_name_label">群聊名称</string>
     <string name="group_member_count">群成员 (%d)</string>
