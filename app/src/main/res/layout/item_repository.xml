@@ -13,8 +13,8 @@
     android:paddingBottom="14dp">
 
     <ImageView
-        android:layout_width="20dp"
-        android:layout_height="20dp"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
         android:contentDescription="@string/manage_repositories"
         android:src="@drawable/ic_folder"
         app:tint="@color/text_secondary" />
@@ -27,6 +27,6 @@
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="?android:attr/textColorPrimary"
-        android:textSize="16sp"
+        android:textSize="20sp"
         tools:text="仓库名称" />
 </LinearLayout>

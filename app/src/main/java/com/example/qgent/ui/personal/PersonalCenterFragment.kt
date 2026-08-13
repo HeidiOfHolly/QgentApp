@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.MainActivity
@@ -23,6 +24,12 @@ class PersonalCenterFragment : Fragment() {
     }
     private lateinit var teamAdapter: TeamAdapter
     private lateinit var projectAdapter: ProjectAdapter
+    /** 当前主内容页是否为 GitHub 页：是则抽屉不显示团队/项目高光 */
+    private var isOnGithub = false
+
+    private val navController: NavController
+        get() = (requireActivity().supportFragmentManager
+            .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -59,34 +66,31 @@ class PersonalCenterFragment : Fragment() {
                     mainViewModel.setCurrentTeam(teamName)
                 }
                 binding.rvTeams.adapter = teamAdapter
-                // 恢复当前团队高亮
-                val curTeam = mainViewModel.currentTeam.value
-                val index = teams.indexOf(curTeam)
-                if (index >= 0) teamAdapter.selectedPosition = index
+                refreshHighlight()
             }
         }
 
-        // 当前团队变化：左列高亮同步、右上团队名同步
+        // 当前团队变化：右上团队名同步 + 高亮刷新
         mainViewModel.currentTeam.observe(viewLifecycleOwner) { team ->
-            val teams = mainViewModel.teams.value ?: emptyList()
-            val index = teams.indexOf(team)
-            if (index >= 0 && ::teamAdapter.isInitialized) teamAdapter.selectedPosition = index
             binding.tvTeamName.text = team
+            refreshHighlight()
         }
 
         // 项目列表随团队切换
         mainViewModel.projects.observe(viewLifecycleOwner) { projects ->
             projectAdapter.submitList(projects)
-            // 列表刷新后恢复当前项目高亮
-            val curProject = mainViewModel.currentProject.value
-            if (!curProject.isNullOrEmpty()) {
-                projectAdapter.selectedPosition = projectAdapter.indexOf(curProject)
-            }
+            refreshHighlight()
         }
 
         // 当前项目变化：右列项目高亮同步
-        mainViewModel.currentProject.observe(viewLifecycleOwner) { project ->
-            projectAdapter.selectedPosition = projectAdapter.indexOf(project)
+        mainViewModel.currentProject.observe(viewLifecycleOwner) {
+            refreshHighlight()
+        }
+
+        // 在 GitHub 页时清空抽屉团队/项目高光，离开后恢复当前选中
+        navController.addOnDestinationChangedListener { _, dest, _ ->
+            isOnGithub = dest.id == R.id.githubFragment
+            refreshHighlight()
         }
 
         // 头像 → 收起抽屉并进入个人信息页
@@ -95,32 +99,56 @@ class PersonalCenterFragment : Fragment() {
         // 团队管理 → 收起抽屉并进入团队管理页
         binding.btnTeamManage.setOnClickListener { openTeamManage() }
 
+        // GitHub 图标 → 收起抽屉并进入 GitHub 页
+        binding.ivGithub.setOnClickListener { openGithub() }
+
         // 铃铛 → 消息列表
         binding.btnNotification.setOnClickListener { openMessageList() }
+    }
+
+    /** 刷新抽屉团队/项目高光：GitHub 页不显示高光，其余页面恢复当前团队/项目选中 */
+    private fun refreshHighlight() {
+        if (!::teamAdapter.isInitialized) return
+        if (isOnGithub) {
+            teamAdapter.selectedPosition = NO_SELECTION
+            projectAdapter.selectedPosition = NO_SELECTION
+        } else {
+            val teams = mainViewModel.teams.value ?: emptyList()
+            val curTeam = mainViewModel.currentTeam.value
+            if (curTeam in teams) teamAdapter.selectedPosition = teams.indexOf(curTeam)
+            val curProject = mainViewModel.currentProject.value
+            if (!curProject.isNullOrEmpty()) {
+                projectAdapter.selectedPosition = projectAdapter.indexOf(curProject)
+            }
+        }
+    }
+
+    /** 收起个人中心抽屉，并在主内容区打开 GitHub 页 */
+    private fun openGithub() {
+        (activity as? MainActivity)?.closeDrawer()
+        navController.navigate(R.id.githubFragment)
     }
 
     /** 收起个人中心抽屉，并在主内容区打开消息列表页 */
     private fun openMessageList() {
         (activity as? MainActivity)?.closeDrawer()
-        val navController = (requireActivity().supportFragmentManager
-            .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
         navController.navigate(R.id.messageListFragment)
     }
 
     /** 收起个人中心抽屉，并在主内容区打开个人信息页 */
     private fun openProfile() {
         (activity as? MainActivity)?.closeDrawer()
-        val navController = (requireActivity().supportFragmentManager
-            .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
         navController.navigate(R.id.profileFragment)
     }
 
     /** 收起个人中心抽屉，并在主内容区打开团队管理页 */
     private fun openTeamManage() {
         (activity as? MainActivity)?.closeDrawer()
-        val navController = (requireActivity().supportFragmentManager
-            .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
         navController.navigate(R.id.teamManageFragment)
+    }
+
+    companion object {
+        private const val NO_SELECTION = -1
     }
 
     override fun onDestroyView() {

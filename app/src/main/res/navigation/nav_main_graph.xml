@@ -126,6 +126,25 @@
     </fragment>
 
     <fragment
+        android:id="@+id/githubAuthorizeFragment"
+        android:name="com.example.qgent.ui.github.GitHubAuthorizeFragment"
+        android:label="@string/github_authorize_title"
+        tools:layout="@layout/fragment_github_authorize">
+        <argument
+            android:name="teamId"
+            android:defaultValue="" />
+        <argument
+            android:name="teamName"
+            android:defaultValue="" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/githubFragment"
+        android:name="com.example.qgent.ui.github.GithubFragment"
+        android:label="@string/github_title"
+        tools:layout="@layout/fragment_github" />
+
+    <fragment
         android:id="@+id/messageListFragment"
         android:name="com.example.qgent.ui.message.MessageListFragment"
         android:label="@string/message_list"

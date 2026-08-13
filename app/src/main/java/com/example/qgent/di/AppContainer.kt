@@ -11,13 +11,18 @@ import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.ChatRepositoryImpl
 import com.example.qgent.data.repository.FallbackAgentRepository
 import com.example.qgent.data.repository.FallbackChatRepository
+import com.example.qgent.data.repository.FallbackGitHubRepository
 import com.example.qgent.data.repository.FallbackUserRepository
+import com.example.qgent.data.repository.GitHubRepository
+import com.example.qgent.data.repository.GitHubRepositoryImpl
 import com.example.qgent.data.repository.MockAgentRepository
 import com.example.qgent.data.repository.MockChatRepository
+import com.example.qgent.data.repository.MockGitHubRepository
 import com.example.qgent.data.repository.MockUserRepository
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.data.repository.UserRepositoryImpl
 import com.example.qgent.ui.auth.AuthViewModel
+import com.example.qgent.ui.github.GithubViewModel
 import com.example.qgent.viewmodel.MainViewModel
 
 /**
@@ -44,11 +49,20 @@ class AppContainer {
         mock = MockAgentRepository()
     )
 
+    val githubRepository: GitHubRepository = FallbackGitHubRepository(
+        real = GitHubRepositoryImpl(RetrofitClient.service),
+        mock = MockGitHubRepository()
+    )
+
     val authViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer { AuthViewModel(authRepository) }
     }
 
     val mainViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer { MainViewModel(userRepository, chatRepository) }
+    }
+
+    val githubViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
+        initializer { GithubViewModel(githubRepository) }
     }
 }

@@ -3,14 +3,19 @@ package com.example.qgent.data.api
 import com.example.qgent.data.model.AgentDto
 import com.example.qgent.data.model.AgentSkillBindingsRequest
 import com.example.qgent.data.model.ApiResponse
+import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.CreateAgentRequest
 import com.example.qgent.data.model.CreateGroupRequest
+import com.example.qgent.data.model.GitHubInstallationDto
+import com.example.qgent.data.model.GitHubInstallationUrlDto
+import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.AuthSessionDto
 import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.model.LoginRequest
 import com.example.qgent.data.model.ProjectDto
+import com.example.qgent.data.model.ProjectRepositoryDto
 import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.SendMessageRequest
 import com.example.qgent.data.model.TeamDto
@@ -19,7 +24,9 @@ import com.example.qgent.data.model.UpdateGroupRequest
 import com.example.qgent.data.model.UserProfileDto
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -177,4 +184,55 @@ interface QgApiService {
         @Path("agentId") agentId: String,
         @Body body: AgentSkillBindingsRequest
     ): Response<ApiResponse<AgentDto>>
+
+    // ── GitHub 集成（§6）──
+
+    @POST("teams/{teamId}/integrations/github/installations")
+    suspend fun createInstallation(
+        @Path("teamId") teamId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<GitHubInstallationUrlDto>>
+
+    @GET("teams/{teamId}/integrations/github/installations")
+    suspend fun getInstallations(
+        @Path("teamId") teamId: String
+    ): Response<ApiResponse<List<GitHubInstallationDto>>>
+
+    @DELETE("teams/{teamId}/integrations/github/installations/{installationId}")
+    suspend fun deleteInstallation(
+        @Path("teamId") teamId: String,
+        @Path("installationId") installationId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<Unit>
+
+    @POST("teams/{teamId}/integrations/github/installations/{installationId}/sync")
+    suspend fun syncInstallation(
+        @Path("teamId") teamId: String,
+        @Path("installationId") installationId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<GitHubInstallationDto>>
+
+    @GET("teams/{teamId}/integrations/github/repositories")
+    suspend fun getGithubRepositories(
+        @Path("teamId") teamId: String
+    ): Response<ApiResponse<List<GitHubRepositoryDto>>>
+
+    @GET("projects/{projectId}/repositories")
+    suspend fun getProjectRepositories(
+        @Path("projectId") projectId: String
+    ): Response<ApiResponse<List<ProjectRepositoryDto>>>
+
+    @POST("projects/{projectId}/repositories")
+    suspend fun bindProjectRepository(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: BindProjectRepositoryRequest
+    ): Response<ApiResponse<ProjectRepositoryDto>>
+
+    @DELETE("projects/{projectId}/repositories/{projectRepositoryId}")
+    suspend fun unbindProjectRepository(
+        @Path("projectId") projectId: String,
+        @Path("projectRepositoryId") projectRepositoryId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<Unit>
 }
