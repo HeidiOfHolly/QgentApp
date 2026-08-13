@@ -69,13 +69,6 @@ fun Response<*>.toUnitOrThrow() {
 
 // ── 认证 DTO ──
 
-/** 注册/登录前获取的 RSA 公钥 */
-data class PasswordPublicKeyDto(
-    @SerializedName("keyId") val keyId: String,
-    val algorithm: String,
-    @SerializedName("publicKeyPem") val publicKeyPem: String
-)
-
 /** 注册请求：密码需用平台 RSA 公钥加密后 Base64 */
 data class RegisterRequest(
     val email: String,

@@ -5,13 +5,13 @@ import androidx.lifecycle.asLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.qgent.data.model.TeamDto
+import com.example.qgent.data.model.formatGroupTime
+import com.example.qgent.data.model.parseRfc3339
 import com.example.qgent.data.model.toAgent
 import com.example.qgent.data.repository.AgentRepository
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.model.Agent
-import com.example.qgent.model.AgentRole
-import com.example.qgent.model.AgentStatus
 import com.example.qgent.model.ChatGroup
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -28,76 +28,6 @@ class MainViewModel(
     private val chatRepo: ChatRepository,
     private val agentRepo: AgentRepository
 ) : ViewModel() {
-
-    // ── Mock 数据（API 不可用时回退） ──
-
-    private val mockTeams = listOf("团队A", "团队B", "团队C", "团队D")
-
-    // Mock 团队详情：role 区分“我创建的 / 我加入的”
-    private val mockTeamDtos = listOf(
-        TeamDto("1", "团队A", "TEAM_OWNER", 8, "2026-06-01"),
-        TeamDto("2", "团队B", "TEAM_MEMBER", 12, "2026-06-10"),
-        TeamDto("3", "团队C", "TEAM_MEMBER", 5, "2026-07-02"),
-        TeamDto("4", "团队D", "TEAM_OWNER", 15, "2026-07-20")
-    )
-
-    private val mockProjectsByTeam = mapOf(
-        "团队A" to listOf("Qgents Web", "Qgents Mobile"),
-        "团队B" to listOf("认证服务", "网关"),
-        "团队C" to listOf("数据平台"),
-        "团队D" to listOf("运营后台")
-    )
-
-    private val now = System.currentTimeMillis()
-
-    private val mockGroupsByProject = mapOf(
-        "Qgents Web" to listOf(
-            ChatGroup("1", "登录功能", "李四：好的没问题", "14:05", 3,
-                isPinned = true, lastActiveTime = now - 1000 * 60 * 30),
-            ChatGroup("2", "认证安全", "我：RSA 公钥我看一下", "13:40", 0,
-                lastActiveTime = now - 1000 * 60 * 90)
-        ),
-        "Qgents Mobile" to listOf(
-            ChatGroup("3", "任务编排", "王五：Planner 已完成", "昨天", 5,
-                isPinned = true, lastActiveTime = now - 1000 * 60 * 60),
-            ChatGroup("4", "移动端 UI", "赵六：设置页改好了", "昨天", 0,
-                lastActiveTime = now - 1000 * 60 * 120)
-        ),
-        "认证服务" to listOf(
-            ChatGroup("5", "OAuth 对接", "张三：回调地址已更新", "周一", 2,
-                lastActiveTime = now - 1000 * 60 * 60 * 24),
-            ChatGroup("6", "Token 刷新", "我：异常情况如何处理", "周一", 0,
-                lastActiveTime = now - 1000 * 60 * 60 * 48)
-        ),
-        "网关" to listOf(
-            ChatGroup("7", "限流策略", "李四：阈值需要讨论", "周二", 1,
-                lastActiveTime = now - 1000 * 60 * 60 * 72)
-        ),
-        "数据平台" to listOf(
-            ChatGroup("8", "数据接入", "王五：Schema 已对齐", "周三", 0,
-                lastActiveTime = now - 1000 * 60 * 60 * 96),
-            ChatGroup("9", "报表需求", "赵六：新增 3 个维度", "周三", 4,
-                lastActiveTime = now - 1000 * 60 * 60 * 100)
-        ),
-        "运营后台" to listOf(
-            ChatGroup("10", "权限管理", "张三：角色树已更新", "周四", 0,
-                lastActiveTime = now - 1000 * 60 * 60 * 120)
-        )
-    )
-
-    // 系统内置 Agent（新手大礼包），API 不可用时回退
-    private val mockAgents = listOf(
-        Agent("1", "AgentOrchestrator", "统筹调度 Agent 团队，@我即可派发任务，自动协调 Planner/Developer/Tester/Reviewer 完成工作",
-            AgentRole.ORCHESTRATOR, listOf("任务调度", "工作流编排", "质量门禁")),
-        Agent("2", "Planner", "分析需求并拆分为 TaskStep，制定可执行的开发计划",
-            AgentRole.PLANNER, listOf("需求分析", "任务拆分", "计划编排")),
-        Agent("3", "Developer", "根据 TaskStep 实现代码，遵循项目规范与 API 约定",
-            AgentRole.DEVELOPER, listOf("java", "spring-boot", "api", "react")),
-        Agent("4", "Tester", "执行 Testset 进行自动化测试，保障代码质量",
-            AgentRole.TESTER, listOf("单元测试", "集成测试", "回归测试"), AgentStatus.RUNNING),
-        Agent("5", "Reviewer", "审查代码变更，检查规范合规性与潜在问题",
-            AgentRole.REVIEWER, listOf("代码审查", "规范检查", "安全扫描"))
-    )
 
     // ── 当前团队 / 项目（页面间共享） ──
 
@@ -248,21 +178,25 @@ class MainViewModel(
                 chatRepo.getGroups(projectName).getOrNull() ?: emptyList()
             }
             _groups.value = applyReadState(sortGroups(result.map { dto ->
-                ChatGroup(dto.id, dto.title, dto.lastMessage ?: "", dto.updatedAt, 0)
+                val lastActive = parseRfc3339(dto.updatedAt)
+                ChatGroup(
+                    id = dto.id,
+                    name = dto.title,
+                    lastMessage = dto.lastMessage ?: "",
+                    time = formatGroupTime(lastActive),
+                    unread = 0,
+                    lastActiveTime = lastActive
+                )
             }))
         }
     }
 
     private fun loadAgents(teamName: String) {
         viewModelScope.launch {
-            val teamId = teamNameToId[teamName]
-            if (teamId != null) {
-                agentRepo.getAgents(teamId).onSuccess { dtos ->
-                    _agents.value = dtos.map { it.toAgent() }
-                    return@launch
-                }
+            val teamId = teamNameToId[teamName] ?: return@launch
+            agentRepo.getAgents(teamId).onSuccess { dtos ->
+                _agents.value = dtos.map { it.toAgent() }
             }
-            _agents.value = mockAgents
         }
     }
 

@@ -69,7 +69,16 @@ class MainActivity : AppCompatActivity() {
                     destination.id == R.id.agentFragment
                 binding.bottomNav.visibility = if (isTabPage) View.VISIBLE else View.GONE
             }
+
+            // 创建团队后直达 GitHub 仓库绑定页
+            if (intent.getBooleanExtra(EXTRA_OPEN_GITHUB, false)) {
+                navController.navigate(R.id.githubFragment)
+            }
         }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_GITHUB = "open_github"
     }
 
     /** 群聊列表页左上角头像点击时调用，打开个人中心抽屉 */

@@ -9,7 +9,6 @@ import android.widget.Toast
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
-import com.example.qgent.MainActivity
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
@@ -83,7 +82,7 @@ class RegisterFragment : Fragment() {
                     getString(R.string.register_success, name),
                     Toast.LENGTH_SHORT
                 ).show()
-                startActivity(Intent(requireContext(), MainActivity::class.java))
+                startActivity(Intent(requireContext(), TeamEntryActivity::class.java))
                 requireActivity().finish()
             }
         }

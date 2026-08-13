@@ -3,6 +3,10 @@ package com.example.qgent.data.datasource
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.TeamDto
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * 演示用 mock 数据源。后端不可用或无 token 时由 mock Repository 提供数据，
@@ -11,6 +15,10 @@ import com.example.qgent.data.model.TeamDto
  * 数据全部以 DTO 形态存储；UI 模型映射由 ViewModel 完成。
  */
 object MockDataSource {
+
+    private const val MINUTE = 60_000L
+    private const val HOUR = 60 * MINUTE
+    private const val DAY = 24 * HOUR
 
     val teams: List<TeamDto> = listOf(
         TeamDto("1", "团队A", "TEAM_OWNER", 8, "2026-06-01"),
@@ -31,26 +39,26 @@ object MockDataSource {
 
     private val groupsByProjectId = mapOf(
         "p1" to listOf(
-            GroupDto("1", "p1", "登录功能", null, "REQUIREMENT", "ACTIVE", 3, null, "李四：好的没问题", "李四", "14:05"),
-            GroupDto("2", "p1", "认证安全", null, "REQUIREMENT", "ACTIVE", 2, null, "我：RSA 公钥我看一下", null, "13:40")
+            GroupDto("1", "p1", "登录功能", null, "REQUIREMENT", "ACTIVE", 3, null, "李四：好的没问题", "李四", iso(30 * MINUTE)),
+            GroupDto("2", "p1", "认证安全", null, "REQUIREMENT", "ACTIVE", 2, null, "我：RSA 公钥我看一下", null, iso(90 * MINUTE))
         ),
         "p2" to listOf(
-            GroupDto("3", "p2", "任务编排", null, "REQUIREMENT", "ACTIVE", 5, null, "王五：Planner 已完成", null, "昨天"),
-            GroupDto("4", "p2", "移动端 UI", null, "REQUIREMENT", "ACTIVE", 1, null, "赵六：设置页改好了", null, "昨天")
+            GroupDto("3", "p2", "任务编排", null, "REQUIREMENT", "ACTIVE", 5, null, "王五：Planner 已完成", null, iso(26 * HOUR)),
+            GroupDto("4", "p2", "移动端 UI", null, "REQUIREMENT", "ACTIVE", 1, null, "赵六：设置页改好了", null, iso(30 * HOUR))
         ),
         "p3" to listOf(
-            GroupDto("5", "p3", "OAuth 对接", null, "REQUIREMENT", "ACTIVE", 2, null, "张三：回调地址已更新", null, "周一"),
-            GroupDto("6", "p3", "Token 刷新", null, "REQUIREMENT", "ACTIVE", 0, null, "我：异常情况如何处理", null, "周一")
+            GroupDto("5", "p3", "OAuth 对接", null, "REQUIREMENT", "ACTIVE", 2, null, "张三：回调地址已更新", null, iso(2 * DAY)),
+            GroupDto("6", "p3", "Token 刷新", null, "REQUIREMENT", "ACTIVE", 0, null, "我：异常情况如何处理", null, iso(3 * DAY))
         ),
         "p4" to listOf(
-            GroupDto("7", "p4", "限流策略", null, "REQUIREMENT", "ACTIVE", 1, null, "李四：阈值需要讨论", null, "周二")
+            GroupDto("7", "p4", "限流策略", null, "REQUIREMENT", "ACTIVE", 1, null, "李四：阈值需要讨论", null, iso(4 * DAY))
         ),
         "p5" to listOf(
-            GroupDto("8", "p5", "数据接入", null, "REQUIREMENT", "ACTIVE", 0, null, "王五：Schema 已对齐", null, "周三"),
-            GroupDto("9", "p5", "报表需求", null, "REQUIREMENT", "ACTIVE", 4, null, "赵六：新增 3 个维度", null, "周三")
+            GroupDto("8", "p5", "数据接入", null, "REQUIREMENT", "ACTIVE", 0, null, "王五：Schema 已对齐", null, iso(5 * DAY)),
+            GroupDto("9", "p5", "报表需求", null, "REQUIREMENT", "ACTIVE", 4, null, "赵六：新增 3 个维度", null, iso(5 * DAY + 12 * HOUR))
         ),
         "p6" to listOf(
-            GroupDto("10", "p6", "权限管理", null, "REQUIREMENT", "ACTIVE", 0, null, "张三：角色树已更新", null, "周四")
+            GroupDto("10", "p6", "权限管理", null, "REQUIREMENT", "ACTIVE", 0, null, "张三：角色树已更新", null, iso(6 * DAY))
         )
     )
 
@@ -63,4 +71,10 @@ object MockDataSource {
         groupsByProjectId[projectIdOrName]
             ?: projectNameById[projectIdOrName]?.let { groupsByProjectId[it] }
             ?: emptyList()
+
+    /** 生成「当前时间 - offset」的 UTC RFC3339 时间戳 */
+    private fun iso(offsetMillis: Long): String =
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+            .apply { timeZone = TimeZone.getTimeZone("UTC") }
+            .format(Date(System.currentTimeMillis() - offsetMillis))
 }

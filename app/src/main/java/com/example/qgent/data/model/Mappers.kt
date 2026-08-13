@@ -9,6 +9,8 @@ import com.example.qgent.model.GroupMember
 import com.example.qgent.model.MemberType
 import com.example.qgent.model.MessageType
 import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
@@ -43,7 +45,7 @@ fun GroupMessageDto.toChatMessage(myUserId: String?): ChatMessage {
 }
 
 /** 解析 UTC RFC3339 时间到 epoch 毫秒，失败回退当前时间。 */
-private fun parseRfc3339(value: String): Long {
+fun parseRfc3339(value: String): Long {
     val cleaned = value.trim().substringBefore('.')
     return runCatching {
         if (cleaned.endsWith("Z")) {
@@ -54,4 +56,38 @@ private fun parseRfc3339(value: String): Long {
             SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(cleaned)?.time
         }
     }.getOrNull() ?: System.currentTimeMillis()
+}
+
+/** 群列表时间标签：当天 HH:mm，昨天「昨天」，近 7 天显示星期几，更早 MM-dd。 */
+fun formatGroupTime(timestamp: Long): String {
+    if (timestamp <= 0) return ""
+    val diffDays = dayDiff(timestamp, System.currentTimeMillis())
+    return when {
+        diffDays == 0 -> SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
+        diffDays == 1 -> "昨天"
+        diffDays in 2..7 -> WEEK_LABELS[
+            Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.DAY_OF_WEEK)
+        ]
+        else -> SimpleDateFormat("MM-dd", Locale.getDefault()).format(Date(timestamp))
+    }
+}
+
+private val WEEK_LABELS = arrayOf("", "周日", "周一", "周二", "周三", "周四", "周五", "周六")
+
+private fun dayDiff(from: Long, to: Long): Int {
+    val start = Calendar.getInstance().apply {
+        timeInMillis = from
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val end = Calendar.getInstance().apply {
+        timeInMillis = to
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    return ((end.timeInMillis - start.timeInMillis) / (24 * 60 * 60 * 1000)).toInt()
 }
