@@ -7,8 +7,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.view.WindowManager
 import android.widget.LinearLayout
-import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
@@ -111,6 +111,12 @@ class TeamManageFragment : Fragment() {
         val dialogBinding = DialogNewTewmBinding.inflate(layoutInflater)
         dialog.setContentView(dialogBinding.root)
         dialog.window?.setBackgroundDrawableResource(R.drawable.bg_card)
+        // Dialog 默认窗口 WRAP_CONTENT，根布局 match_parent 会被压成窄条；
+        // 显式设为屏宽 85%、高度自适应
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.85f).toInt(),
+            WindowManager.LayoutParams.WRAP_CONTENT
+        )
 
         dialogBinding.etName.doAfterTextChanged {
             if (dialogBinding.nameLayout.error != null) dialogBinding.nameLayout.error = null
@@ -122,7 +128,8 @@ class TeamManageFragment : Fragment() {
                 return@setOnClickListener
             }
             dialog.dismiss()
-            Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
+            // 创建团队 API 待后端就绪后接入；先跳转 GitHub 页配置仓库
+            findNavController().navigate(R.id.githubFragment)
         }
         dialog.show()
     }

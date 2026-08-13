@@ -233,3 +233,72 @@ data class UpdateAgentRequest(
 data class AgentSkillBindingsRequest(
     @SerializedName("skillIds") val skillIds: List<String>
 )
+
+// ── GitHub 集成（§6）──
+
+/**
+ * 发起安装返回的跳转链接（POST /teams/{teamId}/integrations/github/installations）
+ */
+data class GitHubInstallationUrlDto(
+    @SerializedName("installationUrl") val installationUrl: String,
+    @SerializedName("expiresAt") val expiresAt: String?
+)
+
+/**
+ * 团队已安装的 GitHub App 记录（Installation 层）。
+ * id = 本地 Installation UUID，仅作展示或排查用 providerInstallationId 不参与写请求。
+ */
+data class GitHubInstallationDto(
+    val id: String,
+    @SerializedName("providerInstallationId") val providerInstallationId: Long,
+    @SerializedName("accountLogin") val accountLogin: String,
+    @SerializedName("accountType") val accountType: String,   // USER / ORGANIZATION
+    val status: String,                                        // ACTIVE / SUSPENDED / DELETED
+    @SerializedName("installedAt") val installedAt: String?,
+    @SerializedName("metadataSyncedAt") val metadataSyncedAt: String?
+)
+
+/**
+ * 团队被授权的 GitHub 仓库镜像（Repository 层）。
+ * id = 本地 Repository UUID；providerRepositoryId 仅展示或排查。
+ */
+data class GitHubRepositoryDto(
+    val id: String,
+    @SerializedName("installationId") val installationId: String,
+    @SerializedName("providerRepositoryId") val providerRepositoryId: Long,
+    @SerializedName("fullName") val fullName: String,
+    @SerializedName("githubUrl") val githubUrl: String?,
+    @SerializedName("defaultBranch") val defaultBranch: String?,
+    val visibility: String,              // PUBLIC / PRIVATE / INTERNAL
+    val archived: Boolean,
+    @SerializedName("authorizationStatus") val authorizationStatus: String,   // AUTHORIZED / REVOKED
+    @SerializedName("metadataSyncedAt") val metadataSyncedAt: String?
+)
+
+/**
+ * 项目仓库绑定（ProjectRepository 层）。
+ * id = project_repositories.id，后续 PATCH/DELETE 与 Task 创建的 repositoryIds 均用此 id。
+ */
+data class ProjectRepositoryDto(
+    val id: String,
+    @SerializedName("repositoryId") val repositoryId: String,
+    @SerializedName("installationId") val installationId: String,
+    @SerializedName("providerRepositoryId") val providerRepositoryId: Long,
+    @SerializedName("fullName") val fullName: String,
+    @SerializedName("githubUrl") val githubUrl: String?,
+    @SerializedName("defaultBranch") val defaultBranch: String,
+    @SerializedName("displayName") val displayName: String,
+    @SerializedName("authorizationStatus") val authorizationStatus: String,
+    @SerializedName("metadataSyncedAt") val metadataSyncedAt: String?,
+    @SerializedName("boundAt") val boundAt: String?
+)
+
+/**
+ * 绑定项目仓库请求（POST /projects/{projectId}/repositories）。
+ * 只传 Installation.id 与 Repository.id，不传 provider 数字 ID。
+ */
+data class BindProjectRepositoryRequest(
+    @SerializedName("installationId") val installationId: String,
+    @SerializedName("repositoryId") val repositoryId: String,
+    @SerializedName("displayName") val displayName: String
+)

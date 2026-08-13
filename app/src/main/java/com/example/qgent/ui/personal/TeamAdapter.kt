@@ -17,8 +17,8 @@ class TeamAdapter(
             if (field == value) return
             val old = field
             field = value
-            notifyItemChanged(old)
-            notifyItemChanged(value)
+            if (old >= 0 && old < itemCount) notifyItemChanged(old)
+            if (field >= 0 && field < itemCount) notifyItemChanged(field)
         }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {

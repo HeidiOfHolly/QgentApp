@@ -1,0 +1,114 @@
+package com.example.qgent.ui.github
+
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.asLiveData
+import androidx.lifecycle.viewModelScope
+import com.example.qgent.data.model.GitHubInstallationDto
+import com.example.qgent.data.model.GitHubRepositoryDto
+import com.example.qgent.data.repository.GitHubRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import java.util.UUID
+
+/**
+ * GitHub 集成 ViewModel：发起安装链接、刷新 Installation/Repository 列表。
+ * 幂等键由每次用户操作生成一次 UUID，同次操作重试复用、重新点击生成新键（符合接口契约）。
+ */
+class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
+
+    data class GithubUiState(
+        val loading: Boolean = false,
+        val installationUrl: String? = null,
+        val installations: List<GitHubInstallationDto> = emptyList(),
+        val repositories: List<GitHubRepositoryDto> = emptyList(),
+        val installed: Boolean = false,
+        val error: String? = null
+    )
+
+    private val _uiState = MutableStateFlow(GithubUiState())
+    val uiState: LiveData<GithubUiState> = _uiState.asLiveData()
+
+    /** 当前正在等待授权的安装链接对应的幂等键（回调刷新时复用，仅一次） */
+    private var pendingInstallationKey: String? = null
+
+    /** 发起安装：生成链接并打开 GitHub 授权页 */
+    fun createInstallationUrl(teamId: String) {
+        if (_uiState.value.loading) return
+        val key = UUID.randomUUID().toString()
+        pendingInstallationKey = key
+        _uiState.value = _uiState.value.copy(loading = true, error = null)
+        viewModelScope.launch {
+            repo.createInstallation(teamId, key)
+                .onSuccess { url ->
+                    _uiState.value = _uiState.value.copy(
+                        loading = false,
+                        installationUrl = url.installationUrl
+                    )
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        loading = false,
+                        error = e.message ?: "获取安装链接失败，请稍后重试"
+                    )
+                }
+        }
+    }
+
+    /** 拉取团队已安装列表（授权回调后 onResume 调用，检测新安装） */
+    fun refreshInstallations(teamId: String) {
+        viewModelScope.launch {
+            repo.getInstallations(teamId).onSuccess { installations ->
+                val prevIds = _uiState.value.installations.map { it.id }.toSet()
+                val installedNow = pendingInstallationKey != null &&
+                    installations.any { it.id !in prevIds }
+                pendingInstallationKey = null
+                _uiState.value = _uiState.value.copy(
+                    installations = installations,
+                    installed = installedNow
+                )
+            }
+        }
+    }
+
+    /** 拉取团队授权仓库列表 */
+    fun loadRepositories(teamId: String) {
+        viewModelScope.launch {
+            repo.getGithubRepositories(teamId).onSuccess { repos ->
+                _uiState.value = _uiState.value.copy(repositories = repos)
+            }
+        }
+    }
+
+    /** 手动刷新授权仓库元数据，成功后重拉 Installation 与 Repository 列表 */
+    fun syncInstallation(teamId: String, installationId: String) {
+        if (_uiState.value.loading) return
+        _uiState.value = _uiState.value.copy(loading = true, error = null)
+        viewModelScope.launch {
+            repo.syncInstallation(teamId, installationId, UUID.randomUUID().toString())
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(loading = false)
+                    refreshInstallations(teamId)
+                    loadRepositories(teamId)
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        loading = false,
+                        error = e.message ?: "刷新失败，请稍后重试"
+                    )
+                }
+        }
+    }
+
+    fun consumeInstalled() {
+        _uiState.value = _uiState.value.copy(installed = false)
+    }
+
+    fun consumeInstallationUrl() {
+        _uiState.value = _uiState.value.copy(installationUrl = null)
+    }
+
+    fun consumeError() {
+        _uiState.value = _uiState.value.copy(error = null)
+    }
+}
