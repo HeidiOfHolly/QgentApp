@@ -4,12 +4,13 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface"
+    android:background="@color/off_white"
     android:orientation="vertical"
     tools:context=".ui.chat.ChatSettingsFragment">
 
     <!-- 顶部栏：返回 | 标题 -->
     <LinearLayout
+        android:background="@color/navy"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
@@ -26,7 +27,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/action_back"
             android:src="@drawable/ic_back"
-            app:tint="?attr/colorControlNormal" />
+            app:tint="@color/off_white"/>
 
         <TextView
             android:layout_width="0dp"
@@ -34,7 +35,7 @@
             android:layout_weight="1"
             android:gravity="center"
             android:text="@string/chat_settings_title"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/off_white"
             android:textSize="17sp"
             android:textStyle="bold" />
 
@@ -86,7 +87,8 @@
                         android:layout_height="56dp"
                         android:layout_gravity="center_horizontal"
                         android:contentDescription="@string/group_avatar"
-                        android:src="@drawable/ic_group" />
+                        android:src="@drawable/ic_group"
+                        app:tint="@color/deep_blue"/>
 
                     <!-- 群聊名称 -->
                     <LinearLayout
@@ -102,16 +104,9 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:textColor="@color/text_primary"
-                            android:textSize="18sp"
+                            android:textSize="20sp"
                             android:textStyle="bold"
                             tools:text="登录功能开发组" />
-
-                        <ImageView
-                            android:layout_width="16dp"
-                            android:layout_height="16dp"
-                            android:layout_marginStart="2dp"
-                            android:contentDescription="@string/action_enter"
-                            android:src="@drawable/ic_chevron_right" />
                     </LinearLayout>
 
                     <!-- 分割线 -->
@@ -137,15 +132,15 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:textColor="@color/text_secondary"
-                            android:textSize="13sp"
+                            android:textSize="16sp"
                             tools:text="群成员 (4)" />
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/action_enter"
+                            android:text="更多 ▶"
                             android:textColor="@color/text_secondary"
-                            android:textSize="13sp" />
+                            android:textSize="15sp" />
 
                         <ImageView
                             android:layout_width="16dp"
@@ -157,6 +152,7 @@
                     <!-- 成员列表 -->
                     <LinearLayout
                         android:id="@+id/containerMembers"
+
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical" />
@@ -194,11 +190,12 @@
                             android:layout_weight="1"
                             android:text="@string/manage_group"
                             android:textColor="@color/text_primary"
-                            android:textSize="15sp" />
+                            android:textSize="18sp" />
 
                         <ImageView
                             android:layout_width="20dp"
                             android:layout_height="20dp"
+                            app:tint="@color/charcoal"
                             android:contentDescription="@string/action_enter"
                             android:src="@drawable/ic_chevron_right" />
                     </LinearLayout>
@@ -226,12 +223,13 @@
                             android:layout_weight="1"
                             android:text="@string/view_chat_history"
                             android:textColor="@color/text_primary"
-                            android:textSize="15sp" />
+                            android:textSize="18sp" />
 
                         <ImageView
                             android:layout_width="20dp"
                             android:layout_height="20dp"
                             android:contentDescription="@string/action_enter"
+                            app:tint="@color/charcoal"
                             android:src="@drawable/ic_chevron_right" />
                     </LinearLayout>
                 </LinearLayout>

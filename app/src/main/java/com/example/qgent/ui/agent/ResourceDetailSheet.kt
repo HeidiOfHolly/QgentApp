@@ -13,6 +13,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.view.isVisible
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.activityViewModels
+import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.databinding.SheetResourceDetailBinding
 import com.example.qgent.viewmodel.MainViewModel
@@ -27,7 +28,9 @@ class ResourceDetailSheet(
 
     private var _binding: SheetResourceDetailBinding? = null
     private val binding get() = _binding!!
-    private val mainViewModel: MainViewModel by activityViewModels()
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val dialog = super.onCreateDialog(savedInstanceState)

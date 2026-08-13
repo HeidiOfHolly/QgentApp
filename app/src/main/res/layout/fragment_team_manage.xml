@@ -70,7 +70,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingTop="8dp"
-            android:paddingBottom="24dp">
+            android:paddingBottom="24dp"
+            android:background="@color/light_gray">
 
             <!-- ===== 分组一：我加入的团队 ===== -->
             <LinearLayout

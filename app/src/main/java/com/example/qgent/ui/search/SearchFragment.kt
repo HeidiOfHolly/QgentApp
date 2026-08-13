@@ -13,6 +13,7 @@ import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.databinding.FragmentSearchBinding
 import com.example.qgent.ui.chat.ChatListAdapter
@@ -22,7 +23,9 @@ class SearchFragment : Fragment() {
 
     private var _binding: FragmentSearchBinding? = null
     private val binding get() = _binding!!
-    private val mainViewModel: MainViewModel by activityViewModels()
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
     private val searchAdapter by lazy {
         ChatListAdapter(
             items = emptyList(),

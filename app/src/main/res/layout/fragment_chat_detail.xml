@@ -5,11 +5,13 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="?attr/colorSurface"
+    android:backgroundTint="@color/light_gray"
     android:orientation="vertical"
     tools:context=".ui.chat.ChatDetailFragment">
 
     <!-- 顶部栏：返回 | 群名 | 设置 -->
     <LinearLayout
+        android:background="@color/navy"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
@@ -26,7 +28,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/action_back"
             android:src="@drawable/ic_back"
-            app:tint="?attr/colorControlNormal" />
+            app:tint="@color/off_white" />
 
         <TextView
             android:id="@+id/tvGroupName"
@@ -36,9 +38,10 @@
             android:ellipsize="end"
             android:gravity="center"
             android:maxLines="1"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/off_white"
             android:textSize="17sp"
             android:textStyle="bold"
+
             tools:text="登录功能" />
 
         <ImageButton
@@ -48,7 +51,8 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/chat_settings_title"
             android:src="@drawable/ic_settings"
-            app:tint="?attr/colorControlNormal" />
+            android:backgroundTint="@color/off_white"
+            app:tint="@color/off_white" />
     </LinearLayout>
 
     <View
@@ -79,14 +83,15 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="8dp"
-        android:paddingTop="6dp"
+        android:paddingTop="10dp"
         android:paddingEnd="8dp"
-        android:paddingBottom="6dp">
+        android:paddingBottom="8dp"
+        android:background="@color/navy_light">
 
         <EditText
             android:id="@+id/etInput"
             android:layout_width="0dp"
-            android:layout_height="40dp"
+            android:layout_height="30dp"
             android:layout_weight="1"
             android:background="@drawable/bg_search_box"
             android:hint="@string/chat_input_hint"
@@ -100,13 +105,14 @@
 
         <ImageButton
             android:id="@+id/btnPlus"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
             android:layout_marginStart="4dp"
             android:background="?attr/selectableItemBackgroundBorderless"
+            android:backgroundTint="@color/off_white"
+            app:tint="@color/off_white"
             android:contentDescription="@string/nav_chat"
-            android:src="@drawable/ic_add"
-            app:tint="?attr/colorControlNormal" />
+            android:src="@drawable/ic_add" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSend"

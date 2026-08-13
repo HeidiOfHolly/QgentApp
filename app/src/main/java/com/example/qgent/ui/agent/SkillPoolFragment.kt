@@ -10,6 +10,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.databinding.FragmentSkillPoolBinding
 import com.example.qgent.model.ResourceStatus
@@ -20,7 +21,9 @@ class SkillPoolFragment : Fragment() {
 
     private var _binding: FragmentSkillPoolBinding? = null
     private val binding get() = _binding!!
-    private val mainViewModel: MainViewModel by activityViewModels()
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
 
     private val mockPending = listOf(
         SkillItem("s1", "Docker 部署脚本", "自动构建并推送 Docker 镜像到团队私有仓库，支持多阶段构建、缓存优化与环境变量注入，确保构建产物的一致性。", ResourceStatus.PENDING)
