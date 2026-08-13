@@ -84,6 +84,23 @@
                     tools:text="前端开发" />
 
                 <TextView
+                    android:id="@+id/tvDetailRole"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_status_tag"
+                    android:gravity="center"
+                    android:paddingStart="8dp"
+                    android:paddingTop="3dp"
+                    android:paddingEnd="8dp"
+                    android:paddingBottom="3dp"
+                    android:textColor="@color/white"
+                    android:textSize="12sp"
+                    android:visibility="gone"
+                    tools:text="调度者"
+                    tools:visibility="visible" />
+
+                <TextView
                     android:id="@+id/tvDetailAgentDesc"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -91,7 +108,19 @@
                     android:gravity="center"
                     android:textColor="@color/text_secondary"
                     android:textSize="14sp"
-                    tools:text="负责前端页面开发与 UI 组件实现" />
+                    tools:text="统筹调度 Agent 团队" />
+
+                <TextView
+                    android:id="@+id/tvDetailCapabilities"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:gravity="center"
+                    android:textColor="@color/slate_gray"
+                    android:textSize="12sp"
+                    android:visibility="gone"
+                    tools:text="任务调度, 工作流编排, 质量门禁"
+                    tools:visibility="visible" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

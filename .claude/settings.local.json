@@ -11,7 +11,26 @@
       "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:Path = \"$env:JAVA_HOME\\\\bin;\" + $env:Path; .\\\\gradlew.bat :app:compileDebugKotlin --console=plain)",
       "PowerShell($env:JAVA_HOME = 'C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr'; .\\\\gradlew assembleDebug 2>&1)",
       "PowerShell(Get-ChildItem *)",
-      "PowerShell(cd \"D:\\\\Android Studio\\\\qgentApp\"; $env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; .\\\\gradlew assembleDebug 2>&1)"
+      "PowerShell(cd \"D:\\\\Android Studio\\\\qgentApp\"; $env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; .\\\\gradlew assembleDebug 2>&1)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; .\\\\gradlew assembleDebug 2>&1 | Select-Object -Last 30)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; .\\\\gradlew assembleDebug 2>&1 | Select-Object -Last 25)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; .\\\\gradlew assembleDebug 2>&1 | Select-Object -Last 20)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; .\\\\gradlew assembleDebug 2>&1 | Select-Object -Last 15)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; .\\\\gradlew assembleDebug 2>&1 | Select-String -Pattern \"e:\")",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; .\\\\gradlew assembleDebug 2>&1 | Select-Object -Last 12)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; .\\\\gradlew assembleDebug 2>&1 | Select-String \"e:\")",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; .\\\\gradlew assembleDebug 2>&1 | Select-Object -Last 10)",
+      "PowerShell(gh repo view CloudPlayerBaby/Qgents --json name,description,defaultBranchRef 2>&1)",
+      "PowerShell($url = \"https://api.github.com/repos/CloudPlayerBaby/Qgents/git/trees/develop?recursive=1\"; $headers = @{ \"Accept\" = \"application/vnd.github+json\"; \"User-Agent\" = \"ClaudeCode\" }; try { \\(Invoke-RestMethod -Uri $url -Headers $headers\\).tree | ForEach-Object { $_.path } } catch { \"Failed: $_\" })",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "PowerShell($url = \"https://raw.githubusercontent.com/CloudPlayerBaby/Qgents/develop/src/main/java/qg/qgent/auth/RsaPasswordDecryptor.java\"; try { Invoke-RestMethod -Uri $url -Headers @{\"Accept\"=\"text/plain\"; \"User-Agent\"=\"Mozilla/5.0\"} } catch { \"Error: $_\" })",
+      "PowerShell($url = \"https://raw.githubusercontent.com/CloudPlayerBaby/Qgents/develop/src/main/resources/rsa/public_key.pem\"; try { Invoke-RestMethod -Uri $url -Headers @{\"Accept\"=\"text/plain\"; \"User-Agent\"=\"Mozilla/5.0\"} } catch { \"Error: $_\" })",
+      "PowerShell($url = \"https://raw.githubusercontent.com/CloudPlayerBaby/Qgents/develop/src/main/java/qg/qgent/dto/LoginRequest.java\"; try { Invoke-RestMethod -Uri $url -Headers @{\"Accept\"=\"text/plain\"; \"User-Agent\"=\"Mozilla/5.0\"} } catch { \"Error: $_\" })",
+      "PowerShell($url = \"https://raw.githubusercontent.com/CloudPlayerBaby/Qgents/develop/src/main/java/qg/qgent/api/GlobalExceptionHandler.java\"; try { Invoke-RestMethod -Uri $url -Headers @{\"Accept\"=\"text/plain\"; \"User-Agent\"=\"Mozilla/5.0\"} } catch { \"Error: $_\" })",
+      "PowerShell($url = \"https://api.github.com/search/code?q=base-64+repo:CloudPlayerBaby/Qgents\"; $headers = @{\"Accept\"=\"application/vnd.github+json\"; \"User-Agent\"=\"ClaudeCode\"}; try { $result = Invoke-RestMethod -Uri $url -Headers $headers; $result.items | ForEach-Object { \"$\\($_.path\\)\" } } catch { \"Failed: $_\" })",
+      "PowerShell($url = \"https://api.github.com/search/code?q=bad+repo:CloudPlayerBaby/Qgents+language:java\"; $headers = @{\"Accept\"=\"application/vnd.github.text-match+json\"; \"User-Agent\"=\"ClaudeCode\"}; try { $result = Invoke-RestMethod -Uri $url -Headers $headers; $result.items | ForEach-Object { \"$\\($_.path\\)\" } } catch { \"Failed: $_\" })",
+      "PowerShell(git clone *)",
+      "PowerShell($pem = Get-Content \"D:\\\\Android Studio\\\\qgentApp\\\\app\\\\src\\\\main\\\\assets\\\\public_key.pem\" -Raw; $lines = $pem -split \"`r`n|`n|`r\" | Where-Object { $_ -match '^[A-Za-z0-9+/=]+$' }; for \\($i=0; $i -lt $lines.Count; $i++\\) { Write-Host \"Line $\\($i+1\\): $\\($lines[$i].Length\\) chars\" })"
     ]
   }
 }

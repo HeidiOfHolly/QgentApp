@@ -17,7 +17,8 @@ sealed class ChatRow {
 }
 
 class ChatMessageAdapter(
-    private val rows: List<ChatRow>
+    private val rows: List<ChatRow>,
+    private val onAvatarLongClick: ((String) -> Unit)? = null
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     override fun getItemViewType(position: Int): Int =
@@ -27,7 +28,7 @@ class ChatMessageAdapter(
         return if (viewType == TYPE_TIME) {
             TimeVH(ItemMessageTimeBinding.inflate(LayoutInflater.from(parent.context), parent, false))
         } else {
-            MessageVH(ItemMessageBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+            MessageVH(ItemMessageBinding.inflate(LayoutInflater.from(parent.context), parent, false), onAvatarLongClick)
         }
     }
 
@@ -42,7 +43,8 @@ class ChatMessageAdapter(
 
     class TimeVH(val binding: ItemMessageTimeBinding) : RecyclerView.ViewHolder(binding.root)
 
-    class MessageVH(private val binding: ItemMessageBinding) : RecyclerView.ViewHolder(binding.root) {
+    class MessageVH(private val binding: ItemMessageBinding, private val onAvatarLongClick: ((String) -> Unit)?) :
+        RecyclerView.ViewHolder(binding.root) {
 
         fun bind(message: ChatMessage) {
             val mine = message.isMine
@@ -61,6 +63,10 @@ class ChatMessageAdapter(
                     if (mine) R.color.white else R.color.text_primary
                 )
             )
+            binding.ivAvatar.setOnLongClickListener {
+                onAvatarLongClick?.invoke(message.senderName)
+                true
+            }
         }
     }
 

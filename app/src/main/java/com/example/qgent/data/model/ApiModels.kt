@@ -164,3 +164,40 @@ data class SendMessageRequest(
     @SerializedName("replyToId") val replyToId: String? = null,
     @SerializedName("clientMessageId") val clientMessageId: String? = null
 )
+
+// ── Agent（§11）──
+
+/** Agent 身份卡（GET/PATCH /teams/{teamId}/agents/{agentId} 返回） */
+data class AgentDto(
+    val id: String,
+    val name: String,
+    val avatar: String?,
+    val role: String,                   // ORCHESTRATOR / PLANNER / DEVELOPER / TESTER / REVIEWER / GENERAL
+    val capabilities: List<String>?,
+    val prompt: String?,                // 私有提示词，仅创建者可见
+    val visibility: String,             // PRIVATE / TEAM_SHARED
+    val status: String,                 // ACTIVE / ARCHIVED
+    @SerializedName("createdBy") val createdBy: String
+)
+
+/** 创建 Agent（POST /teams/{teamId}/agents） */
+data class CreateAgentRequest(
+    val name: String,
+    val avatar: String? = null,
+    val role: String,
+    val capabilities: List<String>? = null,
+    val prompt: String? = null
+)
+
+/** 更新 Agent（PATCH /teams/{teamId}/agents/{agentId}） */
+data class UpdateAgentRequest(
+    val name: String? = null,
+    val avatar: String? = null,
+    val capabilities: List<String>? = null,
+    val prompt: String? = null
+)
+
+/** 为 Agent 绑定当前项目 Skill（PUT /projects/{projectId}/agent-skill-bindings/{agentId}） */
+data class AgentSkillBindingsRequest(
+    @SerializedName("skillIds") val skillIds: List<String>
+)

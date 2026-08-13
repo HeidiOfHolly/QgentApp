@@ -29,16 +29,19 @@ class AgentCardAdapter(
 
         fun bind(agent: Agent) {
             binding.tvAgentName.text = agent.name
+            binding.tvAgentRole.text = agent.role.displayName()
             binding.tvAgentStatus.text = when (agent.status) {
-                AgentStatus.IDLE -> "闲置"
+                AgentStatus.ACTIVE -> "闲置"
                 AgentStatus.RUNNING -> "运行中"
                 AgentStatus.ERROR -> "异常"
+                AgentStatus.ARCHIVED -> "已下线"
             }
             val ctx = binding.root.context
             val dotColor = when (agent.status) {
-                AgentStatus.IDLE -> R.color.mint
+                AgentStatus.ACTIVE -> R.color.mint
                 AgentStatus.RUNNING -> R.color.primary
                 AgentStatus.ERROR -> R.color.red_danger
+                AgentStatus.ARCHIVED -> R.color.gray
             }
             binding.vStatusDot.background.setTint(ContextCompat.getColor(ctx, dotColor))
             binding.root.setOnClickListener { onClick(agent) }

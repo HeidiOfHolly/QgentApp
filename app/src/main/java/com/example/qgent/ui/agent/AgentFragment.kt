@@ -11,6 +11,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.R
 import com.example.qgent.databinding.FragmentAgentBinding
 import com.example.qgent.model.Agent
+import com.example.qgent.model.AgentRole
 import com.example.qgent.model.AgentStatus
 import com.example.qgent.model.MemoryItem
 import com.example.qgent.model.ResourceStatus
@@ -23,11 +24,18 @@ class AgentFragment : Fragment() {
     private val binding get() = _binding!!
     private val mainViewModel: MainViewModel by activityViewModels()
 
+    // 系统内置 Agent（新手大礼包），仅 AgentOrchestrator 可直接 @ 调用
     private val mockAgents = listOf(
-        Agent("1", "前端开发", "负责前端页面开发与 UI 组件实现"),
-        Agent("2", "后端开发", "负责 API 接口与业务逻辑开发"),
-        Agent("3", "代码审查", "负责代码质量审查与规范检查"),
-        Agent("4", "测试 Agent", "负责自动化测试用例编写与执行", AgentStatus.RUNNING)
+        Agent("1", "AgentOrchestrator", "统筹调度 Agent 团队，@我即可派发任务，自动协调 Planner/Developer/Tester/Reviewer 完成工作",
+            AgentRole.ORCHESTRATOR, listOf("任务调度", "工作流编排", "质量门禁")),
+        Agent("2", "Planner", "分析需求并拆分为 TaskStep，制定可执行的开发计划",
+            AgentRole.PLANNER, listOf("需求分析", "任务拆分", "计划编排")),
+        Agent("3", "Developer", "根据 TaskStep 实现代码，遵循项目规范与 API 约定",
+            AgentRole.DEVELOPER, listOf("java", "spring-boot", "api", "react")),
+        Agent("4", "Tester", "执行 Testset 进行自动化测试，保障代码质量",
+            AgentRole.TESTER, listOf("单元测试", "集成测试", "回归测试"), AgentStatus.RUNNING),
+        Agent("5", "Reviewer", "审查代码变更，检查规范合规性与潜在问题",
+            AgentRole.REVIEWER, listOf("代码审查", "规范检查", "安全扫描"))
     )
 
     // 预览用 mock：混合 pending + approved，取前三
@@ -61,15 +69,16 @@ class AgentFragment : Fragment() {
                 androidx.core.os.bundleOf(
                     "agentId" to agent.id,
                     "agentName" to agent.name,
-                    "agentDescription" to agent.description
+                    "agentDescription" to agent.description,
+                    "agentRole" to agent.role.name,
+                    "agentCapabilities" to agent.capabilities.joinToString(", ")
                 )
             )
         }
 
         // ── Memory 预览 ──
-        val memoryAdapter = PreviewAdapter(mockMemoryPreview) { item ->
-            val m = item as MemoryItem
-            openResourceDetail(m.name, m.description, m.status == ResourceStatus.PENDING)
+        val memoryAdapter = PreviewAdapter(mockMemoryPreview) {
+            findNavController().navigate(R.id.action_agent_to_memoryPool)
         }
         binding.rvMemoryPreview.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMemoryPreview.adapter = memoryAdapter
@@ -78,22 +87,14 @@ class AgentFragment : Fragment() {
         }
 
         // ── Skill 预览 ──
-        val skillAdapter = PreviewAdapter(mockSkillPreview) { item ->
-            val s = item as SkillItem
-            openResourceDetail(s.name, s.description, s.status == ResourceStatus.PENDING)
+        val skillAdapter = PreviewAdapter(mockSkillPreview) {
+            findNavController().navigate(R.id.action_agent_to_skillPool)
         }
         binding.rvSkillPreview.layoutManager = LinearLayoutManager(requireContext())
         binding.rvSkillPreview.adapter = skillAdapter
         binding.tvSkillMore.setOnClickListener {
             findNavController().navigate(R.id.action_agent_to_skillPool)
         }
-    }
-
-    private fun openResourceDetail(name: String, desc: String, isPending: Boolean) {
-        ResourceDetailSheet(name, desc, isPending).show(
-            childFragmentManager,
-            ResourceDetailSheet.TAG
-        )
     }
 
     override fun onDestroyView() {

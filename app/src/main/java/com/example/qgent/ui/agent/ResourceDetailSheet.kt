@@ -1,6 +1,8 @@
 package com.example.qgent.ui.agent
 
 import android.app.Dialog
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -9,13 +11,11 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.isVisible
+import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.activityViewModels
 import com.example.qgent.R
 import com.example.qgent.databinding.SheetResourceDetailBinding
-import com.example.qgent.model.ResourceStatus
 import com.example.qgent.viewmodel.MainViewModel
-import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 
 class ResourceDetailSheet(
     private val name: String,
@@ -23,14 +23,17 @@ class ResourceDetailSheet(
     private val isPending: Boolean,
     private val approveText: String = "已通过",
     private val rejectText: String = "已驳回"
-) : BottomSheetDialogFragment() {
+) : DialogFragment() {
 
     private var _binding: SheetResourceDetailBinding? = null
     private val binding get() = _binding!!
     private val mainViewModel: MainViewModel by activityViewModels()
 
-    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
-        BottomSheetDialog(requireContext(), theme)
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+        val dialog = super.onCreateDialog(savedInstanceState)
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        return dialog
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -39,6 +42,14 @@ class ResourceDetailSheet(
     ): View {
         _binding = SheetResourceDetailBinding.inflate(inflater, container, false)
         return binding.root
+    }
+
+    override fun onStart() {
+        super.onStart()
+        dialog?.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.85).toInt(),
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {

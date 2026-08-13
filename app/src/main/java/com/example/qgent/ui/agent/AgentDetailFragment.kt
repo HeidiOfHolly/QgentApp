@@ -5,6 +5,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DividerItemDecoration
@@ -35,11 +36,23 @@ class AgentDetailFragment : Fragment() {
 
         val name = arguments?.getString("agentName") ?: ""
         val desc = arguments?.getString("agentDescription") ?: ""
+        val role = arguments?.getString("agentRole") ?: ""
+        val capabilities = arguments?.getString("agentCapabilities") ?: ""
 
         binding.btnBack.setOnClickListener { findNavController().popBackStack() }
 
         binding.tvDetailAgentName.text = name
         binding.tvDetailAgentDesc.text = desc
+
+        // 角色标签
+        binding.tvDetailRole.text = mapRoleDisplay(role)
+        binding.tvDetailRole.isVisible = role.isNotEmpty()
+
+        // 能力标签
+        if (capabilities.isNotEmpty()) {
+            binding.tvDetailCapabilities.text = capabilities
+            binding.tvDetailCapabilities.isVisible = true
+        }
 
         // Memory 列表
         memoryAdapter = BoundResourceAdapter(mockMemory) { resource ->
@@ -68,6 +81,16 @@ class AgentDetailFragment : Fragment() {
         binding.tvDetailAddSkill.setOnClickListener {
             Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun mapRoleDisplay(role: String): String = when (role) {
+        "ORCHESTRATOR" -> "调度者"
+        "PLANNER" -> "规划者"
+        "DEVELOPER" -> "开发者"
+        "TESTER" -> "测试者"
+        "REVIEWER" -> "审查者"
+        "GENERAL" -> "通用"
+        else -> role
     }
 
     override fun onDestroyView() {
