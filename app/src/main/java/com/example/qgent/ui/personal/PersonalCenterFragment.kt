@@ -9,6 +9,7 @@ import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.NavHostFragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.MainActivity
+import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.databinding.FragmentPersonalCenterBinding
 import com.example.qgent.viewmodel.MainViewModel
@@ -17,7 +18,9 @@ class PersonalCenterFragment : Fragment() {
 
     private var _binding: FragmentPersonalCenterBinding? = null
     private val binding get() = _binding!!
-    private val mainViewModel: MainViewModel by activityViewModels()
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
     private lateinit var teamAdapter: TeamAdapter
     private lateinit var projectAdapter: ProjectAdapter
 

@@ -14,6 +14,7 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.MainActivity
+import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.databinding.BottomSheetCreateGroupBinding
 import com.example.qgent.databinding.FragmentChatListBinding
@@ -25,7 +26,9 @@ class ChatListFragment : Fragment() {
 
     private var _binding: FragmentChatListBinding? = null
     private val binding get() = _binding!!
-    private val mainViewModel: MainViewModel by activityViewModels()
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,

@@ -1,6 +1,8 @@
 package com.example.qgent.data.model
 
+import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
+import retrofit2.Response
 
 /** API 统一成功响应：{ data, requestId, page } */
 data class ApiResponse<T>(
@@ -33,6 +35,36 @@ class ApiException(
 fun <T> ApiResponse<T>.requireData(): T {
     error?.let { throw ApiException(it.code, it.message) }
     return data ?: throw ApiException("EMPTY_RESPONSE", "响应为空")
+}
+
+// ── retrofit2.Response 解析（错误契约：非 2xx / error 分支统一转 ApiException） ──
+
+private val errorGson = Gson()
+
+private data class ErrorEnvelope(val error: ApiError?)
+
+private fun Response<*>.httpError(): ApiError? = try {
+    errorBody()?.string()?.let { errorGson.fromJson(it, ErrorEnvelope::class.java)?.error }
+} catch (_: Exception) {
+    null
+}
+
+private fun Response<*>.throwHttpError(): Nothing {
+    val e = httpError()
+    throw ApiException(e?.code ?: "HTTP_${code()}", e?.message ?: "请求失败 (${code()})")
+}
+
+/** 非空 data 响应：成功且 data 非空时返回 data，否则抛 [ApiException] */
+fun <T> Response<ApiResponse<T>>.toDataOrThrow(): T {
+    if (!isSuccessful) throwHttpError()
+    val body = body()
+    body?.error?.let { throw ApiException(it.code, it.message) }
+    return body?.data ?: throw ApiException("EMPTY_RESPONSE", "响应为空")
+}
+
+/** 空 body / 204 响应：仅校验成功，无返回值 */
+fun Response<*>.toUnitOrThrow() {
+    if (!isSuccessful) throwHttpError()
 }
 
 // ── 认证 DTO ──

@@ -111,18 +111,17 @@
                     android:layout_marginHorizontal="12dp"
                     android:layout_marginTop="8dp"
                     android:minHeight="44dp"
-                    android:text="邀请成员"
+                    android:text="+ 邀请成员"
                     android:textColor="@color/teal"
                     android:textSize="15sp"
                     app:cornerRadius="12dp"
                     app:strokeColor="@color/teal"
                     app:strokeWidth="1dp" />
-                <!-- 要改成RecyclerView -->
-                <LinearLayout
-                    android:id="@+id/containerMembers"
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvMembers"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
+                    android:nestedScrollingEnabled="false"
                     android:paddingHorizontal="12dp" />
             </LinearLayout>
 
@@ -186,19 +185,89 @@
                     android:layout_marginHorizontal="12dp"
                     android:layout_marginTop="8dp"
                     android:minHeight="44dp"
-                    android:text="新建项目"
+                    android:text="+ 新建项目"
                     android:textColor="@color/teal"
                     android:textSize="15sp"
                     app:cornerRadius="12dp"
                     app:strokeColor="@color/teal"
                     app:strokeWidth="1dp" />
-                <!-- 要改成RecyclerView -->
-                <LinearLayout
-                    android:id="@+id/containerProjects"
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvProjects"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
+                    android:nestedScrollingEnabled="false"
                     android:paddingHorizontal="12dp" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginEnd="16dp"
+                android:background="@color/divider" />
+
+        <LinearLayout
+            android:id="@+id/headerRepository"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="5dp"
+            android:background="@drawable/bg_card"
+            android:layout_marginTop="10dp"
+            android:backgroundTint="@color/navy_light"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <ImageView
+                android:id="@+id/ivArrowRepository"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="管理仓库"
+                android:rotation="90"
+                android:src="@drawable/ic_triangle"
+                app:tint="@color/blue_tint" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:text="全部仓库"
+                android:textColor="@color/blue_tint"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/sectionRepository"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRepository"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="12dp"
+                android:layout_marginTop="8dp"
+                android:minHeight="44dp"
+                android:text="+ 新建仓库"
+                android:textColor="@color/teal"
+                android:textSize="15sp"
+                app:cornerRadius="12dp"
+                app:strokeColor="@color/teal"
+                app:strokeWidth="1dp" />
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvRepository"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:nestedScrollingEnabled="false"
+                android:paddingHorizontal="12dp" />
             </LinearLayout>
 
             <!-- ===== 解散团队 ===== -->
@@ -216,5 +285,6 @@
                 app:backgroundTint="@color/red_danger"
                 app:cornerRadius="12dp" />
         </LinearLayout>
+
     </ScrollView>
 </LinearLayout>

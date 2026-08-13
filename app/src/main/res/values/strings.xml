@@ -90,6 +90,7 @@
     <!-- 团队详情页 -->
     <string name="manage_members">管理成员</string>
     <string name="manage_projects">管理项目</string>
+    <string name="manage_repositories">管理仓库</string>
     <string name="add_member">＋ 增加成员</string>
     <string name="add_project">＋ 增加项目</string>
     <string name="dissolve_team">解散团队</string>

@@ -6,24 +6,32 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.databinding.FragmentTeamDetailBinding
 import com.example.qgent.viewmodel.MainViewModel
 
 /**
- * 我管理的团队详情页：管理成员 / 管理项目两个下拉分组（默认收起，展开时顶部有增加按钮），底部解散团队。
+ * 团队详情页：管理成员 / 管理项目 / 管理仓库三个下拉分组（默认收起，展开时顶部有增加按钮），底部解散团队。
+ * 成员与仓库列表暂无 API 数据源，等待接口接入；项目列表观察 ViewModel 数据流。
  */
 class TeamDetailFragment : Fragment() {
 
     private var _binding: FragmentTeamDetailBinding? = null
     private val binding get() = _binding!!
-    private val mainViewModel: MainViewModel by activityViewModels()
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
+
+    private val memberAdapter = TeamMemberAdapter()
+    private val projectAdapter = TeamProjectAdapter()
+    private val repositoryAdapter = TeamRepositoryAdapter()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -42,21 +50,32 @@ class TeamDetailFragment : Fragment() {
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
         binding.tvTeamName.text = teamName
 
-        // 两个三角下拉分组：默认收起，点击头部展开 / 收起
+        // 三个三角下拉分组：默认收起，点击头部展开 / 收起
         bindSection(binding.headerMembers, binding.ivArrowMembers, binding.sectionMembers)
         bindSection(binding.headerProjects, binding.ivArrowProjects, binding.sectionProjects)
+        bindSection(binding.headerRepository, binding.ivArrowRepository, binding.sectionRepository)
 
         // 展开时分组顶部显示增加按钮
         binding.btnAddMember.setOnClickListener { showTodoToast() }
         binding.btnAddProject.setOnClickListener { showTodoToast() }
+        binding.btnRepository.setOnClickListener { showTodoToast() }
 
-        // mock 成员
-        renderMembers(mockMembers(teamName))
+        setupList(binding.rvMembers, memberAdapter)
+        setupList(binding.rvProjects, projectAdapter)
+        setupList(binding.rvRepository, repositoryAdapter)
 
-        // 项目来自 MainViewModel（mock 回退）
-        renderProjects(mainViewModel.projectsOf(teamName))
+        // 项目列表来自 MainViewModel（真实数据流）；成员 / 仓库暂无数据源
+        mainViewModel.projects.observe(viewLifecycleOwner) { projectAdapter.submitList(it) }
 
         binding.btnDissolveTeam.setOnClickListener { confirmDissolveTeam() }
+    }
+
+    private fun setupList(
+        rv: androidx.recyclerview.widget.RecyclerView,
+        adapter: androidx.recyclerview.widget.RecyclerView.Adapter<*>
+    ) {
+        rv.layoutManager = LinearLayoutManager(requireContext())
+        rv.adapter = adapter
     }
 
     private fun bindSection(header: View, arrow: View, content: View) {
@@ -69,35 +88,6 @@ class TeamDetailFragment : Fragment() {
                 .start()
         }
     }
-
-    private fun renderMembers(members: List<String>) {
-        binding.containerMembers.removeAllViews()
-        for (name in members) {
-            val row = layoutInflater.inflate(
-                R.layout.item_chat_member, binding.containerMembers, false
-            )
-            row.findViewById<TextView>(R.id.tvMemberName)?.text = name
-            binding.containerMembers.addView(row)
-        }
-    }
-
-    private fun renderProjects(projects: List<String>) {
-        binding.containerProjects.removeAllViews()
-        for (name in projects) {
-            val row = layoutInflater.inflate(
-                R.layout.item_project, binding.containerProjects, false
-            )
-            row.findViewById<TextView>(R.id.tvProjectName)?.text = name
-            binding.containerProjects.addView(row)
-        }
-    }
-
-    private fun mockMembers(teamName: String): List<String> =
-        when (teamName) {
-            "团队A" -> listOf("张三", "李四", "王五", "赵六")
-            "团队D" -> listOf("小明", "小红", "小刚")
-            else -> listOf("张三", "李四")
-        }
 
     private fun confirmDissolveTeam() {
         AlertDialog.Builder(requireContext())

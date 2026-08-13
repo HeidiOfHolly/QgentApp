@@ -15,6 +15,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.databinding.DialogNewTewmBinding
@@ -26,7 +27,9 @@ class TeamManageFragment : Fragment() {
 
     private var _binding: FragmentTeamManageBinding? = null
     private val binding get() = _binding!!
-    private val mainViewModel: MainViewModel by activityViewModels()
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
 
     private val joinedAdapter = TeamManageAdapter { onJoinTeamClick(it) }
     private val createdAdapter = TeamManageAdapter { onCreateTeamClick(it) }
@@ -87,11 +90,15 @@ class TeamManageFragment : Fragment() {
 
     private fun onJoinTeamClick(team: TeamDto) {
         mainViewModel.setCurrentTeam(team.name)
-        findNavController().navigateUp()
+        navigateToTeamDetail(team)
     }
 
     /** 我创建的团队 → 进入团队详情页管理成员 / 项目 */
     private fun onCreateTeamClick(team: TeamDto) {
+        navigateToTeamDetail(team)
+    }
+
+    private fun navigateToTeamDetail(team: TeamDto) {
         val bundle = Bundle().apply {
             putString(TeamDetailFragment.ARG_TEAM_NAME, team.name)
         }

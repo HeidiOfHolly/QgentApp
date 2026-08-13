@@ -19,7 +19,7 @@
         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:hint="团队名称"
+        android:hint="项目名称"
         app:boxStrokeWidthFocused="2dp"
         app:errorEnabled="true"
         android:layout_marginTop="10dp"
@@ -40,7 +40,7 @@
         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="团队简介"
+        android:hint="项目简介"
         app:boxStrokeWidthFocused="2dp"
         app:errorEnabled="true"
         android:layout_marginTop="10dp"
@@ -88,7 +88,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="绑定GitHub仓库"
+                android:text="选择GitHub仓库"
                 android:textColor="@color/charcoal"
                 android:textSize="15sp" />
 
@@ -107,7 +107,7 @@
         android:layout_height="wrap_content"
         android:minHeight="52dp"
         android:layout_marginTop="25dp"
-        android:text="下一步"
+        android:text="新建项目"
         android:textSize="20sp"
         android:textStyle="bold"
         app:cornerRadius="12dp"

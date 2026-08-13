@@ -10,6 +10,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.databinding.FragmentMemoryPoolBinding
 import com.example.qgent.model.MemoryItem
@@ -20,7 +21,9 @@ class MemoryPoolFragment : Fragment() {
 
     private var _binding: FragmentMemoryPoolBinding? = null
     private val binding get() = _binding!!
-    private val mainViewModel: MainViewModel by activityViewModels()
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
 
     private val mockPending = listOf(
         MemoryItem("m1", "登录状态持久化方案", "描述了跨 Activity 的登录状态管理策略，建议使用 SharedPreferences 配合 LiveData 实现全局登录状态同步，避免在多个 Activity 中重复检查。", ResourceStatus.PENDING),

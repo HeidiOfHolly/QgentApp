@@ -17,6 +17,7 @@ import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.UpdateAgentRequest
 import com.example.qgent.data.model.UpdateGroupRequest
 import com.example.qgent.data.model.UserProfileDto
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.PATCH
@@ -29,35 +30,37 @@ import retrofit2.http.Query
  * QG 后端 API 接口定义。
  * 接口文档 v1.1.2 —— 仅覆盖已实现页面所需接口。
  * 未实现页面/缺失接口见 memory 或与后端对接后补充。
- * QG 后端 API 接口定义（基于更新后的 v1 接口文档）。
  * 群（Group）统一建模为 PROJECT_MAIN + REQUIREMENT，路径挂在 /projects/{id}/groups 下。
+ *
+ * 所有接口返回 [retrofit2.Response] 包裹的 [ApiResponse]，
+ * 由 data.model 中的 toDataOrThrow() / toUnitOrThrow() 统一解析错误契约。
  */
 interface QgApiService {
 
     // ── 认证与账户（§4）──
 
     @POST("auth/register")
-    suspend fun register(@Body body: RegisterRequest): ApiResponse<AuthSessionDto>
+    suspend fun register(@Body body: RegisterRequest): Response<ApiResponse<AuthSessionDto>>
 
     @POST("auth/login")
-    suspend fun login(@Body body: LoginRequest): ApiResponse<AuthSessionDto>
+    suspend fun login(@Body body: LoginRequest): Response<ApiResponse<AuthSessionDto>>
 
     // ── 用户 ──
 
     @GET("me")
-    suspend fun getUserProfile(): ApiResponse<UserProfileDto>
+    suspend fun getUserProfile(): Response<ApiResponse<UserProfileDto>>
 
     // ── 团队 ──
 
     @GET("teams")
-    suspend fun getTeams(): ApiResponse<List<TeamDto>>
+    suspend fun getTeams(): Response<ApiResponse<List<TeamDto>>>
 
     // ── 项目 ──
 
     @GET("teams/{teamId}/projects")
     suspend fun getProjects(
         @Path("teamId") teamId: String
-    ): ApiResponse<List<ProjectDto>>
+    ): Response<ApiResponse<List<ProjectDto>>>
 
     // ── 群（Group） ──
 
@@ -66,32 +69,32 @@ interface QgApiService {
         @Path("projectId") projectId: String,
         @Query("cursor") cursor: String? = null,
         @Query("limit") limit: Int = 30
-    ): ApiResponse<List<GroupDto>>
+    ): Response<ApiResponse<List<GroupDto>>>
 
     @POST("projects/{projectId}/groups")
     suspend fun createGroup(
         @Path("projectId") projectId: String,
         @Body body: CreateGroupRequest
-    ): ApiResponse<GroupDto>
+    ): Response<ApiResponse<GroupDto>>
 
     @GET("projects/{projectId}/groups/{groupId}")
     suspend fun getGroup(
         @Path("projectId") projectId: String,
         @Path("groupId") groupId: String
-    ): ApiResponse<GroupDto>
+    ): Response<ApiResponse<GroupDto>>
 
     @PATCH("projects/{projectId}/groups/{groupId}")
     suspend fun updateGroup(
         @Path("projectId") projectId: String,
         @Path("groupId") groupId: String,
         @Body body: UpdateGroupRequest
-    ): ApiResponse<GroupDto>
+    ): Response<ApiResponse<GroupDto>>
 
     @POST("projects/{projectId}/groups/{groupId}/archive")
     suspend fun archiveGroup(
         @Path("projectId") projectId: String,
         @Path("groupId") groupId: String
-    ): ApiResponse<GroupDto>
+    ): Response<ApiResponse<GroupDto>>
 
     // ── 群成员 ──
 
@@ -99,13 +102,13 @@ interface QgApiService {
     suspend fun getGroupMembers(
         @Path("projectId") projectId: String,
         @Path("groupId") groupId: String
-    ): ApiResponse<List<GroupMemberDto>>
+    ): Response<ApiResponse<List<GroupMemberDto>>>
 
     @POST("projects/{projectId}/groups/{groupId}/leave")
     suspend fun leaveGroup(
         @Path("projectId") projectId: String,
         @Path("groupId") groupId: String
-    ): ApiResponse<Unit>
+    ): Response<Unit>
 
     // ── 群聊消息 ──
 
@@ -115,63 +118,63 @@ interface QgApiService {
         @Path("groupId") groupId: String,
         @Query("cursor") cursor: String? = null,
         @Query("limit") limit: Int = 30
-    ): ApiResponse<List<GroupMessageDto>>
+    ): Response<ApiResponse<List<GroupMessageDto>>>
 
     @POST("projects/{projectId}/groups/{groupId}/messages")
     suspend fun sendMessage(
         @Path("projectId") projectId: String,
         @Path("groupId") groupId: String,
         @Body body: SendMessageRequest
-    ): ApiResponse<GroupMessageDto>
+    ): Response<ApiResponse<GroupMessageDto>>
 
     // ── Agent（§11）──
 
     @GET("teams/{teamId}/agents")
     suspend fun getAgents(
         @Path("teamId") teamId: String
-    ): ApiResponse<List<AgentDto>>
+    ): Response<ApiResponse<List<AgentDto>>>
 
     @POST("teams/{teamId}/agents")
     suspend fun createAgent(
         @Path("teamId") teamId: String,
         @Body body: CreateAgentRequest
-    ): ApiResponse<AgentDto>
+    ): Response<ApiResponse<AgentDto>>
 
     @GET("teams/{teamId}/agents/{agentId}")
     suspend fun getAgent(
         @Path("teamId") teamId: String,
         @Path("agentId") agentId: String
-    ): ApiResponse<AgentDto>
+    ): Response<ApiResponse<AgentDto>>
 
     @PATCH("teams/{teamId}/agents/{agentId}")
     suspend fun updateAgent(
         @Path("teamId") teamId: String,
         @Path("agentId") agentId: String,
         @Body body: UpdateAgentRequest
-    ): ApiResponse<AgentDto>
+    ): Response<ApiResponse<AgentDto>>
 
     @POST("teams/{teamId}/agents/{agentId}/publish")
     suspend fun publishAgent(
         @Path("teamId") teamId: String,
         @Path("agentId") agentId: String
-    ): ApiResponse<AgentDto>
+    ): Response<ApiResponse<AgentDto>>
 
     @POST("teams/{teamId}/agents/{agentId}/unpublish")
     suspend fun unpublishAgent(
         @Path("teamId") teamId: String,
         @Path("agentId") agentId: String
-    ): ApiResponse<AgentDto>
+    ): Response<ApiResponse<AgentDto>>
 
     @POST("teams/{teamId}/agents/{agentId}/archive")
     suspend fun archiveAgent(
         @Path("teamId") teamId: String,
         @Path("agentId") agentId: String
-    ): ApiResponse<AgentDto>
+    ): Response<ApiResponse<AgentDto>>
 
     @PUT("projects/{projectId}/agent-skill-bindings/{agentId}")
     suspend fun bindAgentSkills(
         @Path("projectId") projectId: String,
         @Path("agentId") agentId: String,
         @Body body: AgentSkillBindingsRequest
-    ): ApiResponse<AgentDto>
+    ): Response<ApiResponse<AgentDto>>
 }
