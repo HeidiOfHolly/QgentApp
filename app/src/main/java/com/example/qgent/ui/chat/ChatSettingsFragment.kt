@@ -11,6 +11,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
+import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.databinding.FragmentChatSettingsBinding
@@ -21,8 +22,12 @@ class ChatSettingsFragment : Fragment() {
 
     private var _binding: FragmentChatSettingsBinding? = null
     private val binding get() = _binding!!
-    private val mainViewModel: MainViewModel by activityViewModels()
-    private val chatRepo = ChatRepository()
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
+    private val chatRepo: ChatRepository by lazy {
+        (requireActivity().application as QgentApp).container.chatRepository
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,

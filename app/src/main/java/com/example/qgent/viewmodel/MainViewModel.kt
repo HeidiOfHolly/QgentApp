@@ -23,11 +23,11 @@ import kotlinx.coroutines.launch
  * 依赖构造注入（由 AppContainer 装配），mock 回退由数据层 Fallback Repository 承担；
  * 内部用 StateFlow 管理状态，通过 asLiveData() 暴露给界面观察。
  */
-class MainViewModel : ViewModel() {
-
-    private val userRepo = UserRepository()
-    private val chatRepo = ChatRepository()
-    private val agentRepo = AgentRepository()
+class MainViewModel(
+    private val userRepo: UserRepository,
+    private val chatRepo: ChatRepository,
+    private val agentRepo: AgentRepository
+) : ViewModel() {
 
     // ── Mock 数据（API 不可用时回退） ──
 
@@ -124,8 +124,8 @@ class MainViewModel : ViewModel() {
 
     // ── 当前团队下的 Agent 列表 ──
 
-    private val _agents = MutableLiveData<List<Agent>>()
-    val agents: LiveData<List<Agent>> = _agents
+    private val _agents = MutableStateFlow<List<Agent>>(emptyList())
+    val agents: LiveData<List<Agent>> = _agents.asLiveData()
 
     // ── 项目列表（按当前团队） ──
 

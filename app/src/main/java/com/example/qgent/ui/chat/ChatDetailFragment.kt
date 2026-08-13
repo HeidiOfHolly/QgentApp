@@ -18,6 +18,7 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.model.toChatMessage
@@ -44,8 +45,12 @@ class ChatDetailFragment : Fragment() {
 
     private var _binding: FragmentChatDetailBinding? = null
     private val binding get() = _binding!!
-    private val mainViewModel: MainViewModel by activityViewModels()
-    private val chatRepo = ChatRepository()
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
+    private val chatRepo: ChatRepository by lazy {
+        (requireActivity().application as QgentApp).container.chatRepository
+    }
 
     private val messages = mutableListOf<ChatMessage>()
     private lateinit var rows: MutableList<ChatRow>

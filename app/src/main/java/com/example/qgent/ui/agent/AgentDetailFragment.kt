@@ -11,6 +11,7 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DividerItemDecoration
+import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.toAgent
 import com.example.qgent.data.repository.AgentRepository
@@ -22,8 +23,12 @@ class AgentDetailFragment : Fragment() {
 
     private var _binding: FragmentAgentDetailBinding? = null
     private val binding get() = _binding!!
-    private val mainViewModel: MainViewModel by activityViewModels()
-    private val agentRepo = AgentRepository()
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
+    private val agentRepo: AgentRepository by lazy {
+        (requireActivity().application as QgentApp).container.agentRepository
+    }
 
     private val mockMemory = mutableListOf("React 组件规范", "API 接口约定", "Git 提交规范")
     private val mockSkill = mutableListOf("TypeScript 检查", "ESLint 格式化")
