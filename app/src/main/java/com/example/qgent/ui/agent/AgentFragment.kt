@@ -10,9 +10,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.R
 import com.example.qgent.databinding.FragmentAgentBinding
-import com.example.qgent.model.Agent
-import com.example.qgent.model.AgentRole
-import com.example.qgent.model.AgentStatus
 import com.example.qgent.model.MemoryItem
 import com.example.qgent.model.ResourceStatus
 import com.example.qgent.model.SkillItem
@@ -23,20 +20,6 @@ class AgentFragment : Fragment() {
     private var _binding: FragmentAgentBinding? = null
     private val binding get() = _binding!!
     private val mainViewModel: MainViewModel by activityViewModels()
-
-    // 系统内置 Agent（新手大礼包），仅 AgentOrchestrator 可直接 @ 调用
-    private val mockAgents = listOf(
-        Agent("1", "AgentOrchestrator", "统筹调度 Agent 团队，@我即可派发任务，自动协调 Planner/Developer/Tester/Reviewer 完成工作",
-            AgentRole.ORCHESTRATOR, listOf("任务调度", "工作流编排", "质量门禁")),
-        Agent("2", "Planner", "分析需求并拆分为 TaskStep，制定可执行的开发计划",
-            AgentRole.PLANNER, listOf("需求分析", "任务拆分", "计划编排")),
-        Agent("3", "Developer", "根据 TaskStep 实现代码，遵循项目规范与 API 约定",
-            AgentRole.DEVELOPER, listOf("java", "spring-boot", "api", "react")),
-        Agent("4", "Tester", "执行 Testset 进行自动化测试，保障代码质量",
-            AgentRole.TESTER, listOf("单元测试", "集成测试", "回归测试"), AgentStatus.RUNNING),
-        Agent("5", "Reviewer", "审查代码变更，检查规范合规性与潜在问题",
-            AgentRole.REVIEWER, listOf("代码审查", "规范检查", "安全扫描"))
-    )
 
     // 预览用 mock：混合 pending + approved，取前三
     private val mockMemoryPreview = listOf(
@@ -63,7 +46,7 @@ class AgentFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        binding.rvAgents.adapter = AgentCardAdapter(mockAgents) { agent ->
+        val agentAdapter = AgentCardAdapter(emptyList()) { agent ->
             findNavController().navigate(
                 R.id.action_agent_to_agentDetail,
                 androidx.core.os.bundleOf(
@@ -74,6 +57,10 @@ class AgentFragment : Fragment() {
                     "agentCapabilities" to agent.capabilities.joinToString(", ")
                 )
             )
+        }
+        binding.rvAgents.adapter = agentAdapter
+        mainViewModel.agents.observe(viewLifecycleOwner) { agents ->
+            agentAdapter.submitList(agents)
         }
 
         // ── Memory 预览 ──

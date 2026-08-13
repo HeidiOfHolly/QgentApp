@@ -29,7 +29,7 @@ class SearchFragment : Fragment() {
             onGroupClick = { group ->
                 findNavController().navigate(
                     R.id.action_search_to_chatDetail,
-                    androidx.core.os.bundleOf("groupName" to group.name)
+                    androidx.core.os.bundleOf("groupName" to group.name, "groupId" to group.id)
                 )
             }
         )

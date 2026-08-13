@@ -10,19 +10,28 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.PopupMenu
+import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.R
+import com.example.qgent.data.SessionStore
+import com.example.qgent.data.model.toChatMessage
+import com.example.qgent.data.model.toGroupMember
+import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.databinding.BottomSheetMentionMemberBinding
 import com.example.qgent.databinding.FragmentChatDetailBinding
 import com.example.qgent.model.ChatMessage
 import com.example.qgent.model.GroupMember
 import com.example.qgent.model.MemberType
 import com.example.qgent.model.MessageType
+import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -32,14 +41,16 @@ class ChatDetailFragment : Fragment() {
 
     private var _binding: FragmentChatDetailBinding? = null
     private val binding get() = _binding!!
+    private val mainViewModel: MainViewModel by activityViewModels()
+    private val chatRepo = ChatRepository()
 
     private val messages = mutableListOf<ChatMessage>()
     private lateinit var rows: MutableList<ChatRow>
     private lateinit var adapter: ChatMessageAdapter
     private val handler = Handler(Looper.getMainLooper())
 
-    // 群成员（mock），含 AgentOrchestrator
-    private val groupMembers = listOf(
+    // 群成员（mock 回退用），含 AgentOrchestrator
+    private var groupMembers = listOf(
         GroupMember("张三"),
         GroupMember("李四"),
         GroupMember("王五"),
@@ -79,7 +90,10 @@ class ChatDetailFragment : Fragment() {
 
         binding.btnBack.setOnClickListener { findNavController().popBackStack() }
         binding.btnSettings.setOnClickListener {
-            findNavController().navigate(R.id.action_chatDetail_to_chatSettings)
+            findNavController().navigate(
+                R.id.action_chatDetail_to_chatSettings,
+                bundleOf("groupId" to (arguments?.getString("groupId") ?: ""))
+            )
         }
         binding.btnPlus.setOnClickListener { showAttachmentMenu() }
         binding.btnSend.setOnClickListener { sendTextMessage() }
@@ -102,20 +116,38 @@ class ChatDetailFragment : Fragment() {
             }
         }
 
-        messages.addAll(mockMessages())
-        rows = buildRows(messages).toMutableList()
+        rows = mutableListOf()
         adapter = ChatMessageAdapter(rows) { senderName ->
             insertMention(senderName)
         }
         binding.rvMessages.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMessages.adapter = adapter
-        scrollToBottom()
+
+        loadInitialData()
     }
 
     private fun sendTextMessage() {
         val text = binding.etInput.text.toString().trim()
         if (text.isEmpty()) return
+        binding.etInput.text.clear()
 
+        val projectId = mainViewModel.currentProjectId()
+        val groupId = arguments?.getString("groupId").orEmpty()
+
+        if (projectId != null && groupId.isNotEmpty()) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                chatRepo.sendMessage(projectId, groupId, text).onSuccess { dto ->
+                    appendMessage(dto.toChatMessage(SessionStore.user()?.id))
+                }.onFailure {
+                    appendLocalMessage(text)
+                }
+            }
+        } else {
+            appendLocalMessage(text)
+        }
+    }
+
+    private fun appendLocalMessage(text: String) {
         appendMessage(
             ChatMessage(
                 UUID.randomUUID().toString(),
@@ -126,8 +158,6 @@ class ChatDetailFragment : Fragment() {
                 true
             )
         )
-        binding.etInput.text.clear()
-
         // 如果消息中 @ 了 AgentOrchestrator，模拟 Agent 回复
         if (text.contains("@AgentOrchestrator")) {
             handler.postDelayed({
@@ -247,6 +277,36 @@ class ChatDetailFragment : Fragment() {
         binding.rvMessages.post {
             binding.rvMessages.scrollToPosition(adapter.itemCount - 1)
         }
+    }
+
+    private fun loadInitialData() {
+        val projectId = mainViewModel.currentProjectId()
+        val groupId = arguments?.getString("groupId").orEmpty()
+
+        if (projectId != null && groupId.isNotEmpty()) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                chatRepo.getMessages(projectId, groupId).onSuccess { dtos ->
+                    val myId = SessionStore.user()?.id
+                    setMessages(dtos.map { it.toChatMessage(myId) })
+                }.onFailure {
+                    setMessages(mockMessages())
+                }
+                chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
+                    groupMembers = dtos.map { it.toGroupMember() }
+                }
+            }
+        } else {
+            setMessages(mockMessages())
+        }
+    }
+
+    private fun setMessages(newMessages: List<ChatMessage>) {
+        messages.clear()
+        messages.addAll(newMessages)
+        rows.clear()
+        rows.addAll(buildRows(messages))
+        adapter.notifyDataSetChanged()
+        scrollToBottom()
     }
 
     private fun mockMessages(): List<ChatMessage> {

@@ -5,8 +5,13 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.qgent.data.model.TeamDto
+import com.example.qgent.data.model.toAgent
+import com.example.qgent.data.repository.AgentRepository
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.UserRepository
+import com.example.qgent.model.Agent
+import com.example.qgent.model.AgentRole
+import com.example.qgent.model.AgentStatus
 import com.example.qgent.model.ChatGroup
 import kotlinx.coroutines.launch
 
@@ -20,6 +25,7 @@ class MainViewModel : ViewModel() {
 
     private val userRepo = UserRepository()
     private val chatRepo = ChatRepository()
+    private val agentRepo = AgentRepository()
 
     // ── Mock 数据（API 不可用时回退） ──
 
@@ -77,6 +83,20 @@ class MainViewModel : ViewModel() {
         )
     )
 
+    // 系统内置 Agent（新手大礼包），API 不可用时回退
+    private val mockAgents = listOf(
+        Agent("1", "AgentOrchestrator", "统筹调度 Agent 团队，@我即可派发任务，自动协调 Planner/Developer/Tester/Reviewer 完成工作",
+            AgentRole.ORCHESTRATOR, listOf("任务调度", "工作流编排", "质量门禁")),
+        Agent("2", "Planner", "分析需求并拆分为 TaskStep，制定可执行的开发计划",
+            AgentRole.PLANNER, listOf("需求分析", "任务拆分", "计划编排")),
+        Agent("3", "Developer", "根据 TaskStep 实现代码，遵循项目规范与 API 约定",
+            AgentRole.DEVELOPER, listOf("java", "spring-boot", "api", "react")),
+        Agent("4", "Tester", "执行 Testset 进行自动化测试，保障代码质量",
+            AgentRole.TESTER, listOf("单元测试", "集成测试", "回归测试"), AgentStatus.RUNNING),
+        Agent("5", "Reviewer", "审查代码变更，检查规范合规性与潜在问题",
+            AgentRole.REVIEWER, listOf("代码审查", "规范检查", "安全扫描"))
+    )
+
     // ── 当前团队 / 项目（页面间共享） ──
 
     private val _currentTeam = MutableLiveData("团队A")
@@ -100,6 +120,11 @@ class MainViewModel : ViewModel() {
     private val _groups = MutableLiveData<List<ChatGroup>>()
     val groups: LiveData<List<ChatGroup>> = _groups
 
+    // ── 当前团队下的 Agent 列表 ──
+
+    private val _agents = MutableLiveData<List<Agent>>()
+    val agents: LiveData<List<Agent>> = _agents
+
     // ── 项目列表（按当前团队） ──
 
     private val _projects = MutableLiveData<List<String>>()
@@ -108,6 +133,7 @@ class MainViewModel : ViewModel() {
     // ── 缓存：name → id 映射（用于 API 调用时反查） ──
 
     private var projectNameToId = mutableMapOf<String, String>()
+    private var teamNameToId = mutableMapOf<String, String>()
 
     // ── 已读群聊 ID 集合（跨项目切换保持） ──
 
@@ -124,14 +150,18 @@ class MainViewModel : ViewModel() {
     init {
         _currentProject.value = mockProjectsByTeam.getValue("团队A").first()
         loadTeams()
-        loadProjects("团队A")
-        loadGroups("Qgents Web")
+        loadProjects("团队A") {
+            val firstProject = projectsOf("团队A").firstOrNull() ?: ""
+            _currentProject.value = firstProject
+            if (firstProject.isNotEmpty()) loadGroups(firstProject)
+        }
     }
 
     fun setCurrentTeam(team: String) {
         if (_currentTeam.value == team) return
         _currentTeam.value = team
         loadedProjectsTeam = null  // 失效旧缓存，防止 projectsOf 串数据
+        loadAgents(team)
         loadProjects(team) {
             val firstProject = projectsOf(team).firstOrNull() ?: ""
             _currentProject.value = firstProject
@@ -155,6 +185,10 @@ class MainViewModel : ViewModel() {
         _groups.value?.let {
             if (it.isNotEmpty()) it else mockGroupsByProject[project] ?: emptyList()
         } ?: mockGroupsByProject[project] ?: emptyList()
+
+    /** 当前团队 / 项目的真实 id（API 成功时才有值；mock 回退时返回 null） */
+    fun currentTeamId(): String? = teamNameToId[_currentTeam.value]
+    fun currentProjectId(): String? = projectNameToId[_currentProject.value]
 
     /** 标记群聊为已读（未读数清零，并持久化到已读集合） */
     fun markAsRead(groupId: String) {
@@ -188,6 +222,7 @@ class MainViewModel : ViewModel() {
     private fun loadTeams() {
         viewModelScope.launch {
             userRepo.getTeams().onSuccess { dtos ->
+                dtos.forEach { teamNameToId[it.name] = it.id }
                 _teams.value = dtos.map { it.name }
                 _teams.postValue(dtos.map { it.name })
                 _teamDtos.postValue(dtos)
@@ -196,6 +231,8 @@ class MainViewModel : ViewModel() {
                 _teams.postValue(mockTeams)
                 _teamDtos.postValue(mockTeamDtos)
             }
+            // teamNameToId 就绪后再加载 Agent（API 优先，失败回退 mock）
+            loadAgents(_currentTeam.value ?: "团队A")
         }
     }
 
@@ -232,6 +269,19 @@ class MainViewModel : ViewModel() {
             }
             val raw = mockGroupsByProject[projectName] ?: emptyList()
             _groups.value = applyReadState(sortGroups(raw.map { it.copy() }))
+        }
+    }
+
+    private fun loadAgents(teamName: String) {
+        viewModelScope.launch {
+            val teamId = teamNameToId[teamName]
+            if (teamId != null) {
+                agentRepo.getAgents(teamId).onSuccess { dtos ->
+                    _agents.value = dtos.map { it.toAgent() }
+                    return@launch
+                }
+            }
+            _agents.value = mockAgents
         }
     }
 

@@ -7,15 +7,23 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DividerItemDecoration
 import com.example.qgent.R
+import com.example.qgent.data.model.toAgent
+import com.example.qgent.data.repository.AgentRepository
 import com.example.qgent.databinding.FragmentAgentDetailBinding
+import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
 
 class AgentDetailFragment : Fragment() {
 
     private var _binding: FragmentAgentDetailBinding? = null
     private val binding get() = _binding!!
+    private val mainViewModel: MainViewModel by activityViewModels()
+    private val agentRepo = AgentRepository()
 
     private val mockMemory = mutableListOf("React 组件规范", "API 接口约定", "Git 提交规范")
     private val mockSkill = mutableListOf("TypeScript 检查", "ESLint 格式化")
@@ -34,24 +42,29 @@ class AgentDetailFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val name = arguments?.getString("agentName") ?: ""
-        val desc = arguments?.getString("agentDescription") ?: ""
-        val role = arguments?.getString("agentRole") ?: ""
-        val capabilities = arguments?.getString("agentCapabilities") ?: ""
-
+        val agentId = arguments?.getString("agentId") ?: ""
         binding.btnBack.setOnClickListener { findNavController().popBackStack() }
 
-        binding.tvDetailAgentName.text = name
-        binding.tvDetailAgentDesc.text = desc
+        // 先用 nav args（mock）渲染身份卡，再尝试真实接口覆盖
+        val mockName = arguments?.getString("agentName") ?: ""
+        val mockDesc = arguments?.getString("agentDescription") ?: ""
+        val mockRole = arguments?.getString("agentRole") ?: ""
+        val mockCapabilities = arguments?.getString("agentCapabilities") ?: ""
+        renderIdentity(mockName, mockDesc, mockRole, mockCapabilities)
 
-        // 角色标签
-        binding.tvDetailRole.text = mapRoleDisplay(role)
-        binding.tvDetailRole.isVisible = role.isNotEmpty()
-
-        // 能力标签
-        if (capabilities.isNotEmpty()) {
-            binding.tvDetailCapabilities.text = capabilities
-            binding.tvDetailCapabilities.isVisible = true
+        val teamId = mainViewModel.currentTeamId()
+        if (teamId != null && agentId.isNotEmpty()) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                agentRepo.getAgent(teamId, agentId).onSuccess { dto ->
+                    val agent = dto.toAgent()
+                    renderIdentity(
+                        agent.name,
+                        agent.description,
+                        agent.role.name,
+                        agent.capabilities.joinToString(", ")
+                    )
+                }
+            }
         }
 
         // Memory 列表
@@ -81,6 +94,17 @@ class AgentDetailFragment : Fragment() {
         binding.tvDetailAddSkill.setOnClickListener {
             Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun renderIdentity(name: String, desc: String, role: String, capabilities: String) {
+        binding.tvDetailAgentName.text = name
+        binding.tvDetailAgentDesc.text = desc
+
+        binding.tvDetailRole.text = mapRoleDisplay(role)
+        binding.tvDetailRole.isVisible = role.isNotEmpty()
+
+        binding.tvDetailCapabilities.isVisible = capabilities.isNotEmpty()
+        binding.tvDetailCapabilities.text = capabilities
     }
 
     private fun mapRoleDisplay(role: String): String = when (role) {

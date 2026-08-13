@@ -69,7 +69,7 @@ class ChatListFragment : Fragment() {
                 mainViewModel.markAsRead(group.id)
                 findNavController().navigate(
                     R.id.action_chatList_to_chatDetail,
-                    bundleOf("groupName" to group.name)
+                    bundleOf("groupName" to group.name, "groupId" to group.id)
                 )
             },
             onGroupLongClick = { anchor, group ->
