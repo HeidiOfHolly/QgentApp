@@ -89,7 +89,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="10dp"
                     android:layout_weight="1"
-                    android:text="@string/manage_members"
+                    android:text="全部成员"
                     android:textColor="@color/blue_tint"
                     android:textSize="18sp"
                     android:textStyle="bold" />
@@ -111,13 +111,13 @@
                     android:layout_marginHorizontal="12dp"
                     android:layout_marginTop="8dp"
                     android:minHeight="44dp"
-                    android:text="@string/add_member"
+                    android:text="邀请成员"
                     android:textColor="@color/teal"
                     android:textSize="15sp"
                     app:cornerRadius="12dp"
                     app:strokeColor="@color/teal"
                     app:strokeWidth="1dp" />
-
+                <!-- 要改成RecyclerView -->
                 <LinearLayout
                     android:id="@+id/containerMembers"
                     android:layout_width="match_parent"
@@ -164,7 +164,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="10dp"
                     android:layout_weight="1"
-                    android:text="@string/manage_projects"
+                    android:text="全部项目"
                     android:textColor="@color/blue_tint"
                     android:textSize="18sp"
                     android:textStyle="bold" />
@@ -186,13 +186,13 @@
                     android:layout_marginHorizontal="12dp"
                     android:layout_marginTop="8dp"
                     android:minHeight="44dp"
-                    android:text="@string/add_project"
+                    android:text="新建项目"
                     android:textColor="@color/teal"
                     android:textSize="15sp"
                     app:cornerRadius="12dp"
                     app:strokeColor="@color/teal"
                     app:strokeWidth="1dp" />
-
+                <!-- 要改成RecyclerView -->
                 <LinearLayout
                     android:id="@+id/containerProjects"
                     android:layout_width="match_parent"
