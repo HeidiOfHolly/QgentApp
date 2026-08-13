@@ -99,7 +99,7 @@ class MainViewModel : ViewModel() {
 
     // ── 当前团队 / 项目（页面间共享） ──
 
-    private val _currentTeam = MutableLiveData("团队A")
+    private val _currentTeam = MutableLiveData("")
     val currentTeam: LiveData<String> = _currentTeam
 
     private val _currentProject = MutableLiveData<String>()
@@ -148,13 +148,7 @@ class MainViewModel : ViewModel() {
     val isProjectAdmin: Boolean = true
 
     init {
-        _currentProject.value = mockProjectsByTeam.getValue("团队A").first()
         loadTeams()
-        loadProjects("团队A") {
-            val firstProject = projectsOf("团队A").firstOrNull() ?: ""
-            _currentProject.value = firstProject
-            if (firstProject.isNotEmpty()) loadGroups(firstProject)
-        }
     }
 
     fun setCurrentTeam(team: String) {
@@ -224,15 +218,22 @@ class MainViewModel : ViewModel() {
             userRepo.getTeams().onSuccess { dtos ->
                 dtos.forEach { teamNameToId[it.name] = it.id }
                 _teams.value = dtos.map { it.name }
-                _teams.postValue(dtos.map { it.name })
-                _teamDtos.postValue(dtos)
+                _teamDtos.value = dtos
+                val first = dtos.firstOrNull()?.name
+                if (first != null) {
+                    setCurrentTeam(first)
+                } else {
+                    _currentTeam.value = ""
+                    _currentProject.value = ""
+                    _projects.value = emptyList()
+                    _groups.value = emptyList()
+                    _agents.value = emptyList()
+                }
             }.onFailure {
                 _teams.value = mockTeams
-                _teams.postValue(mockTeams)
-                _teamDtos.postValue(mockTeamDtos)
+                _teamDtos.value = mockTeamDtos
+                setCurrentTeam(mockTeams.first())
             }
-            // teamNameToId 就绪后再加载 Agent（API 优先，失败回退 mock）
-            loadAgents(_currentTeam.value ?: "团队A")
         }
     }
 

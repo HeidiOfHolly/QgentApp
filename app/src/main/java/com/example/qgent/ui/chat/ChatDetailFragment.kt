@@ -26,6 +26,9 @@ import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.databinding.BottomSheetMentionMemberBinding
 import com.example.qgent.databinding.FragmentChatDetailBinding
 import com.example.qgent.model.ChatMessage
+import com.example.qgent.model.DiffFile
+import com.example.qgent.model.DiffLine
+import com.example.qgent.model.DiffLineType
 import com.example.qgent.model.GroupMember
 import com.example.qgent.model.MemberType
 import com.example.qgent.model.MessageType
@@ -161,18 +164,36 @@ class ChatDetailFragment : Fragment() {
         // 如果消息中 @ 了 AgentOrchestrator，模拟 Agent 回复
         if (text.contains("@AgentOrchestrator")) {
             handler.postDelayed({
-                appendMessage(
-                    ChatMessage(
-                        UUID.randomUUID().toString(),
-                        "AgentOrchestrator",
-                        mockAgentReply(text),
-                        MessageType.TEXT,
-                        System.currentTimeMillis(),
-                        false
+                if (text.contains("diff", true) || text.contains("改", true)) {
+                    appendDiffMessage()
+                } else {
+                    appendMessage(
+                        ChatMessage(
+                            UUID.randomUUID().toString(),
+                            "AgentOrchestrator",
+                            mockAgentReply(text),
+                            MessageType.TEXT,
+                            System.currentTimeMillis(),
+                            false
+                        )
                     )
-                )
+                }
             }, 1500L)
         }
+    }
+
+    private fun appendDiffMessage() {
+        appendMessage(
+            ChatMessage(
+                UUID.randomUUID().toString(),
+                "AgentOrchestrator",
+                "",
+                MessageType.DIFF,
+                System.currentTimeMillis(),
+                false,
+                mockDiffFiles()
+            )
+        )
     }
 
     private fun mockAgentReply(userMessage: String): String {
@@ -189,6 +210,36 @@ class ChatDetailFragment : Fragment() {
                 "已收到你的指令，正在分析任务并分派给合适的 Agent 处理。"
         }
     }
+
+    private fun mockDiffFiles(): List<DiffFile> = listOf(
+        DiffFile(
+            "MainActivity.kt",
+            3,
+            2,
+            listOf(
+                DiffLine(DiffLineType.CONTEXT, 1, 1, "package com.example.qgent"),
+                DiffLine(DiffLineType.CONTEXT, 2, 2, ""),
+                DiffLine(DiffLineType.DELETE, 3, null, "import androidx.appcompat.app.AppCompatActivity"),
+                DiffLine(DiffLineType.ADD, null, 3, "import androidx.activity.ComponentActivity"),
+                DiffLine(DiffLineType.CONTEXT, 4, 4, ""),
+                DiffLine(DiffLineType.ADD, null, 5, "class MainActivity : ComponentActivity() {"),
+                DiffLine(DiffLineType.CONTEXT, 5, 6, "    override fun onCreate(savedInstanceState: Bundle?) {")
+            )
+        ),
+        DiffFile(
+            "activity_main.xml",
+            2,
+            1,
+            listOf(
+                DiffLine(DiffLineType.CONTEXT, 1, 1, "<?xml version=\"1.0\" encoding=\"utf-8\"?>"),
+                DiffLine(DiffLineType.ADD, null, 2, "    <TextView"),
+                DiffLine(DiffLineType.ADD, null, 3, "        android:id=\"@+id/tvTitle\""),
+                DiffLine(DiffLineType.CONTEXT, 2, 4, "        android:layout_width=\"match_parent\""),
+                DiffLine(DiffLineType.DELETE, 3, null, "        android:text=\"old\""),
+                DiffLine(DiffLineType.ADD, null, 6, "        android:text=\"new\"")
+            )
+        )
+    )
 
     /** 弹出 @ 成员选择器 */
     private fun showMentionPicker() {
@@ -317,7 +368,8 @@ class ChatDetailFragment : Fragment() {
             ChatMessage("m3", "AgentOrchestrator", "我是 AgentOrchestrator，群里 @我 即可派发任务，我会调度 Agent 团队为你工作。", MessageType.TEXT, now - 21 * 60 * 1000, false),
             ChatMessage("m4", "我", "后端接口文档我已经看过了", MessageType.TEXT, now - 17 * 60 * 1000, true),
             ChatMessage("m5", "张三", "RSA 密码加密记得注意一下", MessageType.TEXT, now - 3 * 60 * 1000, false),
-            ChatMessage("m6", "我", "收到，按契约来", MessageType.TEXT, now - 2 * 60 * 1000, true)
+            ChatMessage("m6", "我", "收到，按契约来", MessageType.TEXT, now - 2 * 60 * 1000, true),
+            ChatMessage("m7", "AgentOrchestrator", "", MessageType.DIFF, now - 1 * 60 * 1000, false, mockDiffFiles())
         )
     }
 

@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.MainActivity
 import com.example.qgent.R
+import com.example.qgent.data.SessionStore
 import com.example.qgent.databinding.BottomSheetCreateGroupBinding
 import com.example.qgent.databinding.FragmentChatListBinding
 import com.example.qgent.model.ChatGroup
@@ -52,8 +53,7 @@ class ChatListFragment : Fragment() {
         // 加号 → 弹出操作列表
         binding.btnAdd.setOnClickListener { showMoreMenu() }
 
-        // TODO: 用户名等数据接入后替换；团队名与个人中心抽屉同步
-        binding.tvUserName.setText(R.string.user_name_placeholder)
+        binding.tvUserName.text = SessionStore.user()?.displayName ?: getString(R.string.user_name_placeholder)
         mainViewModel.currentTeam.observe(viewLifecycleOwner) { team ->
             binding.tvTeamName.text = team
         }

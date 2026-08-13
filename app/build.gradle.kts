@@ -57,6 +57,7 @@ dependencies {
     implementation(libs.okhttp3.okhttp)
     implementation(libs.okhttp3.logging.interceptor)
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
+    implementation("androidx.viewpager2:viewpager2:1.0.0")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
