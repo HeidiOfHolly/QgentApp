@@ -14,7 +14,7 @@ data class ChatMessage(
     fun displayContent(): String = when (type) {
         MessageType.TEXT, MessageType.CODE -> content
         MessageType.IMAGE -> "[图片]"
-        MessageType.FILE -> "[文件]"
+        MessageType.FILE -> content.ifBlank { "[文件]" }
         MessageType.SYSTEM -> content
         MessageType.QUOTE -> "[引用消息]"
         MessageType.DIFF -> "[代码变更]"

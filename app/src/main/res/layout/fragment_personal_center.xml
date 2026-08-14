@@ -41,7 +41,7 @@
             app:layout_constraintTop_toBottomOf="@+id/btnTeamManage"
             android:text="我的团队"
             android:textColor="#8896AE"
-            android:textSize="15sp"
+            android:textSize="18sp"
             android:textStyle="bold" />
 
         <androidx.recyclerview.widget.RecyclerView
@@ -61,7 +61,7 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintRight_toRightOf="parent"
             app:layout_constraintLeft_toLeftOf="parent"
-            android:layout_marginBottom="10dp"
+            android:layout_marginBottom="20dp"
             android:layout_width="50dp"
             android:layout_height="50dp"/>
     </androidx.constraintlayout.widget.ConstraintLayout>
@@ -111,7 +111,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textColor="@color/charcoal"
-                    android:textSize="16sp"
+                    android:textSize="18sp"
                     android:textStyle="bold"
                     tools:text="张三" />
 
@@ -121,14 +121,14 @@
                     android:layout_marginTop="3dp"
                     android:text="当前团队："
                     android:textColor="@color/gray"
-                    android:textSize="12sp" />
+                    android:textSize="15sp" />
             </LinearLayout>
             <TextView
                 android:id="@+id/tvTeamName"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/gray"
-                android:textSize="12sp"
+                android:textSize="15sp"
                 tools:text="团队A"
                 app:layout_constraintTop_toBottomOf="@+id/card"
                 app:layout_constraintLeft_toLeftOf="@+id/card"/>

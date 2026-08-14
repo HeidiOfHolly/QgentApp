@@ -1,5 +1,7 @@
 package com.example.qgent.ui.chat
 import android.app.Dialog
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -10,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.provider.OpenableColumns
 import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
@@ -79,6 +82,13 @@ class ChatDetailFragment : Fragment() {
                 )
             )
         }
+    }
+
+    // 本地文件选择：打开系统 DocumentsUI，免存储权限，返回 content:// URI
+    private val pickFile = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) sendLocalFile(uri)
     }
 
     // 群成员 id → 昵称（文档 §7：消息 senderName 需按 senderId 反查）
@@ -183,6 +193,43 @@ class ChatDetailFragment : Fragment() {
         } else {
             appendLocalMessage(text)
         }
+    }
+
+    /**
+     * 选中本地文件后：读取文件名并本地追加一条 FILE 消息。
+     * 附件对象存储直传链路（POST .../attachments 凭证 → 上传 → 发 FILE 消息）待后端契约确认后接入。
+     */
+    private fun sendLocalFile(uri: Uri) {
+        val fileName = queryFileName(uri)
+        // 持久化读权限，保证后续接入上传时仍可读取该 URI
+        runCatching {
+            requireContext().contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+        appendMessage(
+            ChatMessage(
+                UUID.randomUUID().toString(),
+                "我",
+                fileName,
+                MessageType.FILE,
+                System.currentTimeMillis(),
+                true
+            )
+        )
+    }
+
+    private fun queryFileName(uri: Uri): String {
+        var name: String? = null
+        requireContext().contentResolver.query(
+            uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0) name = cursor.getString(idx)
+            }
+        }
+        return name ?: uri.lastPathSegment?.substringAfterLast('/') ?: getString(R.string.file)
     }
 
     private fun appendLocalMessage(text: String) {
@@ -331,7 +378,7 @@ class ChatDetailFragment : Fragment() {
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 )
             } else {
-                Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
+                pickFile.launch(arrayOf("*/*"))
             }
             true
         }

@@ -10,5 +10,5 @@
     android:paddingStart="12dp"
     android:paddingEnd="8dp"
     android:textColor="@color/team_item_normal"
-    android:textSize="16sp"
+    android:textSize="20sp"
     tools:text="团队A" />
