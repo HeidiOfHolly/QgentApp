@@ -7,16 +7,22 @@ import com.example.qgent.R
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.databinding.ItemTeamGithubBinding
 
-/** GitHub 页的团队列表适配器：展示团队名与仓库数（仓库数暂为占位，待 GitHub 数据接入） */
+/** GitHub 页的团队列表适配器：展示团队名与仓库数 */
 class GithubTeamAdapter(
     private val onItemClick: (TeamDto) -> Unit
 ) : RecyclerView.Adapter<GithubTeamAdapter.VH>() {
 
     private val items = mutableListOf<TeamDto>()
+    private var repoCounts: Map<String, Int> = emptyMap()
 
     fun submitList(newItems: List<TeamDto>) {
         items.clear()
         items.addAll(newItems)
+        notifyDataSetChanged()
+    }
+
+    fun updateRepoCounts(counts: Map<String, Int>) {
+        repoCounts = counts
         notifyDataSetChanged()
     }
 
@@ -36,7 +42,7 @@ class GithubTeamAdapter(
 
         fun bind(team: TeamDto) {
             binding.tvTeamName.text = team.name
-            binding.tvRepositoryNum.text = binding.root.context.getString(R.string.github_repo_count, 0)
+            binding.tvRepositoryNum.text = binding.root.context.getString(R.string.github_repo_count, repoCounts[team.id] ?: 0)
             binding.root.setOnClickListener { onItemClick(team) }
         }
     }

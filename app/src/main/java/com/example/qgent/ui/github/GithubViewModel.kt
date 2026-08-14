@@ -22,6 +22,7 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
         val installationUrl: String? = null,
         val installations: List<GitHubInstallationDto> = emptyList(),
         val repositories: List<GitHubRepositoryDto> = emptyList(),
+        val repoCounts: Map<String, Int> = emptyMap(),
         val installed: Boolean = false,
         val error: String? = null
     )
@@ -76,6 +77,19 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
         viewModelScope.launch {
             repo.getGithubRepositories(teamId).onSuccess { repos ->
                 _uiState.value = _uiState.value.copy(repositories = repos)
+            }
+        }
+    }
+
+    /** 逐团队拉取授权仓库数量，供 GitHub 页团队卡片展示真实仓库数 */
+    fun loadRepositoryCounts(teamIds: List<String>) {
+        teamIds.forEach { teamId ->
+            viewModelScope.launch {
+                repo.getGithubRepositories(teamId).onSuccess { repos ->
+                    _uiState.value = _uiState.value.copy(
+                        repoCounts = _uiState.value.repoCounts + (teamId to repos.size)
+                    )
+                }
             }
         }
     }

@@ -3,7 +3,13 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/nav_main_graph"
-    app:startDestination="@id/chatListFragment">
+    app:startDestination="@id/splashFragment">
+
+    <fragment
+        android:id="@+id/splashFragment"
+        android:name="com.example.qgent.ui.splash.SplashFragment"
+        android:label="@string/splash_loading"
+        tools:layout="@layout/fragment_splash" />
 
     <fragment
         android:id="@+id/chatListFragment"

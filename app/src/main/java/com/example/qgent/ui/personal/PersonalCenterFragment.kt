@@ -25,8 +25,6 @@ class PersonalCenterFragment : Fragment() {
     }
     private lateinit var teamAdapter: TeamAdapter
     private lateinit var projectAdapter: ProjectAdapter
-    /** 当前主内容页是否为 GitHub 页：是则抽屉不显示团队/项目高光 */
-    private var isOnGithub = false
 
     private val navController: NavController
         get() = (requireActivity().supportFragmentManager
@@ -88,12 +86,6 @@ class PersonalCenterFragment : Fragment() {
             refreshHighlight()
         }
 
-        // 在 GitHub 页时清空抽屉团队/项目高光，离开后恢复当前选中
-        navController.addOnDestinationChangedListener { _, dest, _ ->
-            isOnGithub = dest.id == R.id.githubFragment
-            refreshHighlight()
-        }
-
         // 头像 → 收起抽屉并进入个人信息页
         binding.btnAvatar.setOnClickListener { openProfile() }
 
@@ -107,20 +99,15 @@ class PersonalCenterFragment : Fragment() {
         binding.btnNotification.setOnClickListener { openMessageList() }
     }
 
-    /** 刷新抽屉团队/项目高光：GitHub 页不显示高光，其余页面恢复当前团队/项目选中 */
+    /** 刷新抽屉团队/项目高光：高亮当前选中的团队与项目 */
     private fun refreshHighlight() {
         if (!::teamAdapter.isInitialized) return
-        if (isOnGithub) {
-            teamAdapter.selectedPosition = NO_SELECTION
-            projectAdapter.selectedPosition = NO_SELECTION
-        } else {
-            val teams = mainViewModel.teams.value ?: emptyList()
-            val curTeam = mainViewModel.currentTeam.value
-            if (curTeam in teams) teamAdapter.selectedPosition = teams.indexOf(curTeam)
-            val curProject = mainViewModel.currentProject.value
-            if (!curProject.isNullOrEmpty()) {
-                projectAdapter.selectedPosition = projectAdapter.indexOf(curProject)
-            }
+        val teams = mainViewModel.teams.value ?: emptyList()
+        val curTeam = mainViewModel.currentTeam.value
+        if (curTeam in teams) teamAdapter.selectedPosition = teams.indexOf(curTeam)
+        val curProject = mainViewModel.currentProject.value
+        if (!curProject.isNullOrEmpty()) {
+            projectAdapter.selectedPosition = projectAdapter.indexOf(curProject)
         }
     }
 
@@ -146,10 +133,6 @@ class PersonalCenterFragment : Fragment() {
     private fun openTeamManage() {
         (activity as? MainActivity)?.closeDrawer()
         navController.navigate(R.id.teamManageFragment)
-    }
-
-    companion object {
-        private const val NO_SELECTION = -1
     }
 
     override fun onDestroyView() {

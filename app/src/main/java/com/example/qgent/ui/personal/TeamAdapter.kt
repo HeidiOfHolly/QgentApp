@@ -12,7 +12,7 @@ class TeamAdapter(
     private val onTeamClick: (String, Int) -> Unit
 ) : RecyclerView.Adapter<TeamAdapter.VH>() {
 
-    var selectedPosition = 0
+    var selectedPosition = -1
         set(value) {
             if (field == value) return
             val old = field

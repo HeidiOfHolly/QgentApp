@@ -201,7 +201,8 @@ interface QgApiService {
     @POST("teams/{teamId}/integrations/github/installations")
     suspend fun createInstallation(
         @Path("teamId") teamId: String,
-        @Header("Idempotency-Key") idempotencyKey: String
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Query("client") client: String
     ): Response<ApiResponse<GitHubInstallationUrlDto>>
 
     @GET("teams/{teamId}/integrations/github/installations")

@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.databinding.FragmentTeamDetailBinding
+import com.example.qgent.ui.github.GithubViewModel
 import com.example.qgent.viewmodel.MainViewModel
 
 /**
@@ -27,6 +28,9 @@ class TeamDetailFragment : Fragment() {
     private val binding get() = _binding!!
     private val mainViewModel: MainViewModel by activityViewModels {
         (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
+    private val githubViewModel: GithubViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.githubViewModelFactory
     }
 
     private val memberAdapter = TeamMemberAdapter()
@@ -46,6 +50,7 @@ class TeamDetailFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         val teamName = arguments?.getString(ARG_TEAM_NAME).orEmpty()
+        val teamId = arguments?.getString(ARG_TEAM_ID).orEmpty()
 
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
         binding.tvTeamName.text = teamName
@@ -64,8 +69,16 @@ class TeamDetailFragment : Fragment() {
         setupList(binding.rvProjects, projectAdapter)
         setupList(binding.rvRepository, repositoryAdapter)
 
-        // 项目列表来自 MainViewModel（真实数据流）；成员 / 仓库暂无数据源
+        // 项目列表来自 MainViewModel（真实数据流）
         mainViewModel.projects.observe(viewLifecycleOwner) { projectAdapter.submitList(it) }
+
+        // 仓库列表来自 GitHub 授权仓库（fullName）；成员列表暂无数据源
+        githubViewModel.uiState.observe(viewLifecycleOwner) { state ->
+            repositoryAdapter.submitList(state.repositories.map { it.fullName })
+        }
+        if (teamId.isNotEmpty()) {
+            githubViewModel.loadRepositories(teamId)
+        }
 
         binding.btnDissolveTeam.setOnClickListener { confirmDissolveTeam() }
     }
@@ -111,5 +124,6 @@ class TeamDetailFragment : Fragment() {
 
     companion object {
         const val ARG_TEAM_NAME = "teamName"
+        const val ARG_TEAM_ID = "teamId"
     }
 }

@@ -3,14 +3,17 @@ package com.example.qgent
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.os.bundleOf
 import androidx.core.view.GravityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
+import androidx.navigation.navOptions
 import androidx.navigation.ui.setupWithNavController
 import com.example.qgent.data.SessionStore
 import com.example.qgent.databinding.ActivityMainBinding
@@ -75,9 +78,46 @@ class MainActivity : AppCompatActivity() {
 
             // 仅冷启动路由一次；旋转等配置变更不重复跳转
             if (savedInstanceState == null) {
-                routeInitialDestination()
+                if (!handleDeepLink(intent)) {
+                    routeInitialDestination()
+                }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (::navController.isInitialized) {
+            handleDeepLink(intent)
+        }
+    }
+
+    /**
+     * 处理 GitHub 安装回调的 App Link（后端 302 回跳）：
+     * https://mobile.qgents.dpdns.org/app/integrations/github?teamId=...&installed=1
+     * 解析 teamId 跳授权页，installed=1 时提示安装完成。
+     * 返回是否命中深链；未命中时走常规路由门控。
+     */
+    private fun handleDeepLink(intent: Intent?): Boolean {
+        val data = intent?.data ?: return false
+        if (data.scheme != "https" || data.host != "mobile.qgents.dpdns.org") return false
+        val teamId = data.getQueryParameter("teamId").orEmpty()
+        if (teamId.isEmpty()) return false
+
+        navController.navigate(
+            R.id.githubFragment,
+            null,
+            navOptions { popUpTo(R.id.splashFragment) { inclusive = true } }
+        )
+        navController.navigate(
+            R.id.githubAuthorizeFragment,
+            bundleOf("teamId" to teamId, "teamName" to "")
+        )
+        if (data.getQueryParameter("installed") == "1") {
+            Toast.makeText(this, R.string.github_install_success, Toast.LENGTH_SHORT).show()
+        }
+        return true
     }
 
     /**
@@ -87,18 +127,26 @@ class MainActivity : AppCompatActivity() {
      * - 两者都有 → 默认群聊列表页
      */
     private fun routeInitialDestination() {
-        val repo = (application as QgentApp).container.userRepository
+        val container = (application as QgentApp).container
         lifecycleScope.launch {
-            val teams = repo.getTeams().getOrNull().orEmpty()
+            val teams = container.userRepository.getTeams().getOrNull().orEmpty()
             if (teams.isEmpty()) {
                 startActivity(Intent(this@MainActivity, TeamEntryActivity::class.java))
                 finish()
                 return@launch
             }
-            val projects = repo.getProjects(teams.first().id).getOrNull().orEmpty()
-            if (projects.isEmpty()) {
-                navController.navigate(R.id.githubFragment)
-            }
+            val projects = container.realUserRepository.getProjects(teams.first().id).getOrNull().orEmpty()
+            val hasGroups = projects.firstOrNull()?.let { project ->
+                container.realChatRepository.getGroups(project.id).getOrNull().orEmpty().isNotEmpty()
+            } ?: false
+            val destinationId = if (projects.isEmpty() || !hasGroups) R.id.githubFragment else R.id.chatListFragment
+            navController.navigate(
+                destinationId,
+                null,
+                navOptions {
+                    popUpTo(R.id.splashFragment) { inclusive = true }
+                }
+            )
         }
     }
 

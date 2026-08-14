@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.example.qgent",
+      "sha256_cert_fingerprints": [
+        "73E47B5E38B25B20BDB3CEAA4D4B82A3CB8C0A6547B25407E0B39E4F9730E5D5"
+      ]
+    }
+  }
+]

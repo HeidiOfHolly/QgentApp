@@ -34,13 +34,15 @@ class AppContainer {
 
     val authRepository = AuthRepository(RetrofitClient.service)
 
+    val realUserRepository = UserRepositoryImpl(RetrofitClient.service)
     val userRepository: UserRepository = FallbackUserRepository(
-        real = UserRepositoryImpl(RetrofitClient.service),
+        real = realUserRepository,
         mock = MockUserRepository()
     )
 
+    val realChatRepository = ChatRepositoryImpl(RetrofitClient.service)
     val chatRepository: ChatRepository = FallbackChatRepository(
-        real = ChatRepositoryImpl(RetrofitClient.service),
+        real = realChatRepository,
         mock = MockChatRepository()
     )
 
