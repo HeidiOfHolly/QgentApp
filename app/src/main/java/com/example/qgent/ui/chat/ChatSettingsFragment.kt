@@ -75,7 +75,7 @@ class ChatSettingsFragment : Fragment() {
                     binding.tvGroupName.text = dto.title
                 }
                 chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
-                    if (dtos.isNotEmpty()) renderMembers(dtos.map { it.nickname })
+                    if (dtos.isNotEmpty()) renderMembers(dtos.map { it.nickname ?: "成员" })
                 }
             }
         }

@@ -4,6 +4,8 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
+import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.NavController
@@ -98,6 +100,9 @@ class PersonalCenterFragment : Fragment() {
 
         // 铃铛 → 消息列表
         binding.btnNotification.setOnClickListener { openMessageList() }
+
+        // 新建项目 → 关闭抽屉并进入新建项目页
+        binding.btnNewProject.setOnClickListener { openNewProject() }
     }
 
     /** 点击团队切换：若该团队未创建任何项目，则收起抽屉并进入 GitHub 页 */
@@ -146,6 +151,17 @@ class PersonalCenterFragment : Fragment() {
     private fun openTeamManage() {
         (activity as? MainActivity)?.closeDrawer()
         navController.navigate(R.id.teamManageFragment)
+    }
+
+    /** 收起个人中心抽屉，并在主内容区打开新建项目页 */
+    private fun openNewProject() {
+        val teamId = mainViewModel.currentTeamId()
+        if (teamId == null) {
+            Toast.makeText(requireContext(), R.string.new_project_missing_team, Toast.LENGTH_SHORT).show()
+            return
+        }
+        (activity as? MainActivity)?.closeDrawer()
+        navController.navigate(R.id.newProjectFragment, bundleOf("teamId" to teamId))
     }
 
     companion object {

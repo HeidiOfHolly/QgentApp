@@ -1,9 +1,13 @@
 package com.example.qgent.data.repository
 
 import com.example.qgent.data.api.QgApiService
+import com.example.qgent.data.model.AddProjectMemberRequest
+import com.example.qgent.data.model.CreateProjectRequest
 import com.example.qgent.data.model.CreateTeamRequest
 import com.example.qgent.data.model.ProjectDto
+import com.example.qgent.data.model.ProjectMemberDto
 import com.example.qgent.data.model.TeamDto
+import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.model.UserProfileDto
 import com.example.qgent.data.model.toDataOrThrow
 
@@ -17,8 +21,29 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
         service.getTeams().toDataOrThrow()
     }
 
+    override suspend fun getTeamMembers(teamId: String, cursor: String?, limit: Int): Result<List<TeamMemberDto>> = apiCall {
+        service.getTeamMembers(teamId, cursor, limit).toDataOrThrow()
+    }
+
     override suspend fun getProjects(teamId: String): Result<List<ProjectDto>> = apiCall {
         service.getProjects(teamId).toDataOrThrow()
+    }
+
+    override suspend fun createProject(
+        teamId: String,
+        name: String,
+        description: String?,
+        idempotencyKey: String
+    ): Result<ProjectDto> = apiCall {
+        service.createProject(teamId, idempotencyKey, CreateProjectRequest(name, description)).toDataOrThrow()
+    }
+
+    override suspend fun addProjectMember(
+        projectId: String,
+        userId: String,
+        idempotencyKey: String
+    ): Result<ProjectMemberDto> = apiCall {
+        service.addProjectMember(projectId, idempotencyKey, AddProjectMemberRequest(userId)).toDataOrThrow()
     }
 
     override suspend fun createTeam(name: String, description: String?, idempotencyKey: String): Result<TeamDto> =

@@ -142,8 +142,7 @@ class MainActivity : AppCompatActivity() {
                 return@observe
             }
             val hasProjects = mainViewModel.projects.value?.isNotEmpty() == true
-            val hasGroups = mainViewModel.groups.value?.isNotEmpty() == true
-            val destinationId = if (!hasProjects || !hasGroups) R.id.githubFragment else R.id.chatListFragment
+            val destinationId = if (hasProjects) R.id.chatListFragment else R.id.githubFragment
             navController.navigate(
                 destinationId,
                 null,

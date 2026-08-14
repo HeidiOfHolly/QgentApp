@@ -2,12 +2,14 @@ package com.example.qgent.data.api
 
 import com.example.qgent.data.model.AgentDto
 import com.example.qgent.data.model.AgentSkillBindingsRequest
+import com.example.qgent.data.model.AddProjectMemberRequest
 import com.example.qgent.data.model.ApiResponse
 import com.example.qgent.data.model.AttachmentDto
 import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.CreateAttachmentRequest
 import com.example.qgent.data.model.CreateAgentRequest
 import com.example.qgent.data.model.CreateGroupRequest
+import com.example.qgent.data.model.CreateProjectRequest
 import com.example.qgent.data.model.CreateTeamRequest
 import com.example.qgent.data.model.GitHubInstallationDto
 import com.example.qgent.data.model.GitHubInstallationUrlDto
@@ -18,11 +20,13 @@ import com.example.qgent.data.model.AuthSessionDto
 import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.model.LoginRequest
 import com.example.qgent.data.model.ProjectDto
+import com.example.qgent.data.model.ProjectMemberDto
 import com.example.qgent.data.model.ProjectRepositoryDto
 import com.example.qgent.data.model.RefreshRequest
 import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.SendMessageRequest
 import com.example.qgent.data.model.TeamDto
+import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.model.UpdateAgentRequest
 import com.example.qgent.data.model.UpdateGroupRequest
 import com.example.qgent.data.model.UserProfileDto
@@ -75,12 +79,33 @@ interface QgApiService {
         @Body body: CreateTeamRequest
     ): Response<ApiResponse<TeamDto>>
 
+    @GET("teams/{teamId}/members")
+    suspend fun getTeamMembers(
+        @Path("teamId") teamId: String,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 30
+    ): Response<ApiResponse<List<TeamMemberDto>>>
+
     // ── 项目 ──
 
     @GET("teams/{teamId}/projects")
     suspend fun getProjects(
         @Path("teamId") teamId: String
     ): Response<ApiResponse<List<ProjectDto>>>
+
+    @POST("teams/{teamId}/projects")
+    suspend fun createProject(
+        @Path("teamId") teamId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CreateProjectRequest
+    ): Response<ApiResponse<ProjectDto>>
+
+    @POST("projects/{projectId}/members")
+    suspend fun addProjectMember(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: AddProjectMemberRequest
+    ): Response<ApiResponse<ProjectMemberDto>>
 
     // ── 群（Group） ──
 

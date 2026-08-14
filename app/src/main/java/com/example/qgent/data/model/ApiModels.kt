@@ -122,10 +122,29 @@ data class TeamDto(
     @SerializedName("createdAt") val createdAt: String
 )
 
+/** 团队成员（GET /teams/{teamId}/members，API-105）：userId + role + displayName + email */
+data class TeamMemberDto(
+    @SerializedName("userId") val userId: String,
+    val role: String,                       // TEAM_OWNER / TEAM_MEMBER
+    @SerializedName("displayName") val displayName: String,
+    val email: String
+)
+
 /** 创建团队（POST /teams） */
 data class CreateTeamRequest(
     val name: String,
     val description: String? = null
+)
+
+/** 创建项目（POST /teams/{teamId}/projects）；成员通过 API-069 逐个加入 */
+data class CreateProjectRequest(
+    val name: String,
+    val description: String? = null
+)
+
+/** 将团队现有成员加入项目（POST /projects/{projectId}/members） */
+data class AddProjectMemberRequest(
+    @SerializedName("userId") val userId: String
 )
 
 data class ProjectDto(
@@ -134,6 +153,12 @@ data class ProjectDto(
     val name: String,
     val description: String?,
     val status: String
+)
+
+/** 项目成员（加成员响应）：userId + role */
+data class ProjectMemberDto(
+    @SerializedName("userId") val userId: String,
+    val role: String
 )
 
 // ── 群（Group）— 统一建模：PROJECT_MAIN + REQUIREMENT ──
@@ -159,7 +184,7 @@ data class GroupLatestMessageDto(
 
 data class GroupMemberDto(
     val id: String,
-    val nickname: String,
+    val nickname: String?,
     val avatar: String?
 )
 
