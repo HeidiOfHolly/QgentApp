@@ -37,19 +37,34 @@
             android:textSize="12sp"
             tools:text="张三" />
 
-        <TextView
-            android:id="@+id/tvBubble"
+        <FrameLayout
+            android:id="@+id/flBubble"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:lineSpacingExtra="2dp"
-            android:maxWidth="280dp"
-            android:paddingStart="14dp"
-            android:paddingTop="9dp"
-            android:paddingEnd="14dp"
-            android:paddingBottom="9dp"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="15sp"
-            tools:text="今天把登录接口联调一下" />
+            android:layout_height="wrap_content">
+
+            <TextView
+                android:id="@+id/tvBubble"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="2dp"
+                android:maxWidth="280dp"
+                android:paddingStart="15dp"
+                android:paddingTop="9dp"
+                android:paddingEnd="15dp"
+                android:paddingBottom="10dp"
+                android:textColor="?android:attr/textColorPrimary"
+                android:textSize="15sp"
+                tools:text="今天把登录接口联调一下" />
+
+            <ImageView
+                android:id="@+id/ivBubbleImage"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:adjustViewBounds="true"
+                android:contentDescription="@string/image"
+                android:scaleType="fitCenter"
+                android:visibility="gone" />
+        </FrameLayout>
     </LinearLayout>
 
 </LinearLayout>

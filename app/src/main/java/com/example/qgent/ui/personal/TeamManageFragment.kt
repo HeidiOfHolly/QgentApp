@@ -6,9 +6,13 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
 import android.view.WindowManager
+import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
@@ -47,7 +51,7 @@ class TeamManageFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
-        binding.btnCreateTeam.setOnClickListener { showCreateTeamDialog() }
+        binding.btnTeamMenu.setOnClickListener { showTeamMenu() }
 
         setupList(binding.rvJoined, joinedAdapter)
         setupList(binding.rvCreated, createdAdapter)
@@ -103,6 +107,36 @@ class TeamManageFragment : Fragment() {
             putString(TeamDetailFragment.ARG_TEAM_NAME, team.name)
         }
         findNavController().navigate(R.id.teamDetailFragment, bundle)
+    }
+
+    /** 右上角菜单：创建团队 / 加入团队 */
+    private fun showTeamMenu() {
+        PopupMenu(requireContext(), binding.btnTeamMenu).apply {
+            menuInflater.inflate(R.menu.menu_team_manage, menu)
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    R.id.action_create_team -> showCreateTeamDialog()
+                    R.id.action_join_team -> showJoinTeamDialog()
+                }
+                true
+            }
+            show()
+        }
+    }
+
+    /** 加入团队：输入团队邀请码后加入（后端接口待接入，先占位提示） */
+    private fun showJoinTeamDialog() {
+        val input = EditText(requireContext()).apply {
+            hint = getString(R.string.join_team_invite_hint)
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.action_join_team)
+            .setView(input)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton("确定") { _, _ ->
+                Toast.makeText(requireContext(), R.string.join_team_placeholder, Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
     /** 创建团队：弹出输入团队名称 / 简介的弹窗（创建 API 待后端就绪后接入） */

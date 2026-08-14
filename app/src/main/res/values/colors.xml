@@ -12,6 +12,7 @@
     <!-- 品牌辅助色 -->
     <color name="mint">#05DEBA</color>
     <color name="teal">#056684</color>
+    <color name="green">#0B7D92</color>
 
     <!-- 中性色 -->
     <color name="off_white">#F6F8FB</color>

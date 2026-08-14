@@ -18,7 +18,7 @@
         android:background="@color/navy"
         android:paddingStart="8dp"
         android:paddingTop="10dp"
-        android:paddingEnd="16dp"
+        android:paddingEnd="10dp"
         android:paddingBottom="10dp">
 
         <ImageButton
@@ -39,18 +39,14 @@
             android:textColor="@color/blue_tint"
             android:textStyle="bold" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnCreateTeam"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:minHeight="40dp"
-            android:text="@string/action_create_team"
-            android:textColor="@color/blue_tint"
-            android:textSize="15sp"
-            app:cornerRadius="20dp"
-            app:strokeColor="@color/blue_tint"
-            app:strokeWidth="1dp" />
+        <ImageButton
+            android:id="@+id/btnTeamMenu"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/team_manage"
+            android:src="@drawable/ic_more"
+            app:tint="@color/blue_tint" />
     </LinearLayout>
 
     <View

@@ -79,6 +79,9 @@
 
     <string name="team_manage">团队管理</string>
     <string name="action_create_team">创建团队</string>
+    <string name="action_join_team">加入团队</string>
+    <string name="join_team_invite_hint">请输入团队邀请码</string>
+    <string name="join_team_placeholder">加入团队（待接入后端）</string>
 
     <string name="github_authorize_title">GitHub 授权</string>
     <string name="github_authorize_icon_desc">GitHub</string>
@@ -95,6 +98,9 @@
     <string name="team_created">我创建的团队</string>
     <string name="team_member_count">%1$d 名成员</string>
     <string name="error_team_name_required">请输入团队名称</string>
+    <string name="error_project_name_required">请输入项目名称</string>
+    <string name="github_repo_empty">暂无可用仓库，请先在 GitHub 页授权</string>
+    <string name="new_project_placeholder">新建项目（待接入后端）</string>
     <string name="settings">设置</string>
     <string name="notification">通知</string>
     <string name="message_list">消息列表</string>

@@ -33,6 +33,18 @@ class MockGitHubRepository : GitHubRepository {
             archived = false,
             authorizationStatus = "AUTHORIZED",
             metadataSyncedAt = "2026-08-13T10:00:00Z"
+        ),
+        GitHubRepositoryDto(
+            id = "repository-2",
+            installationId = "installation-1",
+            providerRepositoryId = 987654322,
+            fullName = "Yjingwen-svg/qgents-mobile",
+            githubUrl = "https://github.com/Yjingwen-svg/qgents-mobile",
+            defaultBranch = "main",
+            visibility = "PRIVATE",
+            archived = false,
+            authorizationStatus = "AUTHORIZED",
+            metadataSyncedAt = "2026-08-13T10:00:00Z"
         )
     )
 

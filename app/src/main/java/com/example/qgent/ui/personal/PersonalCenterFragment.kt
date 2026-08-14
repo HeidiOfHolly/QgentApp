@@ -44,9 +44,7 @@ class PersonalCenterFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         // 左列：团队列表（点击切换当前团队）
-        teamAdapter = TeamAdapter(emptyList()) { teamName, _ ->
-            mainViewModel.setCurrentTeam(teamName)
-        }
+        teamAdapter = TeamAdapter(emptyList()) { teamName, _ -> onTeamClick(teamName) }
         binding.rvTeams.layoutManager = LinearLayoutManager(requireContext())
         binding.rvTeams.adapter = teamAdapter
 
@@ -62,9 +60,7 @@ class PersonalCenterFragment : Fragment() {
         // 团队列表加载完成后更新 adapter
         mainViewModel.teams.observe(viewLifecycleOwner) { teams ->
             if (teams.isNotEmpty()) {
-                teamAdapter = TeamAdapter(teams) { teamName, _ ->
-                    mainViewModel.setCurrentTeam(teamName)
-                }
+                teamAdapter = TeamAdapter(teams) { teamName, _ -> onTeamClick(teamName) }
                 binding.rvTeams.adapter = teamAdapter
                 refreshHighlight()
             }
@@ -104,6 +100,13 @@ class PersonalCenterFragment : Fragment() {
 
         // 铃铛 → 消息列表
         binding.btnNotification.setOnClickListener { openMessageList() }
+    }
+
+    /** 点击团队切换：若该团队未创建任何项目，则收起抽屉并进入 GitHub 页 */
+    private fun onTeamClick(teamName: String) {
+        mainViewModel.setCurrentTeam(teamName) { hasProjects ->
+            if (!hasProjects) openGithub()
+        }
     }
 
     /** 刷新抽屉团队/项目高光：GitHub 页不显示高光，其余页面恢复当前团队/项目选中 */

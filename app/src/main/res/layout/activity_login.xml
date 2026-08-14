@@ -16,7 +16,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingStart="24dp"
-        android:paddingTop="56dp"
+        android:paddingTop="50dp"
         android:paddingEnd="24dp"
         android:paddingBottom="32dp">
 
@@ -73,6 +73,7 @@
             android:layout_marginTop="16dp"
             android:hint="@string/login_password"
             app:boxStrokeWidthFocused="2dp"
+            app:endIconDrawable="@drawable/ic_password_toggle"
             app:endIconMode="password_toggle"
             app:errorEnabled="true"
             app:layout_constraintEnd_toEndOf="parent"

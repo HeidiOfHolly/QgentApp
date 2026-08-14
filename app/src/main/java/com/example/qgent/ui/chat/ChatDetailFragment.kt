@@ -1,5 +1,6 @@
 package com.example.qgent.ui.chat
 
+import android.app.Dialog
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -8,15 +9,21 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.PopupMenu
+import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.bumptech.glide.Glide
 import com.example.qgent.R
 import com.example.qgent.databinding.BottomSheetMentionMemberBinding
+import com.example.qgent.databinding.DialogImagePreviewBinding
 import com.example.qgent.databinding.FragmentChatDetailBinding
 import com.example.qgent.model.ChatMessage
 import com.example.qgent.model.GroupMember
@@ -37,6 +44,24 @@ class ChatDetailFragment : Fragment() {
     private lateinit var rows: MutableList<ChatRow>
     private lateinit var adapter: ChatMessageAdapter
     private val handler = Handler(Looper.getMainLooper())
+
+    // 系统相册选图：免存储权限，返回图片 content:// URI
+    private val pickImage = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            appendMessage(
+                ChatMessage(
+                    UUID.randomUUID().toString(),
+                    "我",
+                    uri.toString(),
+                    MessageType.IMAGE,
+                    System.currentTimeMillis(),
+                    true
+                )
+            )
+        }
+    }
 
     // 群成员（mock），含 AgentOrchestrator
     private val groupMembers = listOf(
@@ -104,9 +129,11 @@ class ChatDetailFragment : Fragment() {
 
         messages.addAll(mockMessages())
         rows = buildRows(messages).toMutableList()
-        adapter = ChatMessageAdapter(rows) { senderName ->
-            insertMention(senderName)
-        }
+        adapter = ChatMessageAdapter(
+            rows,
+            onAvatarLongClick = { senderName -> insertMention(senderName) },
+            onImageClick = { uri -> showImagePreview(uri) }
+        )
         binding.rvMessages.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMessages.adapter = adapter
         scrollToBottom()
@@ -176,6 +203,21 @@ class ChatDetailFragment : Fragment() {
         dialog.show()
     }
 
+    /** 点击图片：全屏预览放大后的原图，点击任意处关闭 */
+    private fun showImagePreview(uri: String) {
+        val dialog = Dialog(requireContext())
+        val previewBinding = DialogImagePreviewBinding.inflate(layoutInflater)
+        dialog.setContentView(previewBinding.root)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT
+        )
+        Glide.with(previewBinding.ivPreview).load(uri).into(previewBinding.ivPreview)
+        previewBinding.previewRoot.setOnClickListener { dialog.dismiss() }
+        dialog.show()
+    }
+
     /** 将 @Name 插入到输入框当前光标位置 */
     private fun insertMention(name: String) {
         val text = binding.etInput.text ?: return
@@ -195,21 +237,13 @@ class ChatDetailFragment : Fragment() {
         popup.menu.add(getString(R.string.image))
         popup.menu.add(getString(R.string.file))
         popup.setOnMenuItemClickListener { item ->
-            val type = if (item.title == getString(R.string.image)) {
-                MessageType.IMAGE
-            } else {
-                MessageType.FILE
-            }
-            appendMessage(
-                ChatMessage(
-                    UUID.randomUUID().toString(),
-                    "我",
-                    "",
-                    type,
-                    System.currentTimeMillis(),
-                    true
+            if (item.title == getString(R.string.image)) {
+                pickImage.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 )
-            )
+            } else {
+                Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
+            }
             true
         }
         popup.show()

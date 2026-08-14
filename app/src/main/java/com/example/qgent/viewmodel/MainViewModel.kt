@@ -71,7 +71,7 @@ class MainViewModel(
         loadTeams()
     }
 
-    fun setCurrentTeam(team: String) {
+    fun setCurrentTeam(team: String, onProjectsLoaded: ((Boolean) -> Unit)? = null) {
         if (_currentTeam.value == team) return
         _currentTeam.value = team
         loadedProjectsTeam = null  // 失效旧缓存，防止 projectsOf 串数据
@@ -79,6 +79,7 @@ class MainViewModel(
             val firstProject = projectsOf(team).firstOrNull() ?: ""
             _currentProject.value = firstProject
             if (firstProject.isNotEmpty()) loadGroups(firstProject)
+            onProjectsLoaded?.invoke(firstProject.isNotEmpty())
         }
     }
 
