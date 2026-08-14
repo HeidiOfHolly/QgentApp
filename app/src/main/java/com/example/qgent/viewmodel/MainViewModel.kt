@@ -5,8 +5,13 @@ import androidx.lifecycle.asLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.qgent.data.model.TeamDto
+import com.example.qgent.data.model.formatGroupTime
+import com.example.qgent.data.model.parseRfc3339
+import com.example.qgent.data.model.toAgent
+import com.example.qgent.data.repository.AgentRepository
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.UserRepository
+import com.example.qgent.model.Agent
 import com.example.qgent.model.ChatGroup
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -20,7 +25,8 @@ import kotlinx.coroutines.launch
  */
 class MainViewModel(
     private val userRepo: UserRepository,
-    private val chatRepo: ChatRepository
+    private val chatRepo: ChatRepository,
+    private val agentRepo: AgentRepository
 ) : ViewModel() {
 
     // ── 当前团队 / 项目（页面间共享） ──
@@ -46,6 +52,11 @@ class MainViewModel(
     private val _groups = MutableStateFlow<List<ChatGroup>>(emptyList())
     val groups: LiveData<List<ChatGroup>> = _groups.asLiveData()
 
+    // ── 当前团队下的 Agent 列表 ──
+
+    private val _agents = MutableStateFlow<List<Agent>>(emptyList())
+    val agents: LiveData<List<Agent>> = _agents.asLiveData()
+
     // ── 项目列表（按当前团队） ──
 
     private val _projects = MutableStateFlow<List<String>>(emptyList())
@@ -54,6 +65,7 @@ class MainViewModel(
     // ── 缓存：name → id 映射（用于 API 调用时反查） ──
 
     private var projectNameToId = mutableMapOf<String, String>()
+    private var teamNameToId = mutableMapOf<String, String>()
 
     // ── 已读群聊 ID 集合（跨项目切换保持） ──
 
@@ -75,6 +87,7 @@ class MainViewModel(
         if (_currentTeam.value == team) return
         _currentTeam.value = team
         loadedProjectsTeam = null  // 失效旧缓存，防止 projectsOf 串数据
+        loadAgents(team)
         loadProjects(team) {
             val firstProject = projectsOf(team).firstOrNull() ?: ""
             _currentProject.value = firstProject
@@ -92,6 +105,10 @@ class MainViewModel(
 
     private fun projectsOf(team: String): List<String> =
         if (loadedProjectsTeam == team) _projects.value else emptyList()
+
+    /** 当前团队 / 项目的真实 id（API 成功时才有值；mock 回退时返回 null） */
+    fun currentTeamId(): String? = teamNameToId[_currentTeam.value]
+    fun currentProjectId(): String? = projectNameToId[_currentProject.value]
 
     /** 标记群聊为已读（未读数清零，并持久化到已读集合） */
     fun markAsRead(groupId: String) {
@@ -122,6 +139,7 @@ class MainViewModel(
     private fun loadTeams() {
         viewModelScope.launch {
             userRepo.getTeams().onSuccess { dtos ->
+                dtos.forEach { teamNameToId[it.name] = it.id }
                 _teams.value = dtos.map { it.name }
                 _teamDtos.value = dtos
                 // 无当前选中时自动选第一个团队（替代原硬编码默认值）
@@ -161,8 +179,25 @@ class MainViewModel(
                 chatRepo.getGroups(projectName).getOrNull() ?: emptyList()
             }
             _groups.value = applyReadState(sortGroups(result.map { dto ->
-                ChatGroup(dto.id, dto.title, dto.lastMessage ?: "", dto.updatedAt, 0)
+                val lastActive = parseRfc3339(dto.updatedAt)
+                ChatGroup(
+                    id = dto.id,
+                    name = dto.title,
+                    lastMessage = dto.lastMessage ?: "",
+                    time = formatGroupTime(lastActive),
+                    unread = 0,
+                    lastActiveTime = lastActive
+                )
             }))
+        }
+    }
+
+    private fun loadAgents(teamName: String) {
+        viewModelScope.launch {
+            val teamId = teamNameToId[teamName] ?: return@launch
+            agentRepo.getAgents(teamId).onSuccess { dtos ->
+                _agents.value = dtos.map { it.toAgent() }
+            }
         }
     }
 

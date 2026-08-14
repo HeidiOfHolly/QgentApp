@@ -30,7 +30,10 @@
       "PowerShell($url = \"https://api.github.com/search/code?q=base-64+repo:CloudPlayerBaby/Qgents\"; $headers = @{\"Accept\"=\"application/vnd.github+json\"; \"User-Agent\"=\"ClaudeCode\"}; try { $result = Invoke-RestMethod -Uri $url -Headers $headers; $result.items | ForEach-Object { \"$\\($_.path\\)\" } } catch { \"Failed: $_\" })",
       "PowerShell($url = \"https://api.github.com/search/code?q=bad+repo:CloudPlayerBaby/Qgents+language:java\"; $headers = @{\"Accept\"=\"application/vnd.github.text-match+json\"; \"User-Agent\"=\"ClaudeCode\"}; try { $result = Invoke-RestMethod -Uri $url -Headers $headers; $result.items | ForEach-Object { \"$\\($_.path\\)\" } } catch { \"Failed: $_\" })",
       "PowerShell(git clone *)",
-      "PowerShell($pem = Get-Content \"D:\\\\Android Studio\\\\qgentApp\\\\app\\\\src\\\\main\\\\assets\\\\public_key.pem\" -Raw; $lines = $pem -split \"`r`n|`n|`r\" | Where-Object { $_ -match '^[A-Za-z0-9+/=]+$' }; for \\($i=0; $i -lt $lines.Count; $i++\\) { Write-Host \"Line $\\($i+1\\): $\\($lines[$i].Length\\) chars\" })"
+      "PowerShell($pem = Get-Content \"D:\\\\Android Studio\\\\qgentApp\\\\app\\\\src\\\\main\\\\assets\\\\public_key.pem\" -Raw; $lines = $pem -split \"`r`n|`n|`r\" | Where-Object { $_ -match '^[A-Za-z0-9+/=]+$' }; for \\($i=0; $i -lt $lines.Count; $i++\\) { Write-Host \"Line $\\($i+1\\): $\\($lines[$i].Length\\) chars\" })",
+      "PowerShell(.\\\\gradlew.bat compileDebugKotlin --console=plain -q)",
+      "PowerShell(.\\\\gradlew.bat compileDebugKotlin --console=plain --stacktrace 2>&1 | Select-Object -Last 60)",
+      "PowerShell(java *)"
     ]
   }
 }

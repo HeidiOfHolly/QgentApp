@@ -8,13 +8,16 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.GravityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
 import com.example.qgent.data.SessionStore
 import com.example.qgent.databinding.ActivityMainBinding
 import com.example.qgent.ui.auth.LoginActivity
+import com.example.qgent.ui.auth.TeamEntryActivity
 import com.example.qgent.ui.personal.PersonalCenterFragment
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -68,6 +71,33 @@ class MainActivity : AppCompatActivity() {
                     destination.id == R.id.tasksFragment ||
                     destination.id == R.id.agentFragment
                 binding.bottomNav.visibility = if (isTabPage) View.VISIBLE else View.GONE
+            }
+
+            // 仅冷启动路由一次；旋转等配置变更不重复跳转
+            if (savedInstanceState == null) {
+                routeInitialDestination()
+            }
+        }
+    }
+
+    /**
+     * 启动路由门控：
+     * - 无团队 → 团队引导页（创建/加入）
+     * - 有团队但无项目 → GitHub 仓库绑定页
+     * - 两者都有 → 默认群聊列表页
+     */
+    private fun routeInitialDestination() {
+        val repo = (application as QgentApp).container.userRepository
+        lifecycleScope.launch {
+            val teams = repo.getTeams().getOrNull().orEmpty()
+            if (teams.isEmpty()) {
+                startActivity(Intent(this@MainActivity, TeamEntryActivity::class.java))
+                finish()
+                return@launch
+            }
+            val projects = repo.getProjects(teams.first().id).getOrNull().orEmpty()
+            if (projects.isEmpty()) {
+                navController.navigate(R.id.githubFragment)
             }
         }
     }

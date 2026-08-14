@@ -6,6 +6,7 @@ import com.example.qgent.data.model.ApiResponse
 import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.CreateAgentRequest
 import com.example.qgent.data.model.CreateGroupRequest
+import com.example.qgent.data.model.CreateTeamRequest
 import com.example.qgent.data.model.GitHubInstallationDto
 import com.example.qgent.data.model.GitHubInstallationUrlDto
 import com.example.qgent.data.model.GitHubRepositoryDto
@@ -16,6 +17,7 @@ import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.model.LoginRequest
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.ProjectRepositoryDto
+import com.example.qgent.data.model.RefreshRequest
 import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.SendMessageRequest
 import com.example.qgent.data.model.TeamDto
@@ -52,6 +54,9 @@ interface QgApiService {
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): Response<ApiResponse<AuthSessionDto>>
 
+    @POST("auth/refresh")
+    suspend fun refresh(@Body body: RefreshRequest): Response<ApiResponse<AuthSessionDto>>
+
     // ── 用户 ──
 
     @GET("me")
@@ -61,6 +66,12 @@ interface QgApiService {
 
     @GET("teams")
     suspend fun getTeams(): Response<ApiResponse<List<TeamDto>>>
+
+    @POST("teams")
+    suspend fun createTeam(
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CreateTeamRequest
+    ): Response<ApiResponse<TeamDto>>
 
     // ── 项目 ──
 

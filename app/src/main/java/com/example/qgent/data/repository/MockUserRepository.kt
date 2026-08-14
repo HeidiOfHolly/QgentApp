@@ -15,4 +15,15 @@ class MockUserRepository : UserRepository {
 
     override suspend fun getProjects(teamId: String): Result<List<ProjectDto>> =
         Result.success(MockDataSource.projectsOf(teamId))
+
+    override suspend fun createTeam(name: String, description: String?, idempotencyKey: String): Result<TeamDto> =
+        Result.success(
+            TeamDto(
+                id = "mock-team-${System.currentTimeMillis()}",
+                name = name,
+                role = "TEAM_OWNER",
+                memberCount = 1,
+                createdAt = "2026-08-14"
+            )
+        )
 }

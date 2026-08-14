@@ -37,4 +37,12 @@
 
     <color name="team_item_normal">#8896AE</color>
     <color name="bg_chat_pinned">#ECEEF2</color>
+
+    <!-- Diff 代码块 -->
+    <color name="diff_add_bg">#E6FFEC</color>
+    <color name="diff_del_bg">#FFEBE9</color>
+    <color name="diff_add_fg">#1A7F37</color>
+    <color name="diff_del_fg">#CF222E</color>
+    <color name="diff_line_no">#8A8A8E</color>
+    <color name="diff_header_bg">#F6F8FB</color>
 </resources>

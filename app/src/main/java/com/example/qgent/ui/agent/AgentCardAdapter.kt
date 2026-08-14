@@ -10,9 +10,14 @@ import com.example.qgent.model.Agent
 import com.example.qgent.model.AgentStatus
 
 class AgentCardAdapter(
-    private val items: List<Agent>,
+    private var items: List<Agent>,
     private val onClick: (Agent) -> Unit
 ) : RecyclerView.Adapter<AgentCardAdapter.VH>() {
+
+    fun submitList(newItems: List<Agent>) {
+        items = newItems
+        notifyDataSetChanged()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val binding = ItemAgentCardBinding.inflate(LayoutInflater.from(parent.context), parent, false)

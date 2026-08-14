@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.MainActivity
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.SessionStore
 import com.example.qgent.databinding.FragmentPersonalCenterBinding
 import com.example.qgent.viewmodel.MainViewModel
 
@@ -55,7 +56,7 @@ class PersonalCenterFragment : Fragment() {
         binding.rvProjects.layoutManager = LinearLayoutManager(requireContext())
         binding.rvProjects.adapter = projectAdapter
 
-        binding.tvUserName.setText(R.string.user_name_placeholder)
+        binding.tvUserName.text = SessionStore.user()?.displayName ?: getString(R.string.user_name_placeholder)
 
         // 团队列表加载完成后更新 adapter
         mainViewModel.teams.observe(viewLifecycleOwner) { teams ->

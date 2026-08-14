@@ -18,4 +18,8 @@ class FallbackUserRepository(
 
     override suspend fun getProjects(teamId: String): Result<List<ProjectDto>> =
         real.getProjects(teamId).orFallback { mock.getProjects(teamId) }
+
+    override suspend fun createTeam(name: String, description: String?, idempotencyKey: String): Result<TeamDto> =
+        real.createTeam(name, description, idempotencyKey)
+            .orFallback { mock.createTeam(name, description, idempotencyKey) }
 }

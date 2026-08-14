@@ -1,6 +1,6 @@
 package com.example.qgent.model
 
-enum class MessageType { TEXT, CODE, IMAGE, FILE, SYSTEM, QUOTE }
+enum class MessageType { TEXT, CODE, IMAGE, FILE, SYSTEM, QUOTE, DIFF }
 
 data class ChatMessage(
     val id: String,
@@ -8,7 +8,8 @@ data class ChatMessage(
     val content: String,
     val type: MessageType,
     val timestamp: Long,
-    val isMine: Boolean
+    val isMine: Boolean,
+    val diff: List<DiffFile>? = null
 ) {
     fun displayContent(): String = when (type) {
         MessageType.TEXT, MessageType.CODE -> content
@@ -16,5 +17,6 @@ data class ChatMessage(
         MessageType.FILE -> "[文件]"
         MessageType.SYSTEM -> content
         MessageType.QUOTE -> "[引用消息]"
+        MessageType.DIFF -> "[代码变更]"
     }
 }

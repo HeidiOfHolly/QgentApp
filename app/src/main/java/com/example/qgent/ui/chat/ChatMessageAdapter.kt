@@ -6,9 +6,11 @@ import android.view.ViewGroup
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import com.bumptech.glide.Glide
 import com.example.qgent.R
 import com.example.qgent.databinding.ItemMessageBinding
+import com.example.qgent.databinding.ItemMessageDiffBinding
 import com.example.qgent.databinding.ItemMessageTimeBinding
 import com.example.qgent.model.ChatMessage
 import com.example.qgent.model.MessageType
@@ -24,14 +26,16 @@ class ChatMessageAdapter(
     private val onImageClick: ((String) -> Unit)? = null
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
-    override fun getItemViewType(position: Int): Int =
-        if (rows[position] is ChatRow.Time) TYPE_TIME else TYPE_MESSAGE
+    override fun getItemViewType(position: Int): Int = when (val row = rows[position]) {
+        is ChatRow.Time -> TYPE_TIME
+        is ChatRow.Message -> if (row.message.type == MessageType.DIFF) TYPE_DIFF else TYPE_MESSAGE
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-        return if (viewType == TYPE_TIME) {
-            TimeVH(ItemMessageTimeBinding.inflate(LayoutInflater.from(parent.context), parent, false))
-        } else {
-            MessageVH(
+        return when (viewType) {
+            TYPE_TIME -> TimeVH(ItemMessageTimeBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+            TYPE_DIFF -> DiffVH(ItemMessageDiffBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+            else -> MessageVH(
                 ItemMessageBinding.inflate(LayoutInflater.from(parent.context), parent, false),
                 onAvatarLongClick,
                 onImageClick
@@ -39,10 +43,17 @@ class ChatMessageAdapter(
         }
     }
 
+
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = rows[position]) {
             is ChatRow.Time -> (holder as TimeVH).binding.tvTime.text = row.text
-            is ChatRow.Message -> (holder as MessageVH).bind(row.message)
+            is ChatRow.Message -> {
+                if (row.message.type == MessageType.DIFF) {
+                    (holder as DiffVH).bind(row.message)
+                } else {
+                    (holder as MessageVH).bind(row.message)
+                }
+            }
         }
     }
 
@@ -106,8 +117,38 @@ class ChatMessageAdapter(
         }
     }
 
+    class DiffVH(private val binding: ItemMessageDiffBinding) : RecyclerView.ViewHolder(binding.root) {
+
+        private val pagerAdapter = DiffFilePagerAdapter()
+
+        init {
+            binding.viewPagerDiff.adapter = pagerAdapter
+            binding.viewPagerDiff.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+                override fun onPageSelected(position: Int) = updateHeader(position)
+            })
+        }
+
+        fun bind(message: ChatMessage) {
+            val files = message.diff ?: emptyList()
+            pagerAdapter.submitList(files)
+            binding.tvSenderName.text = message.senderName
+            if (files.isNotEmpty()) {
+                binding.viewPagerDiff.setCurrentItem(0, false)
+                updateHeader(0)
+            }
+        }
+
+        private fun updateHeader(position: Int) {
+            val file = pagerAdapter.fileAt(position) ?: return
+            binding.tvDiffFileName.text = file.fileName
+            binding.tvDiffStats.text = "+${file.additions} -${file.deletions}"
+            binding.tvDiffIndicator.text = "${position + 1}/${pagerAdapter.count}"
+        }
+    }
+
     companion object {
         private const val TYPE_TIME = 0
         private const val TYPE_MESSAGE = 1
+        private const val TYPE_DIFF = 2
     }
 }

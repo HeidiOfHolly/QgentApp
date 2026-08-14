@@ -80,6 +80,9 @@
         <argument
             android:name="groupName"
             android:defaultValue="" />
+        <argument
+            android:name="groupId"
+            android:defaultValue="" />
         <action
             android:id="@+id/action_chatDetail_to_chatSettings"
             app:destination="@id/chatSettingsFragment" />
@@ -89,7 +92,11 @@
         android:id="@+id/chatSettingsFragment"
         android:name="com.example.qgent.ui.chat.ChatSettingsFragment"
         android:label="@string/chat_settings_title"
-        tools:layout="@layout/fragment_chat_settings" />
+        tools:layout="@layout/fragment_chat_settings">
+        <argument
+            android:name="groupId"
+            android:defaultValue="" />
+    </fragment>
 
     <fragment
         android:id="@+id/memoryPoolFragment"

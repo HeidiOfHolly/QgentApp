@@ -51,6 +51,14 @@ object SessionStore {
         AuthInterceptor.setToken(null)
     }
 
+    /** 刷新后仅更新 token（不动用户信息，刷新响应可能不含 user 字段） */
+    fun updateTokens(accessToken: String, refreshToken: String?) {
+        val editor = requirePrefs().edit().putString(KEY_ACCESS_TOKEN, accessToken)
+        if (refreshToken != null) editor.putString(KEY_REFRESH_TOKEN, refreshToken)
+        editor.apply()
+        AuthInterceptor.setToken(accessToken)
+    }
+
     fun accessToken(): String? = requirePrefs().getString(KEY_ACCESS_TOKEN, null)
     fun refreshToken(): String? = requirePrefs().getString(KEY_REFRESH_TOKEN, null)
 

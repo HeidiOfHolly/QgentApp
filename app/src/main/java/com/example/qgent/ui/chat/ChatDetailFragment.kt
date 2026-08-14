@@ -1,5 +1,4 @@
 package com.example.qgent.ui.chat
-
 import android.app.Dialog
 import android.os.Bundle
 import android.os.Handler
@@ -15,21 +14,34 @@ import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.bumptech.glide.Glide
+import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.SessionStore
+import com.example.qgent.data.model.toChatMessage
+import com.example.qgent.data.model.toGroupMember
+import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.databinding.BottomSheetMentionMemberBinding
 import com.example.qgent.databinding.DialogImagePreviewBinding
 import com.example.qgent.databinding.FragmentChatDetailBinding
 import com.example.qgent.model.ChatMessage
+import com.example.qgent.model.DiffFile
+import com.example.qgent.model.DiffLine
+import com.example.qgent.model.DiffLineType
 import com.example.qgent.model.GroupMember
 import com.example.qgent.model.MemberType
 import com.example.qgent.model.MessageType
+import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -39,6 +51,12 @@ class ChatDetailFragment : Fragment() {
 
     private var _binding: FragmentChatDetailBinding? = null
     private val binding get() = _binding!!
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
+    private val chatRepo: ChatRepository by lazy {
+        (requireActivity().application as QgentApp).container.chatRepository
+    }
 
     private val messages = mutableListOf<ChatMessage>()
     private lateinit var rows: MutableList<ChatRow>
@@ -64,7 +82,7 @@ class ChatDetailFragment : Fragment() {
     }
 
     // 群成员（mock），含 AgentOrchestrator
-    private val groupMembers = listOf(
+    private var groupMembers = listOf(
         GroupMember("张三"),
         GroupMember("李四"),
         GroupMember("王五"),
@@ -104,7 +122,10 @@ class ChatDetailFragment : Fragment() {
 
         binding.btnBack.setOnClickListener { findNavController().popBackStack() }
         binding.btnSettings.setOnClickListener {
-            findNavController().navigate(R.id.action_chatDetail_to_chatSettings)
+            findNavController().navigate(
+                R.id.action_chatDetail_to_chatSettings,
+                bundleOf("groupId" to (arguments?.getString("groupId") ?: ""))
+            )
         }
         binding.btnPlus.setOnClickListener { showAttachmentMenu() }
         binding.btnSend.setOnClickListener { sendTextMessage() }
@@ -134,15 +155,38 @@ class ChatDetailFragment : Fragment() {
             onAvatarLongClick = { senderName -> insertMention(senderName) },
             onImageClick = { uri -> showImagePreview(uri) }
         )
+        rows = mutableListOf()
+        adapter = ChatMessageAdapter(rows) { senderName ->
+            insertMention(senderName)
+        }
         binding.rvMessages.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMessages.adapter = adapter
-        scrollToBottom()
+
+        loadInitialData()
     }
 
     private fun sendTextMessage() {
         val text = binding.etInput.text.toString().trim()
         if (text.isEmpty()) return
+        binding.etInput.text.clear()
 
+        val projectId = mainViewModel.currentProjectId()
+        val groupId = arguments?.getString("groupId").orEmpty()
+
+        if (projectId != null && groupId.isNotEmpty()) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                chatRepo.sendMessage(projectId, groupId, text).onSuccess { dto ->
+                    appendMessage(dto.toChatMessage(SessionStore.user()?.id))
+                }.onFailure {
+                    appendLocalMessage(text)
+                }
+            }
+        } else {
+            appendLocalMessage(text)
+        }
+    }
+
+    private fun appendLocalMessage(text: String) {
         appendMessage(
             ChatMessage(
                 UUID.randomUUID().toString(),
@@ -153,23 +197,39 @@ class ChatDetailFragment : Fragment() {
                 true
             )
         )
-        binding.etInput.text.clear()
-
         // 如果消息中 @ 了 AgentOrchestrator，模拟 Agent 回复
         if (text.contains("@AgentOrchestrator")) {
             handler.postDelayed({
-                appendMessage(
-                    ChatMessage(
-                        UUID.randomUUID().toString(),
-                        "AgentOrchestrator",
-                        mockAgentReply(text),
-                        MessageType.TEXT,
-                        System.currentTimeMillis(),
-                        false
+                if (text.contains("diff", true) || text.contains("改", true)) {
+                    appendDiffMessage()
+                } else {
+                    appendMessage(
+                        ChatMessage(
+                            UUID.randomUUID().toString(),
+                            "AgentOrchestrator",
+                            mockAgentReply(text),
+                            MessageType.TEXT,
+                            System.currentTimeMillis(),
+                            false
+                        )
                     )
-                )
+                }
             }, 1500L)
         }
+    }
+
+    private fun appendDiffMessage() {
+        appendMessage(
+            ChatMessage(
+                UUID.randomUUID().toString(),
+                "AgentOrchestrator",
+                "",
+                MessageType.DIFF,
+                System.currentTimeMillis(),
+                false,
+                mockDiffFiles()
+            )
+        )
     }
 
     private fun mockAgentReply(userMessage: String): String {
@@ -186,6 +246,36 @@ class ChatDetailFragment : Fragment() {
                 "已收到你的指令，正在分析任务并分派给合适的 Agent 处理。"
         }
     }
+
+    private fun mockDiffFiles(): List<DiffFile> = listOf(
+        DiffFile(
+            "MainActivity.kt",
+            3,
+            2,
+            listOf(
+                DiffLine(DiffLineType.CONTEXT, 1, 1, "package com.example.qgent"),
+                DiffLine(DiffLineType.CONTEXT, 2, 2, ""),
+                DiffLine(DiffLineType.DELETE, 3, null, "import androidx.appcompat.app.AppCompatActivity"),
+                DiffLine(DiffLineType.ADD, null, 3, "import androidx.activity.ComponentActivity"),
+                DiffLine(DiffLineType.CONTEXT, 4, 4, ""),
+                DiffLine(DiffLineType.ADD, null, 5, "class MainActivity : ComponentActivity() {"),
+                DiffLine(DiffLineType.CONTEXT, 5, 6, "    override fun onCreate(savedInstanceState: Bundle?) {")
+            )
+        ),
+        DiffFile(
+            "activity_main.xml",
+            2,
+            1,
+            listOf(
+                DiffLine(DiffLineType.CONTEXT, 1, 1, "<?xml version=\"1.0\" encoding=\"utf-8\"?>"),
+                DiffLine(DiffLineType.ADD, null, 2, "    <TextView"),
+                DiffLine(DiffLineType.ADD, null, 3, "        android:id=\"@+id/tvTitle\""),
+                DiffLine(DiffLineType.CONTEXT, 2, 4, "        android:layout_width=\"match_parent\""),
+                DiffLine(DiffLineType.DELETE, 3, null, "        android:text=\"old\""),
+                DiffLine(DiffLineType.ADD, null, 6, "        android:text=\"new\"")
+            )
+        )
+    )
 
     /** 弹出 @ 成员选择器 */
     private fun showMentionPicker() {
@@ -283,6 +373,36 @@ class ChatDetailFragment : Fragment() {
         }
     }
 
+    private fun loadInitialData() {
+        val projectId = mainViewModel.currentProjectId()
+        val groupId = arguments?.getString("groupId").orEmpty()
+
+        if (projectId != null && groupId.isNotEmpty()) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                chatRepo.getMessages(projectId, groupId).onSuccess { dtos ->
+                    val myId = SessionStore.user()?.id
+                    setMessages(dtos.map { it.toChatMessage(myId) })
+                }.onFailure {
+                    setMessages(mockMessages())
+                }
+                chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
+                    groupMembers = dtos.map { it.toGroupMember() }
+                }
+            }
+        } else {
+            setMessages(mockMessages())
+        }
+    }
+
+    private fun setMessages(newMessages: List<ChatMessage>) {
+        messages.clear()
+        messages.addAll(newMessages)
+        rows.clear()
+        rows.addAll(buildRows(messages))
+        adapter.notifyDataSetChanged()
+        scrollToBottom()
+    }
+
     private fun mockMessages(): List<ChatMessage> {
         val now = System.currentTimeMillis()
         return listOf(
@@ -291,7 +411,8 @@ class ChatDetailFragment : Fragment() {
             ChatMessage("m3", "AgentOrchestrator", "我是 AgentOrchestrator，群里 @我 即可派发任务，我会调度 Agent 团队为你工作。", MessageType.TEXT, now - 21 * 60 * 1000, false),
             ChatMessage("m4", "我", "后端接口文档我已经看过了", MessageType.TEXT, now - 17 * 60 * 1000, true),
             ChatMessage("m5", "张三", "RSA 密码加密记得注意一下", MessageType.TEXT, now - 3 * 60 * 1000, false),
-            ChatMessage("m6", "我", "收到，按契约来", MessageType.TEXT, now - 2 * 60 * 1000, true)
+            ChatMessage("m6", "我", "收到，按契约来", MessageType.TEXT, now - 2 * 60 * 1000, true),
+            ChatMessage("m7", "AgentOrchestrator", "", MessageType.DIFF, now - 1 * 60 * 1000, false, mockDiffFiles())
         )
     }
 

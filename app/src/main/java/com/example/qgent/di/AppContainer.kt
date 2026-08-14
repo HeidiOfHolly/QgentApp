@@ -59,7 +59,7 @@ class AppContainer {
     }
 
     val mainViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
-        initializer { MainViewModel(userRepository, chatRepository) }
+        initializer { MainViewModel(userRepository, chatRepository, agentRepository) }
     }
 
     val githubViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
