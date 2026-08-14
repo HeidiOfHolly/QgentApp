@@ -93,6 +93,11 @@ data class AuthSessionDto(
     val user: AuthUserDto
 )
 
+/** 刷新令牌请求（POST /auth/refresh） */
+data class RefreshRequest(
+    @SerializedName("refreshToken") val refreshToken: String
+)
+
 data class AuthUserDto(
     val id: String,
     val email: String,
@@ -115,6 +120,12 @@ data class TeamDto(
     val role: String,           // TEAM_OWNER / TEAM_MEMBER
     @SerializedName("memberCount") val memberCount: Int,
     @SerializedName("createdAt") val createdAt: String
+)
+
+/** 创建团队（POST /teams） */
+data class CreateTeamRequest(
+    val name: String,
+    val description: String? = null
 )
 
 data class ProjectDto(

@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.doAfterTextChanged
+import com.example.qgent.MainActivity
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
@@ -73,7 +74,7 @@ class LoginActivity : AppCompatActivity() {
                 }
                 val name = SessionStore.user()?.displayName ?: ""
                 Toast.makeText(this, getString(R.string.login_success, name), Toast.LENGTH_SHORT).show()
-                startActivity(Intent(this, TeamEntryActivity::class.java))
+                startActivity(Intent(this, MainActivity::class.java))
                 finish()
             }
         }

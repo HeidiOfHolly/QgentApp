@@ -14,8 +14,25 @@ object RetrofitClient {
         level = HttpLoggingInterceptor.Level.BODY
     }
 
+    // 刷新令牌专用 client：不带鉴权拦截器与 Authenticator，避免刷新请求触发递归
+    private val refreshHttpClient = OkHttpClient.Builder()
+        .addInterceptor(loggingInterceptor)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    private val refreshService: QgApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(refreshHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(QgApiService::class.java)
+    }
+
     private val httpClient = OkHttpClient.Builder()
         .addInterceptor(AuthInterceptor())
+        .authenticator(TokenAuthenticator(refreshService))
         .addInterceptor(loggingInterceptor)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)

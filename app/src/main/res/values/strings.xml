@@ -99,6 +99,7 @@
     <string name="team_created">我创建的团队</string>
     <string name="team_member_count">%1$d 名成员</string>
     <string name="error_team_name_required">请输入团队名称</string>
+    <string name="error_team_create_failed">创建团队失败，请稍后重试</string>
     <string name="settings">设置</string>
     <string name="notification">通知</string>
     <string name="message_list">消息列表</string>

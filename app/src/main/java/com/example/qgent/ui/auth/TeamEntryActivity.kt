@@ -7,10 +7,14 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.doAfterTextChanged
+import androidx.lifecycle.lifecycleScope
 import com.example.qgent.MainActivity
+import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.databinding.ActivityTeamEntryBinding
 import com.example.qgent.databinding.DialogNewTewmBinding
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 /** 登录 / 注册成功后的团队引导页：创建团队（加入团队待接入） */
 class TeamEntryActivity : AppCompatActivity() {
@@ -43,18 +47,31 @@ class TeamEntryActivity : AppCompatActivity() {
         }
 
         dialogBinding.bnNewTeam.setOnClickListener {
-            if (dialogBinding.etName.text.toString().trim().isEmpty()) {
+            val name = dialogBinding.etName.text.toString().trim()
+            if (name.isEmpty()) {
                 dialogBinding.nameLayout.error = getString(R.string.error_team_name_required)
                 return@setOnClickListener
             }
-            dialog.dismiss()
-            // 创建团队 API 待后端就绪后接入；先进入 GitHub 页配置仓库
-            startActivity(
-                Intent(this, MainActivity::class.java).apply {
-                    putExtra(MainActivity.EXTRA_OPEN_GITHUB, true)
-                }
-            )
-            finish()
+            val description = dialogBinding.etInformation.text.toString().trim().ifEmpty { null }
+            dialogBinding.bnNewTeam.isEnabled = false
+            val idempotencyKey = UUID.randomUUID().toString()
+            val repo = (application as QgentApp).container.userRepository
+            lifecycleScope.launch {
+                repo.createTeam(name, description, idempotencyKey)
+                    .onSuccess {
+                        dialog.dismiss()
+                        startActivity(Intent(this@TeamEntryActivity, MainActivity::class.java))
+                        finish()
+                    }
+                    .onFailure { e ->
+                        dialogBinding.bnNewTeam.isEnabled = true
+                        Toast.makeText(
+                            this@TeamEntryActivity,
+                            e.message ?: getString(R.string.error_team_create_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+            }
         }
         dialog.show()
     }

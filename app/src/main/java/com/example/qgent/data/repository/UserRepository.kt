@@ -8,4 +8,5 @@ interface UserRepository {
     suspend fun getUserProfile(): Result<UserProfileDto>
     suspend fun getTeams(): Result<List<TeamDto>>
     suspend fun getProjects(teamId: String): Result<List<ProjectDto>>
+    suspend fun createTeam(name: String, description: String? = null, idempotencyKey: String): Result<TeamDto>
 }
