@@ -78,10 +78,13 @@ class MainViewModel(
 
     private var loadedProjectsTeam: String? = null
 
-    // ── 冷启动初始数据就绪信号：teams + 首个团队 projects 加载完成后置 true，供 MainActivity 路由 ──
+    // ── 冷启动初始数据就绪信号：teams + 首个团队 projects + 首个项目群聊都就绪后置 true，供 MainActivity 路由 ──
 
     private val _initialDataLoaded = MutableStateFlow(false)
     val initialDataLoaded: LiveData<Boolean> = _initialDataLoaded.asLiveData()
+
+    // 冷启动路由进行中标记：首个团队项目为空或群聊加载完成后解除（供 hasGroups 判断）
+    private var routingInitPending = false
 
     // ── 用户权限（当前为演示阶段默认 Project Admin，接入真实权限后替换） ──
 
@@ -99,7 +102,12 @@ class MainViewModel(
         loadProjects(team) {
             val firstProject = projectsOf(team).firstOrNull() ?: ""
             _currentProject.value = firstProject
-            if (firstProject.isNotEmpty()) loadGroups(firstProject)
+            if (firstProject.isNotEmpty()) {
+                loadGroups(firstProject)
+            } else if (routingInitPending) {
+                // 首个团队无项目 → 无需等群聊，直接完成冷启动路由
+                resolveRoutingReady()
+            }
             onProjectsLoaded?.invoke(firstProject.isNotEmpty())
         }
     }
@@ -156,13 +164,12 @@ class MainViewModel(
                     dtos.forEach { teamNameToId[it.name] = it.id }
                     _teams.value = dtos.map { it.name }
                     _teamDtos.value = dtos
-                    // 无团队 → 初始就绪（启动页引导创建）；有团队 → 等首个团队项目加载完成再就绪
+                    // 无团队 → 初始就绪（启动页引导创建）；有团队 → 等首个团队项目及群聊加载完成再就绪
                     if (dtos.isEmpty()) {
                         _initialDataLoaded.value = true
                     } else if (_currentTeam.value.isEmpty()) {
-                        dtos.firstOrNull()?.name?.let {
-                            setCurrentTeam(it) { _initialDataLoaded.value = true }
-                        }
+                        routingInitPending = true
+                        dtos.firstOrNull()?.name?.let { setCurrentTeam(it) }
                     }
                 }
                 .onFailure { _initialDataLoaded.value = true }
@@ -192,6 +199,7 @@ class MainViewModel(
     private fun loadGroups(projectName: String) {
         val projectId = currentProjectId() ?: run {
             _groups.value = emptyList()
+            resolveRoutingReady()
             return
         }
         viewModelScope.launch {
@@ -207,6 +215,15 @@ class MainViewModel(
                     lastActiveTime = lastActive
                 )
             }))
+            resolveRoutingReady()
+        }
+    }
+
+    /** 冷启动路由就绪：仅当存在待解析的冷启动标记时解除（普通切项目时的 loadGroups 是 no-op） */
+    private fun resolveRoutingReady() {
+        if (routingInitPending) {
+            routingInitPending = false
+            _initialDataLoaded.value = true
         }
     }
 

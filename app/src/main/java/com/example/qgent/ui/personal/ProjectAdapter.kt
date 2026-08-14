@@ -13,7 +13,7 @@ class ProjectAdapter(
 
     private val items = mutableListOf<String>()
 
-    var selectedPosition = 0
+    var selectedPosition = -1
         set(value) {
             if (field == value) return
             val old = field

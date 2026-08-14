@@ -12,12 +12,7 @@ class TeamAdapter(
     private val onTeamClick: (String, Int) -> Unit
 ) : RecyclerView.Adapter<TeamAdapter.VH>() {
 
-    fun submitList(newItems: List<String>) {
-        items = newItems
-        notifyDataSetChanged()
-    }
-
-    var selectedPosition = 0
+    var selectedPosition = -1
         set(value) {
             if (field == value) return
             val old = field
@@ -25,6 +20,11 @@ class TeamAdapter(
             if (old >= 0 && old < itemCount) notifyItemChanged(old)
             if (field >= 0 && field < itemCount) notifyItemChanged(field)
         }
+
+    fun submitList(newItems: List<String>) {
+        items = newItems
+        notifyDataSetChanged()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val binding = ItemTeamBinding.inflate(LayoutInflater.from(parent.context), parent, false)

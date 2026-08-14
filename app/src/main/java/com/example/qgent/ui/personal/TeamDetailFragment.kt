@@ -21,6 +21,7 @@ import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.databinding.DialogNewProjectBinding
 import com.example.qgent.databinding.FragmentTeamDetailBinding
+import com.example.qgent.ui.github.GithubViewModel
 import com.example.qgent.databinding.ItemRepoSelectBinding
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
@@ -36,6 +37,9 @@ class TeamDetailFragment : Fragment() {
     private val mainViewModel: MainViewModel by activityViewModels {
         (requireActivity().application as QgentApp).container.mainViewModelFactory
     }
+    private val githubViewModel: GithubViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.githubViewModelFactory
+    }
 
     private val githubRepository: GitHubRepository
         get() = (requireActivity().application as QgentApp).container.githubRepository
@@ -43,6 +47,7 @@ class TeamDetailFragment : Fragment() {
         get() = (requireActivity().application as QgentApp).container.userRepository
 
     private val projectAdapter = TeamProjectAdapter()
+    private val repositoryAdapter = TeamRepositoryAdapter()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -57,6 +62,7 @@ class TeamDetailFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         val teamName = arguments?.getString(ARG_TEAM_NAME).orEmpty()
+        val teamId = arguments?.getString(ARG_TEAM_ID).orEmpty()
 
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
         binding.tvTeamName.text = teamName
@@ -72,9 +78,18 @@ class TeamDetailFragment : Fragment() {
         binding.btnRepository.setOnClickListener { showTodoToast() }
 
         setupRecyclerList(binding.rvProjects, projectAdapter)
+        setupRecyclerList(binding.rvRepository, repositoryAdapter)
 
-        // 项目列表来自 MainViewModel（真实数据流）；成员 / 仓库暂无数据源
+        // 项目列表来自 MainViewModel（真实数据流）
         mainViewModel.projects.observe(viewLifecycleOwner) { projectAdapter.submitList(it) }
+
+        // 仓库列表来自 GitHub 授权仓库（fullName）；成员列表暂无数据源
+        githubViewModel.uiState.observe(viewLifecycleOwner) { state ->
+            repositoryAdapter.submitList(state.repositories.map { it.fullName })
+        }
+        if (teamId.isNotEmpty()) {
+            githubViewModel.loadRepositories(teamId)
+        }
 
         binding.btnDissolveTeam.setOnClickListener { confirmDissolveTeam() }
     }
@@ -215,5 +230,6 @@ class TeamDetailFragment : Fragment() {
 
     companion object {
         const val ARG_TEAM_NAME = "teamName"
+        const val ARG_TEAM_ID = "teamId"
     }
 }

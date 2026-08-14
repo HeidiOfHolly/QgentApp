@@ -212,7 +212,7 @@ interface QgApiService {
     suspend fun createInstallation(
         @Path("teamId") teamId: String,
         @Header("Idempotency-Key") idempotencyKey: String,
-        @Query("client") client: String = "MOBILE"   // WEB / MOBILE，移动端回调走 MOBILE 回跳
+        @Query("client") client: String
     ): Response<ApiResponse<GitHubInstallationUrlDto>>
 
     @GET("teams/{teamId}/integrations/github/installations")

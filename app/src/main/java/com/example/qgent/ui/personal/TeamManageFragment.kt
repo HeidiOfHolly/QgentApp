@@ -75,6 +75,7 @@ class TeamManageFragment : Fragment() {
     private fun navigateToTeamDetail(team: TeamDto) {
         val bundle = Bundle().apply {
             putString(TeamDetailFragment.ARG_TEAM_NAME, team.name)
+            putString(TeamDetailFragment.ARG_TEAM_ID, team.id)
         }
         findNavController().navigate(R.id.teamDetailFragment, bundle)
     }

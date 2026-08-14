@@ -12,7 +12,7 @@ import com.example.qgent.data.model.toUnitOrThrow
 class GitHubRepositoryImpl(private val service: QgApiService) : GitHubRepository {
 
     override suspend fun createInstallation(teamId: String, idempotencyKey: String): Result<GitHubInstallationUrlDto> =
-        apiCall { service.createInstallation(teamId, idempotencyKey).toDataOrThrow() }
+        apiCall { service.createInstallation(teamId, idempotencyKey, client = "MOBILE").toDataOrThrow() }
 
     override suspend fun getInstallations(teamId: String): Result<List<GitHubInstallationDto>> =
         apiCall { service.getInstallations(teamId).toDataOrThrow() }
