@@ -147,9 +147,14 @@ data class GroupDto(
     val status: String,             // ACTIVE / ARCHIVED
     @SerializedName("memberCount") val memberCount: Int,
     @SerializedName("repositoryIds") val repositoryIds: List<String>?,
-    @SerializedName("lastMessage") val lastMessage: String?,
-    @SerializedName("lastMessageSender") val lastMessageSender: String?,
-    @SerializedName("updatedAt") val updatedAt: String
+    @SerializedName("latestActivityAt") val latestActivityAt: String?,
+    @SerializedName("latestMessage") val latestMessage: GroupLatestMessageDto?
+)
+
+/** 群列表摘要（文档 §7 群列表 DTO 补充）：{ senderName, text }；SYSTEM 消息 senderName 为空 */
+data class GroupLatestMessageDto(
+    @SerializedName("senderName") val senderName: String?,
+    val text: String?
 )
 
 data class GroupMemberDto(
@@ -175,7 +180,25 @@ data class GroupMessageDto(
 )
 
 data class MessageContentDto(
-    val text: String?
+    val text: String?,
+    @SerializedName("imageUrl") val imageUrl: String? = null
+)
+
+/**
+ * 创建对象存储直传凭证（文档 §7：POST /projects/{projectId}/attachments）。
+ * 上传图片前先取凭证，上传后把 URL 填入消息 content.imageUrl。
+ * 具体字段以 A 联调约定为准，此处为最小骨架。
+ */
+data class CreateAttachmentRequest(
+    @SerializedName("fileName") val fileName: String,
+    @SerializedName("contentType") val contentType: String
+)
+
+/** 直传凭证响应（字段待后端确认，先占位） */
+data class AttachmentDto(
+    @SerializedName("attachmentId") val attachmentId: String,
+    @SerializedName("uploadUrl") val uploadUrl: String?,
+    @SerializedName("expiresAt") val expiresAt: String?
 )
 
 // ── 请求体 ──

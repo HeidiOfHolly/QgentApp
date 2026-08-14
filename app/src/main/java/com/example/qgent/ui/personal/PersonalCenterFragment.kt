@@ -58,13 +58,10 @@ class PersonalCenterFragment : Fragment() {
 
         binding.tvUserName.text = SessionStore.user()?.displayName ?: getString(R.string.user_name_placeholder)
 
-        // 团队列表加载完成后更新 adapter
+        // 团队列表加载完成后更新 adapter（复用实例，保持选中态，不重建）
         mainViewModel.teams.observe(viewLifecycleOwner) { teams ->
-            if (teams.isNotEmpty()) {
-                teamAdapter = TeamAdapter(teams) { teamName, _ -> onTeamClick(teamName) }
-                binding.rvTeams.adapter = teamAdapter
-                refreshHighlight()
-            }
+            teamAdapter.submitList(teams)
+            refreshHighlight()
         }
 
         // 当前团队变化：右上团队名同步 + 高亮刷新

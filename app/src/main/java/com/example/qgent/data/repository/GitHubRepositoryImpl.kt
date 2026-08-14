@@ -12,26 +12,26 @@ import com.example.qgent.data.model.toUnitOrThrow
 class GitHubRepositoryImpl(private val service: QgApiService) : GitHubRepository {
 
     override suspend fun createInstallation(teamId: String, idempotencyKey: String): Result<GitHubInstallationUrlDto> =
-        runCatching { service.createInstallation(teamId, idempotencyKey).toDataOrThrow() }
+        apiCall { service.createInstallation(teamId, idempotencyKey).toDataOrThrow() }
 
     override suspend fun getInstallations(teamId: String): Result<List<GitHubInstallationDto>> =
-        runCatching { service.getInstallations(teamId).toDataOrThrow() }
+        apiCall { service.getInstallations(teamId).toDataOrThrow() }
 
     override suspend fun deleteInstallation(teamId: String, installationId: String, idempotencyKey: String): Result<Unit> =
-        runCatching { service.deleteInstallation(teamId, installationId, idempotencyKey).toUnitOrThrow() }
+        apiCall { service.deleteInstallation(teamId, installationId, idempotencyKey).toUnitOrThrow() }
 
     override suspend fun syncInstallation(teamId: String, installationId: String, idempotencyKey: String): Result<GitHubInstallationDto> =
-        runCatching { service.syncInstallation(teamId, installationId, idempotencyKey).toDataOrThrow() }
+        apiCall { service.syncInstallation(teamId, installationId, idempotencyKey).toDataOrThrow() }
 
     override suspend fun getGithubRepositories(teamId: String): Result<List<GitHubRepositoryDto>> =
-        runCatching { service.getGithubRepositories(teamId).toDataOrThrow() }
+        apiCall { service.getGithubRepositories(teamId).toDataOrThrow() }
 
     override suspend fun getProjectRepositories(projectId: String): Result<List<ProjectRepositoryDto>> =
-        runCatching { service.getProjectRepositories(projectId).toDataOrThrow() }
+        apiCall { service.getProjectRepositories(projectId).toDataOrThrow() }
 
     override suspend fun bindProjectRepository(projectId: String, idempotencyKey: String, body: BindProjectRepositoryRequest): Result<ProjectRepositoryDto> =
-        runCatching { service.bindProjectRepository(projectId, idempotencyKey, body).toDataOrThrow() }
+        apiCall { service.bindProjectRepository(projectId, idempotencyKey, body).toDataOrThrow() }
 
     override suspend fun unbindProjectRepository(projectId: String, projectRepositoryId: String, idempotencyKey: String): Result<Unit> =
-        runCatching { service.unbindProjectRepository(projectId, projectRepositoryId, idempotencyKey).toUnitOrThrow() }
+        apiCall { service.unbindProjectRepository(projectId, projectRepositoryId, idempotencyKey).toUnitOrThrow() }
 }

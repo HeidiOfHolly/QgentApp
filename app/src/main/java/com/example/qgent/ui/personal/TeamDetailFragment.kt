@@ -2,12 +2,10 @@ package com.example.qgent.ui.personal
 
 import android.animation.ObjectAnimator
 import android.app.AlertDialog
-import android.app.Dialog
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
@@ -44,9 +42,7 @@ class TeamDetailFragment : Fragment() {
     private val userRepository: UserRepository
         get() = (requireActivity().application as QgentApp).container.userRepository
 
-    private val memberAdapter = TeamMemberAdapter()
     private val projectAdapter = TeamProjectAdapter()
-    private val repositoryAdapter = TeamRepositoryAdapter()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -66,42 +62,21 @@ class TeamDetailFragment : Fragment() {
         binding.tvTeamName.text = teamName
 
         // 三个三角下拉分组：默认收起，点击头部展开 / 收起
-        bindSection(binding.headerMembers, binding.ivArrowMembers, binding.sectionMembers)
-        bindSection(binding.headerProjects, binding.ivArrowProjects, binding.sectionProjects)
-        bindSection(binding.headerRepository, binding.ivArrowRepository, binding.sectionRepository)
+        bindCollapsibleSection(binding.headerMembers, binding.ivArrowMembers, binding.sectionMembers)
+        bindCollapsibleSection(binding.headerProjects, binding.ivArrowProjects, binding.sectionProjects)
+        bindCollapsibleSection(binding.headerRepository, binding.ivArrowRepository, binding.sectionRepository)
 
         // 展开时分组顶部显示增加按钮
         binding.btnAddMember.setOnClickListener { showTodoToast() }
         binding.btnAddProject.setOnClickListener { showNewProjectDialog() }
         binding.btnRepository.setOnClickListener { showTodoToast() }
 
-        setupList(binding.rvMembers, memberAdapter)
-        setupList(binding.rvProjects, projectAdapter)
-        setupList(binding.rvRepository, repositoryAdapter)
+        setupRecyclerList(binding.rvProjects, projectAdapter)
 
         // 项目列表来自 MainViewModel（真实数据流）；成员 / 仓库暂无数据源
         mainViewModel.projects.observe(viewLifecycleOwner) { projectAdapter.submitList(it) }
 
         binding.btnDissolveTeam.setOnClickListener { confirmDissolveTeam() }
-    }
-
-    private fun setupList(
-        rv: androidx.recyclerview.widget.RecyclerView,
-        adapter: androidx.recyclerview.widget.RecyclerView.Adapter<*>
-    ) {
-        rv.layoutManager = LinearLayoutManager(requireContext())
-        rv.adapter = adapter
-    }
-
-    private fun bindSection(header: View, arrow: View, content: View) {
-        header.setOnClickListener {
-            val expanded = content.isVisible
-            content.isVisible = !expanded
-            // 三角形转向：收起 90°，展开 180°
-            ObjectAnimator.ofFloat(arrow, View.ROTATION, if (expanded) 90f else 180f)
-                .setDuration(180)
-                .start()
-        }
     }
 
     private fun confirmDissolveTeam() {
@@ -117,14 +92,8 @@ class TeamDetailFragment : Fragment() {
 
     /** 新建项目：弹出名称/简介输入弹窗，GitHub 仓库下拉选择已授权未绑定的仓库 */
     private fun showNewProjectDialog() {
-        val dialog = Dialog(requireContext())
         val dialogBinding = DialogNewProjectBinding.inflate(layoutInflater)
-        dialog.setContentView(dialogBinding.root)
-        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_card)
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.85f).toInt(),
-            WindowManager.LayoutParams.WRAP_CONTENT
-        )
+        val dialog = newInputDialog(dialogBinding.root)
 
         dialogBinding.etName.doAfterTextChanged {
             if (dialogBinding.nameLayout.error != null) dialogBinding.nameLayout.error = null

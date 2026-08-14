@@ -1,28 +1,18 @@
 package com.example.qgent.data.api
 
+import com.example.qgent.data.SessionStore
 import okhttp3.Interceptor
 import okhttp3.Response
 
 /**
  * 为需要认证的请求注入 Bearer token。
- * token 由外部设置（登录成功后由 A 方调用 [setToken]）。
+ * token 统一从 [SessionStore]（SharedPreferences）读取，单一数据源，无需手工同步。
  */
 class AuthInterceptor : Interceptor {
 
-    companion object {
-        @Volatile
-        private var token: String? = null
-
-        fun setToken(token: String?) {
-            Companion.token = token
-        }
-
-        fun getToken(): String? = token
-    }
-
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
-        val tokenValue = token
+        val tokenValue = SessionStore.accessToken()
         if (tokenValue.isNullOrEmpty()) return chain.proceed(original)
 
         val request = original.newBuilder()

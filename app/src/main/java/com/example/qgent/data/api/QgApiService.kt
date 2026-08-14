@@ -3,7 +3,9 @@ package com.example.qgent.data.api
 import com.example.qgent.data.model.AgentDto
 import com.example.qgent.data.model.AgentSkillBindingsRequest
 import com.example.qgent.data.model.ApiResponse
+import com.example.qgent.data.model.AttachmentDto
 import com.example.qgent.data.model.BindProjectRepositoryRequest
+import com.example.qgent.data.model.CreateAttachmentRequest
 import com.example.qgent.data.model.CreateAgentRequest
 import com.example.qgent.data.model.CreateGroupRequest
 import com.example.qgent.data.model.CreateTeamRequest
@@ -145,6 +147,14 @@ interface QgApiService {
         @Body body: SendMessageRequest
     ): Response<ApiResponse<GroupMessageDto>>
 
+    // ── 附件（文档 §7：对象存储直传凭证）──
+
+    @POST("projects/{projectId}/attachments")
+    suspend fun createAttachment(
+        @Path("projectId") projectId: String,
+        @Body body: CreateAttachmentRequest
+    ): Response<ApiResponse<AttachmentDto>>
+
     // ── Agent（§11）──
 
     @GET("teams/{teamId}/agents")
@@ -201,7 +211,8 @@ interface QgApiService {
     @POST("teams/{teamId}/integrations/github/installations")
     suspend fun createInstallation(
         @Path("teamId") teamId: String,
-        @Header("Idempotency-Key") idempotencyKey: String
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Query("client") client: String = "MOBILE"   // WEB / MOBILE，移动端回调走 MOBILE 回跳
     ): Response<ApiResponse<GitHubInstallationUrlDto>>
 
     @GET("teams/{teamId}/integrations/github/installations")

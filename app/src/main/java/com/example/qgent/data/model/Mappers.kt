@@ -32,16 +32,24 @@ fun GroupMemberDto.toGroupMember(): GroupMember = GroupMember(
 )
 
 /** GroupMessageDto → UI ChatMessage。isMine 依据当前用户 id 与 senderId 比对。 */
-fun GroupMessageDto.toChatMessage(myUserId: String?): ChatMessage {
+fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String, String>): ChatMessage {
     val parsedType = runCatching { MessageType.valueOf(type) }.getOrDefault(MessageType.TEXT)
     return ChatMessage(
         id = id,
-        senderName = senderName,
+        // 文档 §7：senderName 后端不返回，前端用 senderId 反查群成员 displayName
+        senderName = memberNamesById[senderId] ?: senderName,
         content = content?.text ?: "",
         type = parsedType,
         timestamp = parseRfc3339(createdAt),
         isMine = myUserId != null && senderId == myUserId
     )
+}
+
+/** 群列表摘要：senderName 为空（如 SYSTEM 消息）时只显示 text。 */
+fun GroupLatestMessageDto?.toSummary(): String = when {
+    this == null -> ""
+    senderName.isNullOrBlank() -> text ?: ""
+    else -> "$senderName：${text ?: ""}"
 }
 
 /** 解析 UTC RFC3339 时间到 epoch 毫秒，失败回退当前时间。 */

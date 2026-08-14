@@ -17,7 +17,7 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         projectId: String,
         cursor: String?,
         limit: Int
-    ): Result<List<GroupDto>> = runCatching {
+    ): Result<List<GroupDto>> = apiCall {
         service.getGroups(projectId, cursor, limit).toDataOrThrow()
     }
 
@@ -25,14 +25,14 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         projectId: String,
         title: String,
         description: String?
-    ): Result<GroupDto> = runCatching {
+    ): Result<GroupDto> = apiCall {
         service.createGroup(
             projectId,
             CreateGroupRequest(title = title, description = description)
         ).toDataOrThrow()
     }
 
-    override suspend fun getGroup(projectId: String, groupId: String): Result<GroupDto> = runCatching {
+    override suspend fun getGroup(projectId: String, groupId: String): Result<GroupDto> = apiCall {
         service.getGroup(projectId, groupId).toDataOrThrow()
     }
 
@@ -41,22 +41,22 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         groupId: String,
         title: String?,
         description: String?
-    ): Result<GroupDto> = runCatching {
+    ): Result<GroupDto> = apiCall {
         service.updateGroup(
             projectId, groupId,
             UpdateGroupRequest(title = title, description = description)
         ).toDataOrThrow()
     }
 
-    override suspend fun archiveGroup(projectId: String, groupId: String): Result<GroupDto> = runCatching {
+    override suspend fun archiveGroup(projectId: String, groupId: String): Result<GroupDto> = apiCall {
         service.archiveGroup(projectId, groupId).toDataOrThrow()
     }
 
-    override suspend fun getMembers(projectId: String, groupId: String): Result<List<GroupMemberDto>> = runCatching {
+    override suspend fun getMembers(projectId: String, groupId: String): Result<List<GroupMemberDto>> = apiCall {
         service.getGroupMembers(projectId, groupId).toDataOrThrow()
     }
 
-    override suspend fun leaveGroup(projectId: String, groupId: String): Result<Unit> = runCatching {
+    override suspend fun leaveGroup(projectId: String, groupId: String): Result<Unit> = apiCall {
         service.leaveGroup(projectId, groupId).toUnitOrThrow()
     }
 
@@ -65,7 +65,7 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         groupId: String,
         cursor: String?,
         limit: Int
-    ): Result<List<GroupMessageDto>> = runCatching {
+    ): Result<List<GroupMessageDto>> = apiCall {
         service.getMessages(projectId, groupId, cursor, limit).toDataOrThrow()
     }
 
@@ -75,7 +75,7 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         text: String,
         type: String,
         clientMessageId: String?
-    ): Result<GroupMessageDto> = runCatching {
+    ): Result<GroupMessageDto> = apiCall {
         service.sendMessage(
             projectId, groupId,
             SendMessageRequest(

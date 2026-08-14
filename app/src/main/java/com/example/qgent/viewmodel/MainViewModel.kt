@@ -8,6 +8,7 @@ import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.formatGroupTime
 import com.example.qgent.data.model.parseRfc3339
 import com.example.qgent.data.model.toAgent
+import com.example.qgent.data.model.toSummary
 import com.example.qgent.data.repository.AgentRepository
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.UserRepository
@@ -62,10 +63,12 @@ class MainViewModel(
     private val _projects = MutableStateFlow<List<String>>(emptyList())
     val projects: LiveData<List<String>> = _projects.asLiveData()
 
-    // ── 缓存：name → id 映射（用于 API 调用时反查） ──
+    // ── 缓存：id 反查映射。团队名全局唯一，teamNameToId 全局共享；
+    //    项目名只在其所属团队内唯一，projectIdsByTeam 按 teamId 分桶，
+    //    避免两个团队同名项目时跨团队串 id ──
 
-    private var projectNameToId = mutableMapOf<String, String>()
-    private var teamNameToId = mutableMapOf<String, String>()
+    private val teamNameToId = mutableMapOf<String, String>()
+    private val projectIdsByTeam = mutableMapOf<String, Map<String, String>>()
 
     // ── 已读群聊 ID 集合（跨项目切换保持） ──
 
@@ -74,6 +77,11 @@ class MainViewModel(
     // ── 当前已加载 projects 对应的团队（防止串数据） ──
 
     private var loadedProjectsTeam: String? = null
+
+    // ── 冷启动初始数据就绪信号：teams + 首个团队 projects 加载完成后置 true，供 MainActivity 路由 ──
+
+    private val _initialDataLoaded = MutableStateFlow(false)
+    val initialDataLoaded: LiveData<Boolean> = _initialDataLoaded.asLiveData()
 
     // ── 用户权限（当前为演示阶段默认 Project Admin，接入真实权限后替换） ──
 
@@ -108,7 +116,12 @@ class MainViewModel(
 
     /** 当前团队 / 项目的真实 id（API 成功时才有值；mock 回退时返回 null） */
     fun currentTeamId(): String? = teamNameToId[_currentTeam.value]
-    fun currentProjectId(): String? = projectNameToId[_currentProject.value]
+
+    /** 当前项目的真实 id，从「当前团队」的映射桶中反查，避免跨团队串 id */
+    fun currentProjectId(): String? {
+        val teamId = teamNameToId[_currentTeam.value] ?: return null
+        return projectIdsByTeam[teamId]?.get(_currentProject.value)
+    }
 
     /** 标记群聊为已读（未读数清零，并持久化到已读集合） */
     fun markAsRead(groupId: String) {
@@ -138,15 +151,21 @@ class MainViewModel(
 
     private fun loadTeams() {
         viewModelScope.launch {
-            userRepo.getTeams().onSuccess { dtos ->
-                dtos.forEach { teamNameToId[it.name] = it.id }
-                _teams.value = dtos.map { it.name }
-                _teamDtos.value = dtos
-                // 无当前选中时自动选第一个团队（替代原硬编码默认值）
-                if (_currentTeam.value.isEmpty()) {
-                    dtos.firstOrNull()?.name?.let { setCurrentTeam(it) }
+            userRepo.getTeams()
+                .onSuccess { dtos ->
+                    dtos.forEach { teamNameToId[it.name] = it.id }
+                    _teams.value = dtos.map { it.name }
+                    _teamDtos.value = dtos
+                    // 无团队 → 初始就绪（启动页引导创建）；有团队 → 等首个团队项目加载完成再就绪
+                    if (dtos.isEmpty()) {
+                        _initialDataLoaded.value = true
+                    } else if (_currentTeam.value.isEmpty()) {
+                        dtos.firstOrNull()?.name?.let {
+                            setCurrentTeam(it) { _initialDataLoaded.value = true }
+                        }
+                    }
                 }
-            }
+                .onFailure { _initialDataLoaded.value = true }
         }
     }
 
@@ -156,7 +175,8 @@ class MainViewModel(
             if (teamDto != null) {
                 userRepo.getProjects(teamDto.id).onSuccess { projectDtos ->
                     _projects.value = projectDtos.map { it.name }
-                    projectDtos.forEach { projectNameToId[it.name] = it.id }
+                    // 每次全量刷新该团队的项目映射，覆盖旧桶，防止跨团队残留
+                    projectIdsByTeam[teamDto.id] = projectDtos.associate { it.name to it.id }
                     loadedProjectsTeam = team
                     onLoaded?.invoke()
                     return@launch
@@ -168,22 +188,20 @@ class MainViewModel(
         }
     }
 
+    /** 拉取当前团队 / 项目下的群聊。只用真实 projectId，失败由数据层 mock 回退兜底 */
     private fun loadGroups(projectName: String) {
+        val projectId = currentProjectId() ?: run {
+            _groups.value = emptyList()
+            return
+        }
         viewModelScope.launch {
-            // 优先按 projectId 拉取；空 / 失败时按项目名兜底（走数据层 mock），避免群列表闪空
-            val pid = projectNameToId[projectName]
-            val groups = pid?.let { chatRepo.getGroups(it).getOrNull() } ?: emptyList()
-            val result = if (groups.isNotEmpty()) {
-                groups
-            } else {
-                chatRepo.getGroups(projectName).getOrNull() ?: emptyList()
-            }
-            _groups.value = applyReadState(sortGroups(result.map { dto ->
-                val lastActive = parseRfc3339(dto.updatedAt)
+            val groups = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
+            _groups.value = applyReadState(sortGroups(groups.map { dto ->
+                val lastActive = parseRfc3339(dto.latestActivityAt.orEmpty())
                 ChatGroup(
                     id = dto.id,
                     name = dto.title,
-                    lastMessage = dto.lastMessage ?: "",
+                    lastMessage = dto.latestMessage.toSummary(),
                     time = formatGroupTime(lastActive),
                     unread = 0,
                     lastActiveTime = lastActive

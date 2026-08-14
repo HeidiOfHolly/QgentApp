@@ -29,7 +29,7 @@ class TokenAuthenticator(
         synchronized(lock) {
             // 并发 401：若期间已有线程刷新成功，直接复用新 token 重试，不重复刷新
             val used = response.request.header("Authorization")?.removePrefix("Bearer ")
-            val current = AuthInterceptor.getToken()
+            val current = SessionStore.accessToken()
             if (!current.isNullOrEmpty() && current != used) {
                 return response.request.newBuilder()
                     .header("Authorization", "Bearer $current")

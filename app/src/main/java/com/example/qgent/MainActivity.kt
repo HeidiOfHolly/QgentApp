@@ -8,7 +8,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.GravityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
@@ -17,12 +17,17 @@ import com.example.qgent.databinding.ActivityMainBinding
 import com.example.qgent.ui.auth.LoginActivity
 import com.example.qgent.ui.auth.TeamEntryActivity
 import com.example.qgent.ui.personal.PersonalCenterFragment
-import kotlinx.coroutines.launch
+import com.example.qgent.viewmodel.MainViewModel
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var navController: NavController
+
+    // 与抽屉等 Fragment 共用同一 Activity 级 MainViewModel，避免冷启动重复拉取
+    private val mainViewModel: MainViewModel by lazy {
+        ViewModelProvider(this, (application as QgentApp).container.mainViewModelFactory)[MainViewModel::class.java]
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,22 +86,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 启动路由门控：
+     * 启动路由门控（基于 MainViewModel 已就绪的数据，不再单独拉取）：
      * - 无团队 → 团队引导页（创建/加入）
      * - 有团队但无项目 → GitHub 仓库绑定页
      * - 两者都有 → 默认群聊列表页
      */
     private fun routeInitialDestination() {
-        val repo = (application as QgentApp).container.userRepository
-        lifecycleScope.launch {
-            val teams = repo.getTeams().getOrNull().orEmpty()
-            if (teams.isEmpty()) {
+        var routed = false
+        mainViewModel.initialDataLoaded.observe(this) { loaded ->
+            if (routed || !loaded) return@observe
+            routed = true
+            if (mainViewModel.teams.value.isNullOrEmpty()) {
                 startActivity(Intent(this@MainActivity, TeamEntryActivity::class.java))
                 finish()
-                return@launch
-            }
-            val projects = repo.getProjects(teams.first().id).getOrNull().orEmpty()
-            if (projects.isEmpty()) {
+            } else if (mainViewModel.projects.value.isNullOrEmpty()) {
                 navController.navigate(R.id.githubFragment)
             }
         }

@@ -1,24 +1,17 @@
 package com.example.qgent.ui.personal
 
-import android.animation.ObjectAnimator
-import android.app.Dialog
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.EditText
-import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
-import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.TeamDto
@@ -53,12 +46,12 @@ class TeamManageFragment : Fragment() {
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
         binding.btnTeamMenu.setOnClickListener { showTeamMenu() }
 
-        setupList(binding.rvJoined, joinedAdapter)
-        setupList(binding.rvCreated, createdAdapter)
+        setupRecyclerList(binding.rvJoined, joinedAdapter)
+        setupRecyclerList(binding.rvCreated, createdAdapter)
 
         // 两个三角下拉分组：点击头部收起 / 展开
-        bindSection(binding.headerJoined, binding.ivArrowJoined, binding.rvJoined)
-        bindSection(binding.headerCreated, binding.ivArrowCreated, binding.rvCreated)
+        bindCollapsibleSection(binding.headerJoined, binding.ivArrowJoined, binding.rvJoined)
+        bindCollapsibleSection(binding.headerCreated, binding.ivArrowCreated, binding.rvCreated)
 
         // 按 role 拆分团队：TEAM_OWNER → 我创建的，其余 → 我加入的
         mainViewModel.teamDtos.observe(viewLifecycleOwner) { teams ->
@@ -66,29 +59,6 @@ class TeamManageFragment : Fragment() {
             val joined = teams.filter { it.role != "TEAM_OWNER" }
             createdAdapter.submitList(created)
             joinedAdapter.submitList(joined)
-        }
-    }
-
-    private fun setupList(
-        rv: androidx.recyclerview.widget.RecyclerView,
-        adapter: TeamManageAdapter
-    ) {
-        rv.layoutManager = LinearLayoutManager(requireContext())
-        rv.adapter = adapter
-    }
-
-    private fun bindSection(
-        header: LinearLayout,
-        arrow: ImageView,
-        content: View
-    ) {
-        header.setOnClickListener {
-            val expanded = content.isVisible
-            content.isVisible = !expanded
-            //三角形转向
-            ObjectAnimator.ofFloat(arrow, View.ROTATION, if (expanded) 90f else 180f)
-                .setDuration(180)
-                .start()
         }
     }
 
@@ -141,16 +111,8 @@ class TeamManageFragment : Fragment() {
 
     /** 创建团队：弹出输入团队名称 / 简介的弹窗（创建 API 待后端就绪后接入） */
     private fun showCreateTeamDialog() {
-        val dialog = Dialog(requireContext())
         val dialogBinding = DialogNewTewmBinding.inflate(layoutInflater)
-        dialog.setContentView(dialogBinding.root)
-        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_card)
-        // Dialog 默认窗口 WRAP_CONTENT，根布局 match_parent 会被压成窄条；
-        // 显式设为屏宽 85%、高度自适应
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.85f).toInt(),
-            WindowManager.LayoutParams.WRAP_CONTENT
-        )
+        val dialog = newInputDialog(dialogBinding.root)
 
         dialogBinding.etName.doAfterTextChanged {
             if (dialogBinding.nameLayout.error != null) dialogBinding.nameLayout.error = null

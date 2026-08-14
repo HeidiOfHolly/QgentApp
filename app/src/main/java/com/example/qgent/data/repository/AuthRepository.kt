@@ -13,13 +13,13 @@ import com.example.qgent.data.model.toDataOrThrow
  */
 class AuthRepository(private val service: QgApiService) {
 
-    suspend fun login(email: String, password: String): Result<AuthSessionDto> = runCatching {
+    suspend fun login(email: String, password: String): Result<AuthSessionDto> = apiCall {
         val encrypted = PasswordEncryptor.encrypt(password)
         service.login(LoginRequest(email, PasswordEncryptor.KEY_ID, encrypted)).toDataOrThrow()
     }
 
     suspend fun register(email: String, displayName: String, password: String): Result<AuthSessionDto> =
-        runCatching {
+        apiCall {
             val encrypted = PasswordEncryptor.encrypt(password)
             service.register(
                 RegisterRequest(email, PasswordEncryptor.KEY_ID, encrypted, displayName)

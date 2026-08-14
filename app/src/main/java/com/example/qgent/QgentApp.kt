@@ -13,6 +13,5 @@ class QgentApp : Application() {
         super.onCreate()
         container = AppContainer()
         SessionStore.init(this)
-        SessionStore.restore()
     }
 }

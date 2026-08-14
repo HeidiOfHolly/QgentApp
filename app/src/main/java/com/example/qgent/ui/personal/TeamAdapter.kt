@@ -8,9 +8,14 @@ import com.example.qgent.R
 import com.example.qgent.databinding.ItemTeamBinding
 
 class TeamAdapter(
-    private val items: List<String>,
+    private var items: List<String>,
     private val onTeamClick: (String, Int) -> Unit
 ) : RecyclerView.Adapter<TeamAdapter.VH>() {
+
+    fun submitList(newItems: List<String>) {
+        items = newItems
+        notifyDataSetChanged()
+    }
 
     var selectedPosition = 0
         set(value) {

@@ -9,20 +9,20 @@ import com.example.qgent.data.model.toDataOrThrow
 
 class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
 
-    override suspend fun getUserProfile(): Result<UserProfileDto> = runCatching {
+    override suspend fun getUserProfile(): Result<UserProfileDto> = apiCall {
         service.getUserProfile().toDataOrThrow()
     }
 
-    override suspend fun getTeams(): Result<List<TeamDto>> = runCatching {
+    override suspend fun getTeams(): Result<List<TeamDto>> = apiCall {
         service.getTeams().toDataOrThrow()
     }
 
-    override suspend fun getProjects(teamId: String): Result<List<ProjectDto>> = runCatching {
+    override suspend fun getProjects(teamId: String): Result<List<ProjectDto>> = apiCall {
         service.getProjects(teamId).toDataOrThrow()
     }
 
     override suspend fun createTeam(name: String, description: String?, idempotencyKey: String): Result<TeamDto> =
-        runCatching {
+        apiCall {
             service.createTeam(idempotencyKey, CreateTeamRequest(name, description)).toDataOrThrow()
         }
 }

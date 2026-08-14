@@ -81,6 +81,9 @@ class ChatDetailFragment : Fragment() {
         }
     }
 
+    // 群成员 id → 昵称（文档 §7：消息 senderName 需按 senderId 反查）
+    private var memberNamesById: Map<String, String> = emptyMap()
+
     // 群成员（mock），含 AgentOrchestrator
     private var groupMembers = listOf(
         GroupMember("张三"),
@@ -155,10 +158,6 @@ class ChatDetailFragment : Fragment() {
             onAvatarLongClick = { senderName -> insertMention(senderName) },
             onImageClick = { uri -> showImagePreview(uri) }
         )
-        rows = mutableListOf()
-        adapter = ChatMessageAdapter(rows) { senderName ->
-            insertMention(senderName)
-        }
         binding.rvMessages.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMessages.adapter = adapter
 
@@ -176,7 +175,7 @@ class ChatDetailFragment : Fragment() {
         if (projectId != null && groupId.isNotEmpty()) {
             viewLifecycleOwner.lifecycleScope.launch {
                 chatRepo.sendMessage(projectId, groupId, text).onSuccess { dto ->
-                    appendMessage(dto.toChatMessage(SessionStore.user()?.id))
+                    appendMessage(dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
                 }.onFailure {
                     appendLocalMessage(text)
                 }
@@ -379,14 +378,16 @@ class ChatDetailFragment : Fragment() {
 
         if (projectId != null && groupId.isNotEmpty()) {
             viewLifecycleOwner.lifecycleScope.launch {
-                chatRepo.getMessages(projectId, groupId).onSuccess { dtos ->
-                    val myId = SessionStore.user()?.id
-                    setMessages(dtos.map { it.toChatMessage(myId) })
-                }.onFailure {
-                    setMessages(mockMessages())
-                }
+                // 先取成员表再拉消息，保证 senderName 能按 senderId 反查（顺序 await）
                 chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
                     groupMembers = dtos.map { it.toGroupMember() }
+                    memberNamesById = dtos.associate { it.id to it.nickname }
+                }
+                chatRepo.getMessages(projectId, groupId).onSuccess { dtos ->
+                    val myId = SessionStore.user()?.id
+                    setMessages(dtos.map { it.toChatMessage(myId, memberNamesById) })
+                }.onFailure {
+                    setMessages(mockMessages())
                 }
             }
         } else {

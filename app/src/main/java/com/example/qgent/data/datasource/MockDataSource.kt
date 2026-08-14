@@ -1,7 +1,12 @@
 package com.example.qgent.data.datasource
 
+import com.example.qgent.data.model.AgentDto
+import com.example.qgent.data.model.GitHubInstallationDto
+import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.model.GroupDto
+import com.example.qgent.data.model.GroupLatestMessageDto
 import com.example.qgent.data.model.ProjectDto
+import com.example.qgent.data.model.ProjectRepositoryDto
 import com.example.qgent.data.model.TeamDto
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -39,26 +44,26 @@ object MockDataSource {
 
     private val groupsByProjectId = mapOf(
         "p1" to listOf(
-            GroupDto("1", "p1", "登录功能", null, "REQUIREMENT", "ACTIVE", 3, null, "李四：好的没问题", "李四", iso(30 * MINUTE)),
-            GroupDto("2", "p1", "认证安全", null, "REQUIREMENT", "ACTIVE", 2, null, "我：RSA 公钥我看一下", null, iso(90 * MINUTE))
+            GroupDto("1", "p1", "登录功能", null, "REQUIREMENT", "ACTIVE", 3, null, iso(30 * MINUTE), GroupLatestMessageDto("李四", "好的没问题")),
+            GroupDto("2", "p1", "认证安全", null, "REQUIREMENT", "ACTIVE", 2, null, iso(90 * MINUTE), GroupLatestMessageDto("我", "RSA 公钥我看一下"))
         ),
         "p2" to listOf(
-            GroupDto("3", "p2", "任务编排", null, "REQUIREMENT", "ACTIVE", 5, null, "王五：Planner 已完成", null, iso(26 * HOUR)),
-            GroupDto("4", "p2", "移动端 UI", null, "REQUIREMENT", "ACTIVE", 1, null, "赵六：设置页改好了", null, iso(30 * HOUR))
+            GroupDto("3", "p2", "任务编排", null, "REQUIREMENT", "ACTIVE", 5, null, iso(26 * HOUR), GroupLatestMessageDto("王五", "Planner 已完成")),
+            GroupDto("4", "p2", "移动端 UI", null, "REQUIREMENT", "ACTIVE", 1, null, iso(30 * HOUR), GroupLatestMessageDto("赵六", "设置页改好了"))
         ),
         "p3" to listOf(
-            GroupDto("5", "p3", "OAuth 对接", null, "REQUIREMENT", "ACTIVE", 2, null, "张三：回调地址已更新", null, iso(2 * DAY)),
-            GroupDto("6", "p3", "Token 刷新", null, "REQUIREMENT", "ACTIVE", 0, null, "我：异常情况如何处理", null, iso(3 * DAY))
+            GroupDto("5", "p3", "OAuth 对接", null, "REQUIREMENT", "ACTIVE", 2, null, iso(2 * DAY), GroupLatestMessageDto("张三", "回调地址已更新")),
+            GroupDto("6", "p3", "Token 刷新", null, "REQUIREMENT", "ACTIVE", 0, null, iso(3 * DAY), GroupLatestMessageDto("我", "异常情况如何处理"))
         ),
         "p4" to listOf(
-            GroupDto("7", "p4", "限流策略", null, "REQUIREMENT", "ACTIVE", 1, null, "李四：阈值需要讨论", null, iso(4 * DAY))
+            GroupDto("7", "p4", "限流策略", null, "REQUIREMENT", "ACTIVE", 1, null, iso(4 * DAY), GroupLatestMessageDto("李四", "阈值需要讨论"))
         ),
         "p5" to listOf(
-            GroupDto("8", "p5", "数据接入", null, "REQUIREMENT", "ACTIVE", 0, null, "王五：Schema 已对齐", null, iso(5 * DAY)),
-            GroupDto("9", "p5", "报表需求", null, "REQUIREMENT", "ACTIVE", 4, null, "赵六：新增 3 个维度", null, iso(5 * DAY + 12 * HOUR))
+            GroupDto("8", "p5", "数据接入", null, "REQUIREMENT", "ACTIVE", 0, null, iso(5 * DAY), GroupLatestMessageDto("王五", "Schema 已对齐")),
+            GroupDto("9", "p5", "报表需求", null, "REQUIREMENT", "ACTIVE", 4, null, iso(5 * DAY + 12 * HOUR), GroupLatestMessageDto("赵六", "新增 3 个维度"))
         ),
         "p6" to listOf(
-            GroupDto("10", "p6", "权限管理", null, "REQUIREMENT", "ACTIVE", 0, null, "张三：角色树已更新", null, iso(6 * DAY))
+            GroupDto("10", "p6", "权限管理", null, "REQUIREMENT", "ACTIVE", 0, null, iso(6 * DAY), GroupLatestMessageDto("张三", "角色树已更新"))
         )
     )
 
@@ -71,6 +76,73 @@ object MockDataSource {
         groupsByProjectId[projectIdOrName]
             ?: projectNameById[projectIdOrName]?.let { groupsByProjectId[it] }
             ?: emptyList()
+
+    // ── Agent（系统内置“新手大礼包”） ──
+
+    val mockAgents: List<AgentDto> = listOf(
+        AgentDto("1", "AgentOrchestrator", null, "ORCHESTRATOR", listOf("任务调度", "工作流编排", "质量门禁"), null, "PRIVATE", "ACTIVE", "system"),
+        AgentDto("2", "Planner", null, "PLANNER", listOf("需求分析", "任务拆分", "计划编排"), null, "PRIVATE", "ACTIVE", "system"),
+        AgentDto("3", "Developer", null, "DEVELOPER", listOf("java", "spring-boot", "api", "react"), null, "PRIVATE", "ACTIVE", "system"),
+        AgentDto("4", "Tester", null, "TESTER", listOf("单元测试", "集成测试", "回归测试"), null, "PRIVATE", "ACTIVE", "system"),
+        AgentDto("5", "Reviewer", null, "REVIEWER", listOf("代码审查", "规范检查", "安全扫描"), null, "PRIVATE", "ACTIVE", "system")
+    )
+
+    // ── GitHub 集成（Installation / 授权仓库 / 项目绑定） ──
+
+    val githubInstallations: List<GitHubInstallationDto> = listOf(
+        GitHubInstallationDto(
+            id = "installation-1",
+            providerInstallationId = 12345678,
+            accountLogin = "Yjingwen-svg",
+            accountType = "ORGANIZATION",
+            status = "ACTIVE",
+            installedAt = "2026-08-01T08:00:00Z",
+            metadataSyncedAt = "2026-08-13T10:00:00Z"
+        )
+    )
+
+    val githubRepositories: List<GitHubRepositoryDto> = listOf(
+        GitHubRepositoryDto(
+            id = "repository-1",
+            installationId = "installation-1",
+            providerRepositoryId = 987654321,
+            fullName = "Yjingwen-svg/qgents-web",
+            githubUrl = "https://github.com/Yjingwen-svg/qgents-web",
+            defaultBranch = "main",
+            visibility = "PRIVATE",
+            archived = false,
+            authorizationStatus = "AUTHORIZED",
+            metadataSyncedAt = "2026-08-13T10:00:00Z"
+        ),
+        GitHubRepositoryDto(
+            id = "repository-2",
+            installationId = "installation-1",
+            providerRepositoryId = 987654322,
+            fullName = "Yjingwen-svg/qgents-mobile",
+            githubUrl = "https://github.com/Yjingwen-svg/qgents-mobile",
+            defaultBranch = "main",
+            visibility = "PRIVATE",
+            archived = false,
+            authorizationStatus = "AUTHORIZED",
+            metadataSyncedAt = "2026-08-13T10:00:00Z"
+        )
+    )
+
+    val projectRepositories: List<ProjectRepositoryDto> = listOf(
+        ProjectRepositoryDto(
+            id = "project-binding-1",
+            repositoryId = "repository-1",
+            installationId = "installation-1",
+            providerRepositoryId = 987654321,
+            fullName = "Yjingwen-svg/qgents-web",
+            githubUrl = "https://github.com/Yjingwen-svg/qgents-web",
+            defaultBranch = "main",
+            displayName = "qgents-web",
+            authorizationStatus = "AUTHORIZED",
+            metadataSyncedAt = "2026-08-13T10:00:00Z",
+            boundAt = "2026-08-13T10:00:00Z"
+        )
+    )
 
     /** 生成「当前时间 - offset」的 UTC RFC3339 时间戳 */
     private fun iso(offsetMillis: Long): String =
