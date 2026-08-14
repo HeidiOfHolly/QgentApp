@@ -4,6 +4,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- usesCleartextTraffic：开发联调用 http 明文后端才需要；正式包必须移除并回归 https -->
     <application
         android:name=".QgentApp"
         android:allowBackup="true"
@@ -13,7 +14,8 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Qgent">
+        android:theme="@style/Theme.Qgent"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".ui.auth.LoginActivity"
             android:exported="false"
