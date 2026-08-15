@@ -1,4 +1,4 @@
-package com.example.qgent.ui.personal
+package com.example.qgent.ui.team
 
 import android.animation.ObjectAnimator
 import android.app.AlertDialog
@@ -23,6 +23,10 @@ import com.example.qgent.databinding.DialogNewProjectBinding
 import com.example.qgent.databinding.FragmentTeamDetailBinding
 import com.example.qgent.ui.github.GithubViewModel
 import com.example.qgent.databinding.ItemRepoSelectBinding
+import com.example.qgent.ui.tasks.TeamProjectAdapter
+import com.example.qgent.ui.personal.bindCollapsibleSection
+import com.example.qgent.ui.personal.newInputDialog
+import com.example.qgent.ui.personal.setupRecyclerList
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 
@@ -63,6 +67,8 @@ class TeamDetailFragment : Fragment() {
 
         val teamName = arguments?.getString(ARG_TEAM_NAME).orEmpty()
         val teamId = arguments?.getString(ARG_TEAM_ID).orEmpty()
+        // 我创建的团队 → 解散团队；我加入的团队 → 退出团队（默认按创建的兜底）
+        val isOwner = arguments?.getBoolean(ARG_IS_OWNER, true) ?: true
 
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
         binding.tvTeamName.text = teamName
@@ -91,16 +97,22 @@ class TeamDetailFragment : Fragment() {
             githubViewModel.loadRepositories(teamId)
         }
 
-        binding.btnDissolveTeam.setOnClickListener { confirmDissolveTeam() }
+        binding.btnDissolveTeam.text =
+            getString(if (isOwner) R.string.dissolve_team else R.string.exit_team)
+        binding.btnDissolveTeam.setOnClickListener { confirmLeaveOrDissolve(isOwner) }
     }
 
-    private fun confirmDissolveTeam() {
+    /** 底部操作：我创建的团队 → 解散；我加入的团队 → 退出。API 待后端就绪后接入 */
+    private fun confirmLeaveOrDissolve(isOwner: Boolean) {
+        val titleRes = if (isOwner) R.string.dissolve_team else R.string.exit_team
+        val confirmRes = if (isOwner) R.string.dissolve_team_confirm else R.string.exit_team_confirm
+        val toastRes = if (isOwner) R.string.dissolve_team_placeholder else R.string.exit_team_placeholder
         AlertDialog.Builder(requireContext())
-            .setTitle(R.string.dissolve_team)
-            .setMessage(R.string.dissolve_team_confirm)
+            .setTitle(titleRes)
+            .setMessage(confirmRes)
             .setNegativeButton(R.string.cancel, null)
-            .setPositiveButton(R.string.dissolve_team) { _, _ ->
-                Toast.makeText(requireContext(), R.string.dissolve_team_placeholder, Toast.LENGTH_SHORT).show()
+            .setPositiveButton(titleRes) { _, _ ->
+                Toast.makeText(requireContext(), toastRes, Toast.LENGTH_SHORT).show()
             }
             .show()
     }
@@ -231,5 +243,6 @@ class TeamDetailFragment : Fragment() {
     companion object {
         const val ARG_TEAM_NAME = "teamName"
         const val ARG_TEAM_ID = "teamId"
+        const val ARG_IS_OWNER = "isOwner"
     }
 }

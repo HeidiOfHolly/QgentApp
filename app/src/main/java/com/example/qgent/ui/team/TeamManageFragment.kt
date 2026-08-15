@@ -1,4 +1,4 @@
-package com.example.qgent.ui.personal
+package com.example.qgent.ui.team
 
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -17,6 +17,9 @@ import com.example.qgent.R
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.databinding.DialogNewTewmBinding
 import com.example.qgent.databinding.FragmentTeamManageBinding
+import com.example.qgent.ui.personal.bindCollapsibleSection
+import com.example.qgent.ui.personal.newInputDialog
+import com.example.qgent.ui.personal.setupRecyclerList
 import com.example.qgent.viewmodel.MainViewModel
 
 /** 团队管理页：三角下拉分组展示“我加入的 / 我创建的”团队，右上角可创建团队 */
@@ -64,18 +67,20 @@ class TeamManageFragment : Fragment() {
 
     private fun onJoinTeamClick(team: TeamDto) {
         mainViewModel.setCurrentTeam(team.name)
-        navigateToTeamDetail(team)
+        navigateToTeamDetail(team, isOwner = false)
     }
 
     /** 我创建的团队 → 进入团队详情页管理成员 / 项目 */
     private fun onCreateTeamClick(team: TeamDto) {
-        navigateToTeamDetail(team)
+        navigateToTeamDetail(team, isOwner = true)
     }
 
-    private fun navigateToTeamDetail(team: TeamDto) {
+    /** isOwner：我创建的团队 → 详情页底部显示「解散团队」；我加入的 → 显示「退出团队」 */
+    private fun navigateToTeamDetail(team: TeamDto, isOwner: Boolean) {
         val bundle = Bundle().apply {
             putString(TeamDetailFragment.ARG_TEAM_NAME, team.name)
             putString(TeamDetailFragment.ARG_TEAM_ID, team.id)
+            putBoolean(TeamDetailFragment.ARG_IS_OWNER, isOwner)
         }
         findNavController().navigate(R.id.teamDetailFragment, bundle)
     }

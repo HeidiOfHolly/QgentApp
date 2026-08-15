@@ -14,6 +14,7 @@ import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
 import com.example.qgent.databinding.FragmentPersonalCenterBinding
+import com.example.qgent.ui.team.TeamAdapter
 import com.example.qgent.viewmodel.MainViewModel
 
 class PersonalCenterFragment : Fragment() {

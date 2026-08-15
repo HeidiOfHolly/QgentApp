@@ -14,7 +14,7 @@
     android:orientation="horizontal"
     android:paddingStart="14dp"
     android:paddingEnd="12dp"
-    tools:context=".ui.personal.TeamManageFragment">
+    tools:context=".ui.team.TeamManageFragment">
 
     <ImageView
         android:layout_width="45dp"

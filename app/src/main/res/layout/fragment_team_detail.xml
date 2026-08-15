@@ -7,7 +7,7 @@
     android:layout_height="match_parent"
     android:background="?android:attr/colorBackground"
     android:orientation="vertical"
-    tools:context=".ui.personal.TeamDetailFragment">
+    tools:context=".ui.team.TeamDetailFragment">
 
     <!-- ===== 顶部栏 ===== -->
     <LinearLayout

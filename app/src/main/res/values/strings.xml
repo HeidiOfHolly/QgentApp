@@ -120,6 +120,9 @@
     <string name="dissolve_team">解散团队</string>
     <string name="dissolve_team_confirm">确定解散该团队吗？解散后不可恢复</string>
     <string name="dissolve_team_placeholder">解散团队（待接入后端）</string>
+    <string name="exit_team">退出团队</string>
+    <string name="exit_team_confirm">确定退出该团队吗？退出后将无法访问该团队的项目</string>
+    <string name="exit_team_placeholder">退出团队（待接入后端）</string>
 
     <string name="create_group_subtitle">输入成员邮箱发送邀请链接，对方同意后加入群聊</string>
     <string name="email_hint">邮箱</string>

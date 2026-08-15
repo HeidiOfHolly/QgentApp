@@ -1,12 +1,12 @@
-package com.example.qgent.ui.personal
+package com.example.qgent.ui.team
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
-import com.example.qgent.databinding.ItemProjectBinding
+import com.example.qgent.databinding.ItemChatMemberBinding
 
-/** 团队详情页项目列表适配器 */
-class TeamProjectAdapter : RecyclerView.Adapter<TeamProjectAdapter.VH>() {
+/** 团队详情页成员列表适配器 */
+class TeamMemberAdapter : RecyclerView.Adapter<TeamMemberAdapter.VH>() {
 
     private val items = mutableListOf<String>()
 
@@ -17,15 +17,15 @@ class TeamProjectAdapter : RecyclerView.Adapter<TeamProjectAdapter.VH>() {
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-        val binding = ItemProjectBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        val binding = ItemChatMemberBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return VH(binding)
     }
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        holder.binding.tvProjectName.text = items[position]
+        holder.binding.tvMemberName.text = items[position]
     }
 
     override fun getItemCount(): Int = items.size
 
-    class VH(val binding: ItemProjectBinding) : RecyclerView.ViewHolder(binding.root)
+    class VH(val binding: ItemChatMemberBinding) : RecyclerView.ViewHolder(binding.root)
 }

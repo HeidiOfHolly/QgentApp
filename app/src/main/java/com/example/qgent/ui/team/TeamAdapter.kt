@@ -1,4 +1,4 @@
-package com.example.qgent.ui.personal
+package com.example.qgent.ui.team
 
 import android.view.LayoutInflater
 import android.view.ViewGroup

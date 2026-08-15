@@ -124,13 +124,13 @@
 
     <fragment
         android:id="@+id/teamManageFragment"
-        android:name="com.example.qgent.ui.personal.TeamManageFragment"
+        android:name="com.example.qgent.ui.team.TeamManageFragment"
         android:label="@string/team_manage"
         tools:layout="@layout/fragment_team_manage" />
 
     <fragment
         android:id="@+id/teamDetailFragment"
-        android:name="com.example.qgent.ui.personal.TeamDetailFragment"
+        android:name="com.example.qgent.ui.team.TeamDetailFragment"
         android:label="团队详情"
         tools:layout="@layout/fragment_team_detail">
         <argument

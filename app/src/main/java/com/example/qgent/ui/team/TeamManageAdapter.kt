@@ -1,8 +1,7 @@
-package com.example.qgent.ui.personal
+package com.example.qgent.ui.team
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
-import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.R
 import com.example.qgent.data.model.TeamDto
