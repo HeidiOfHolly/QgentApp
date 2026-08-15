@@ -102,6 +102,10 @@
     <string name="github_authorize_title_team">GitHub 授权 · %1$s</string>
     <string name="github_authorize_missing_team">请先在 GitHub 页选择一个团队</string>
     <string name="github_install_success">GitHub 安装成功</string>
+    <string name="github_install_conflict">GitHub 安装未完成：该账号已绑定到其他团队，如需更换请先到原团队解绑</string>
+    <string name="github_authorize_warning_title">GitHub 账号绑定提醒</string>
+    <string name="github_authorize_warning_message">一个 GitHub 账号只能授权给一个团队。若该账号已绑定其他团队，本次授权将进入该账号的原团队安装，在 GitHub 页面增删的仓库会作用于原团队，且无法被拦截。建议使用未绑定过 Qgents 的账号。</string>
+    <string name="github_authorize_continue">继续授权</string>
     <string name="team_joined">我加入的团队</string>
     <string name="team_created">我创建的团队</string>
     <string name="team_member_count">%1$d 名成员</string>

@@ -69,8 +69,18 @@ class NewProjectViewModel(
 
     private fun loadRepos() {
         viewModelScope.launch {
+            // 文档 §6：只允许绑定 AUTHORIZED、未归档、默认分支非空且对应 Installation ACTIVE 的仓库
+            val activeInstallationIds = githubRepo.getInstallations(teamId).getOrNull().orEmpty()
+                .filter { it.status == "ACTIVE" }
+                .map { it.id }
+                .toSet()
             val authorized = githubRepo.getGithubRepositories(teamId).getOrNull().orEmpty()
-                .filter { it.authorizationStatus == "AUTHORIZED" }
+                .filter {
+                    it.authorizationStatus == "AUTHORIZED" &&
+                        !it.archived &&
+                        !it.defaultBranch.isNullOrEmpty() &&
+                        it.installationId in activeInstallationIds
+                }
             // 排除已绑定到本团队任一项目的仓库：只展示已授权且未绑定的
             val projects = userRepo.getProjects(teamId).getOrNull().orEmpty()
             val boundIds = projects

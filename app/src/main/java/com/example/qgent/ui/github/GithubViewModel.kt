@@ -62,6 +62,19 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
         }
     }
 
+    /**
+     * 处理 GitHub 回调结果（由授权页 WebView 拦截回跳 URL 获得）：
+     * 成功（installed=1）→ 置位 installed 提示成功；冲突（conflict）→ 写入 error 展示后端 message。
+     * 随后统一刷新安装/仓库列表，保持页面与后端一致。
+     */
+    fun handleCallbackResult(teamId: String, installed: Boolean, conflictMessage: String?) {
+        // 已直接拿到回调结果，清除挂起的幂等键，避免 onResume 的 ID 检测重复提示
+        pendingInstallationKey = null
+        _uiState.value = _uiState.value.copy(installed = installed, error = conflictMessage)
+        refreshInstallations(teamId)
+        loadRepositories(teamId)
+    }
+
     /** 拉取团队已安装列表（授权回调后 onResume 调用，检测新安装） */
     fun refreshInstallations(teamId: String) {
         viewModelScope.launch {
