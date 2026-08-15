@@ -24,6 +24,7 @@ import com.example.qgent.data.repository.UserRepositoryImpl
 import com.example.qgent.ui.auth.AuthViewModel
 import com.example.qgent.ui.github.GithubViewModel
 import com.example.qgent.viewmodel.MainViewModel
+import com.example.qgent.viewmodel.NewProjectViewModel
 
 /**
  * 手工 DI 容器：由 QgentApp 持有，统一装配数据/网络层与 ViewModel Factory。
@@ -61,7 +62,11 @@ class AppContainer {
     }
 
     val mainViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
-        initializer { MainViewModel(userRepository, chatRepository, agentRepository) }
+        initializer { MainViewModel(userRepository, chatRepository, agentRepository, githubRepository) }
+    }
+
+    val newProjectViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
+        initializer { NewProjectViewModel(userRepository, githubRepository) }
     }
 
     val githubViewModelFactory: ViewModelProvider.Factory = viewModelFactory {

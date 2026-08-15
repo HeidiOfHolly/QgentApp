@@ -52,6 +52,7 @@ class TeamDetailFragment : Fragment() {
 
     private val projectAdapter = TeamProjectAdapter()
     private val repositoryAdapter = TeamRepositoryAdapter()
+    private val memberAdapter = TeamMemberAdapter()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -85,6 +86,7 @@ class TeamDetailFragment : Fragment() {
 
         setupRecyclerList(binding.rvProjects, projectAdapter)
         setupRecyclerList(binding.rvRepository, repositoryAdapter)
+        setupRecyclerList(binding.rvMembers, memberAdapter)
 
         // 项目列表来自 MainViewModel（真实数据流）
         mainViewModel.projects.observe(viewLifecycleOwner) { projectAdapter.submitList(it) }
@@ -95,6 +97,9 @@ class TeamDetailFragment : Fragment() {
         }
         if (teamId.isNotEmpty()) {
             githubViewModel.loadRepositories(teamId)
+            viewLifecycleOwner.lifecycleScope.launch {
+                userRepository.getTeamMembers(teamId).onSuccess { memberAdapter.submitList(it) }
+            }
         }
 
         binding.btnDissolveTeam.text =

@@ -168,4 +168,24 @@
         android:name="com.example.qgent.ui.message.TaskMessageListFragment"
         android:label="@string/message_list"
         tools:layout="@layout/fragment_message_list" />
+
+    <fragment
+        android:id="@+id/newProjectFragment"
+        android:name="com.example.qgent.ui.personal.NewProjectFragment"
+        android:label="@string/new_project_title"
+        tools:layout="@layout/fragment_new_project">
+        <argument
+            android:name="teamId"
+            android:defaultValue="" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/projectSelectionFragment"
+        android:name="com.example.qgent.ui.personal.ProjectSelectionFragment"
+        android:label="@string/confirm"
+        tools:layout="@layout/fragment_project_selection">
+        <argument
+            android:name="mode"
+            android:defaultValue="members" />
+    </fragment>
 </navigation>

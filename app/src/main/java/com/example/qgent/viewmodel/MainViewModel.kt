@@ -4,6 +4,9 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.qgent.data.model.BindProjectRepositoryRequest
+import com.example.qgent.data.model.GitHubRepositoryDto
+import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.formatGroupTime
 import com.example.qgent.data.model.parseRfc3339
@@ -11,11 +14,13 @@ import com.example.qgent.data.model.toAgent
 import com.example.qgent.data.model.toSummary
 import com.example.qgent.data.repository.AgentRepository
 import com.example.qgent.data.repository.ChatRepository
+import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.model.Agent
 import com.example.qgent.model.ChatGroup
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 /**
  * Activity 级共享工作区状态：当前团队、当前项目、群聊列表。
@@ -27,7 +32,8 @@ import kotlinx.coroutines.launch
 class MainViewModel(
     private val userRepo: UserRepository,
     private val chatRepo: ChatRepository,
-    private val agentRepo: AgentRepository
+    private val agentRepo: AgentRepository,
+    private val githubRepo: GitHubRepository
 ) : ViewModel() {
 
     // ── 当前团队 / 项目（页面间共享） ──
@@ -89,6 +95,11 @@ class MainViewModel(
     // ── 用户权限（当前为演示阶段默认 Project Admin，接入真实权限后替换） ──
 
     val isProjectAdmin: Boolean = true
+
+    // ── 创建项目结果（表单页观察） ──
+
+    private val _createProjectState = MutableStateFlow<CreateProjectState>(CreateProjectState.Idle)
+    val createProjectState: LiveData<CreateProjectState> = _createProjectState.asLiveData()
 
     init {
         loadTeams()
@@ -203,21 +214,25 @@ class MainViewModel(
             return
         }
         viewModelScope.launch {
-            val groups = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
-            _groups.value = applyReadState(sortGroups(groups.map { dto ->
-                val lastActive = parseRfc3339(dto.latestActivityAt.orEmpty())
-                ChatGroup(
-                    id = dto.id,
-                    name = dto.title,
-                    lastMessage = dto.latestMessage.toSummary(),
-                    time = formatGroupTime(lastActive),
-                    unread = 0,
-                    lastActiveTime = lastActive
-                )
-            }))
+            val dtos = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
+            _groups.value = toChatGroups(dtos)
             resolveRoutingReady()
         }
     }
+
+    /** GroupDto → ChatGroup 映射（排序 + 已读状态） */
+    private fun toChatGroups(dtos: List<GroupDto>): List<ChatGroup> =
+        applyReadState(sortGroups(dtos.map { dto ->
+            val lastActive = parseRfc3339(dto.latestActivityAt.orEmpty())
+            ChatGroup(
+                id = dto.id,
+                name = dto.title,
+                lastMessage = dto.latestMessage.toSummary(),
+                time = formatGroupTime(lastActive),
+                unread = 0,
+                lastActiveTime = lastActive
+            )
+        }))
 
     /** 冷启动路由就绪：仅当存在待解析的冷启动标记时解除（普通切项目时的 loadGroups 是 no-op） */
     private fun resolveRoutingReady() {
@@ -239,4 +254,69 @@ class MainViewModel(
     /** 对已读群聊清零未读数 */
     private fun applyReadState(groups: List<ChatGroup>): List<ChatGroup> =
         groups.map { if (it.id in readGroupIds) it.copy(unread = 0) else it }
+
+    /**
+     * 创建项目：POST /teams/{teamId}/projects，随后逐条绑定已选仓库，
+     * 成功后刷新项目列表、选中新项目并拉取群聊（总群由后端自动生成）。
+     * 绑定仓库失败不阻断创建。
+     */
+    fun createProject(
+        name: String,
+        description: String?,
+        memberIds: List<String>,
+        repos: List<GitHubRepositoryDto>
+    ) {
+        val teamName = _currentTeam.value
+        val teamId = teamNameToId[teamName] ?: run {
+            _createProjectState.value = CreateProjectState.Error("请先选择团队")
+            return
+        }
+        if (_createProjectState.value == CreateProjectState.Loading) return
+        _createProjectState.value = CreateProjectState.Loading
+        viewModelScope.launch {
+            userRepo.createProject(teamId, name, description, UUID.randomUUID().toString())
+                .onSuccess { project ->
+                    // 选中的成员逐个加入项目（初始 PROJECT_MEMBER），失败不阻断创建
+                    memberIds.forEach { userId ->
+                        userRepo.addProjectMember(project.id, userId, UUID.randomUUID().toString())
+                    }
+                    repos.forEach { repo ->
+                        githubRepo.bindProjectRepository(
+                            project.id,
+                            UUID.randomUUID().toString(),
+                            BindProjectRepositoryRequest(repo.installationId, repo.id, repo.fullName)
+                        )
+                    }
+                    loadProjects(teamName) {
+                        _currentProject.value = name
+                        val projectId = currentProjectId()
+                        if (projectId == null) {
+                            _createProjectState.value = CreateProjectState.Success(name, "", name)
+                        } else {
+                            viewModelScope.launch {
+                                val dtos = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
+                                _groups.value = toChatGroups(dtos)
+                                val main = dtos.firstOrNull { it.type == "PROJECT_MAIN" }
+                                _createProjectState.value = CreateProjectState.Success(
+                                    projectName = name,
+                                    groupId = main?.id.orEmpty(),
+                                    groupName = main?.title ?: name
+                                )
+                            }
+                        }
+                    }
+                }
+                .onFailure { e ->
+                    _createProjectState.value = CreateProjectState.Error(e.message ?: "创建项目失败")
+                }
+        }
+    }
+}
+
+/** 创建项目进度状态 */
+sealed interface CreateProjectState {
+    data object Idle : CreateProjectState
+    data object Loading : CreateProjectState
+    data class Success(val projectName: String, val groupId: String, val groupName: String) : CreateProjectState
+    data class Error(val message: String) : CreateProjectState
 }

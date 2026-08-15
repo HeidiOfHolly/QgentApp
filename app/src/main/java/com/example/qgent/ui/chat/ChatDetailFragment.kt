@@ -3,8 +3,6 @@ import android.app.Dialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.LayoutInflater
@@ -36,11 +34,7 @@ import com.example.qgent.databinding.BottomSheetMentionMemberBinding
 import com.example.qgent.databinding.DialogImagePreviewBinding
 import com.example.qgent.databinding.FragmentChatDetailBinding
 import com.example.qgent.model.ChatMessage
-import com.example.qgent.model.DiffFile
-import com.example.qgent.model.DiffLine
-import com.example.qgent.model.DiffLineType
 import com.example.qgent.model.GroupMember
-import com.example.qgent.model.MemberType
 import com.example.qgent.model.MessageType
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -64,7 +58,6 @@ class ChatDetailFragment : Fragment() {
     private val messages = mutableListOf<ChatMessage>()
     private lateinit var rows: MutableList<ChatRow>
     private lateinit var adapter: ChatMessageAdapter
-    private val handler = Handler(Looper.getMainLooper())
 
     // 系统相册选图：免存储权限，返回图片 content:// URI
     private val pickImage = registerForActivityResult(
@@ -94,14 +87,7 @@ class ChatDetailFragment : Fragment() {
     // 群成员 id → 昵称（文档 §7：消息 senderName 需按 senderId 反查）
     private var memberNamesById: Map<String, String> = emptyMap()
 
-    // 群成员（mock），含 AgentOrchestrator
-    private var groupMembers = listOf(
-        GroupMember("张三"),
-        GroupMember("李四"),
-        GroupMember("王五"),
-        GroupMember("赵六"),
-        GroupMember("AgentOrchestrator", MemberType.AGENT)
-    )
+    private var groupMembers = emptyList<GroupMember>()
 
     private val mentionWatcher = object : TextWatcher {
         private var lastAtPos = -1
@@ -161,7 +147,6 @@ class ChatDetailFragment : Fragment() {
             }
         }
 
-        messages.addAll(mockMessages())
         rows = buildRows(messages).toMutableList()
         adapter = ChatMessageAdapter(
             rows,
@@ -243,85 +228,7 @@ class ChatDetailFragment : Fragment() {
                 true
             )
         )
-        // 如果消息中 @ 了 AgentOrchestrator，模拟 Agent 回复
-        if (text.contains("@AgentOrchestrator")) {
-            handler.postDelayed({
-                if (text.contains("diff", true) || text.contains("改", true)) {
-                    appendDiffMessage()
-                } else {
-                    appendMessage(
-                        ChatMessage(
-                            UUID.randomUUID().toString(),
-                            "AgentOrchestrator",
-                            mockAgentReply(text),
-                            MessageType.TEXT,
-                            System.currentTimeMillis(),
-                            false
-                        )
-                    )
-                }
-            }, 1500L)
-        }
     }
-
-    private fun appendDiffMessage() {
-        appendMessage(
-            ChatMessage(
-                UUID.randomUUID().toString(),
-                "AgentOrchestrator",
-                "",
-                MessageType.DIFF,
-                System.currentTimeMillis(),
-                false,
-                mockDiffFiles()
-            )
-        )
-    }
-
-    private fun mockAgentReply(userMessage: String): String {
-        return when {
-            userMessage.contains("登录") || userMessage.contains("注册") ->
-                "收到，我来处理登录相关任务。已调度「前端开发」和「后端开发」Agent 协同工作。"
-            userMessage.contains("部署") || userMessage.contains("发布") ->
-                "部署任务已接收，正在调用「Docker 部署脚本」Skill 进行构建和推送。"
-            userMessage.contains("审查") || userMessage.contains("review") ->
-                "代码审查任务已启动，「代码审查」Agent 正在检查代码质量。"
-            userMessage.contains("测试") || userMessage.contains("test") ->
-                "测试任务已分配，「测试 Agent」正在编写和执行测试用例。"
-            else ->
-                "已收到你的指令，正在分析任务并分派给合适的 Agent 处理。"
-        }
-    }
-
-    private fun mockDiffFiles(): List<DiffFile> = listOf(
-        DiffFile(
-            "MainActivity.kt",
-            3,
-            2,
-            listOf(
-                DiffLine(DiffLineType.CONTEXT, 1, 1, "package com.example.qgent"),
-                DiffLine(DiffLineType.CONTEXT, 2, 2, ""),
-                DiffLine(DiffLineType.DELETE, 3, null, "import androidx.appcompat.app.AppCompatActivity"),
-                DiffLine(DiffLineType.ADD, null, 3, "import androidx.activity.ComponentActivity"),
-                DiffLine(DiffLineType.CONTEXT, 4, 4, ""),
-                DiffLine(DiffLineType.ADD, null, 5, "class MainActivity : ComponentActivity() {"),
-                DiffLine(DiffLineType.CONTEXT, 5, 6, "    override fun onCreate(savedInstanceState: Bundle?) {")
-            )
-        ),
-        DiffFile(
-            "activity_main.xml",
-            2,
-            1,
-            listOf(
-                DiffLine(DiffLineType.CONTEXT, 1, 1, "<?xml version=\"1.0\" encoding=\"utf-8\"?>"),
-                DiffLine(DiffLineType.ADD, null, 2, "    <TextView"),
-                DiffLine(DiffLineType.ADD, null, 3, "        android:id=\"@+id/tvTitle\""),
-                DiffLine(DiffLineType.CONTEXT, 2, 4, "        android:layout_width=\"match_parent\""),
-                DiffLine(DiffLineType.DELETE, 3, null, "        android:text=\"old\""),
-                DiffLine(DiffLineType.ADD, null, 6, "        android:text=\"new\"")
-            )
-        )
-    )
 
     /** 弹出 @ 成员选择器 */
     private fun showMentionPicker() {
@@ -428,17 +335,17 @@ class ChatDetailFragment : Fragment() {
                 // 先取成员表再拉消息，保证 senderName 能按 senderId 反查（顺序 await）
                 chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
                     groupMembers = dtos.map { it.toGroupMember() }
-                    memberNamesById = dtos.associate { it.id to it.nickname }
+                    memberNamesById = dtos.associate { it.id to (it.nickname ?: "成员") }
                 }
                 chatRepo.getMessages(projectId, groupId).onSuccess { dtos ->
                     val myId = SessionStore.user()?.id
                     setMessages(dtos.map { it.toChatMessage(myId, memberNamesById) })
                 }.onFailure {
-                    setMessages(mockMessages())
+                    setMessages(emptyList())
                 }
             }
         } else {
-            setMessages(mockMessages())
+            setMessages(emptyList())
         }
     }
 
@@ -451,22 +358,8 @@ class ChatDetailFragment : Fragment() {
         scrollToBottom()
     }
 
-    private fun mockMessages(): List<ChatMessage> {
-        val now = System.currentTimeMillis()
-        return listOf(
-            ChatMessage("m1", "张三", "今天把登录接口联调一下", MessageType.TEXT, now - 25 * 60 * 1000, false),
-            ChatMessage("m2", "李四", "好，我负责前端部分", MessageType.TEXT, now - 23 * 60 * 1000, false),
-            ChatMessage("m3", "AgentOrchestrator", "我是 AgentOrchestrator，群里 @我 即可派发任务，我会调度 Agent 团队为你工作。", MessageType.TEXT, now - 21 * 60 * 1000, false),
-            ChatMessage("m4", "我", "后端接口文档我已经看过了", MessageType.TEXT, now - 17 * 60 * 1000, true),
-            ChatMessage("m5", "张三", "RSA 密码加密记得注意一下", MessageType.TEXT, now - 3 * 60 * 1000, false),
-            ChatMessage("m6", "我", "收到，按契约来", MessageType.TEXT, now - 2 * 60 * 1000, true),
-            ChatMessage("m7", "AgentOrchestrator", "", MessageType.DIFF, now - 1 * 60 * 1000, false, mockDiffFiles())
-        )
-    }
-
     override fun onDestroyView() {
         super.onDestroyView()
-        handler.removeCallbacksAndMessages(null)
         binding.etInput.removeTextChangedListener(mentionWatcher)
         _binding = null
     }

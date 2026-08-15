@@ -27,7 +27,7 @@ fun AgentDto.toAgent(): Agent = Agent(
 
 /** GroupMemberDto → UI GroupMember。API 无 member/agent 类型字段，统一按 HUMAN。 */
 fun GroupMemberDto.toGroupMember(): GroupMember = GroupMember(
-    name = nickname,
+    name = nickname ?: "成员",
     type = MemberType.HUMAN
 )
 

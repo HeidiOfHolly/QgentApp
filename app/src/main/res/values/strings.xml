@@ -124,6 +124,23 @@
     <string name="exit_team_confirm">确定退出该团队吗？退出后将无法访问该团队的项目</string>
     <string name="exit_team_placeholder">退出团队（待接入后端）</string>
 
+    <!-- 新建项目 -->
+    <string name="new_project_title">新建项目</string>
+    <string name="new_project_name_hint">项目名称</string>
+    <string name="new_project_desc_hint">项目简介</string>
+    <string name="invite_members">邀请成员</string>
+    <string name="bind_repos">绑定仓库</string>
+    <string name="selected_members_count">已选 %1$d 人</string>
+    <string name="selected_repos_count">已选 %1$d 个</string>
+    <string name="confirm">完成</string>
+    <string name="create_project">新建项目</string>
+    <string name="project_create_success">项目创建成功</string>
+    <string name="selection_members_title">邀请成员</string>
+    <string name="selection_repos_title">绑定仓库</string>
+    <string name="selection_members_empty">暂无团队成员</string>
+    <string name="selection_repos_empty">暂无可用仓库，请先在 GitHub 页授权</string>
+    <string name="new_project_missing_team">请先选择一个团队</string>
+
     <string name="create_group_subtitle">输入成员邮箱发送邀请链接，对方同意后加入群聊</string>
     <string name="email_hint">邮箱</string>
     <string name="send_invite">发送邀请</string>
