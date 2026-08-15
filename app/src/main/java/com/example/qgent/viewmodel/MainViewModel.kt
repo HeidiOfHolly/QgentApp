@@ -1,5 +1,6 @@
 package com.example.qgent.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.ViewModel
@@ -120,8 +121,9 @@ class MainViewModel(
     /** 加入团队后刷新团队列表（复用 init 的加载逻辑） */
     fun refreshTeams() = loadTeams()
 
-    fun setCurrentTeam(team: String, onProjectsLoaded: ((Boolean) -> Unit)? = null) {
-        if (_currentTeam.value == team) return
+    fun setCurrentTeam(team: String, onProjectsLoaded: ((Boolean) -> Unit)? = null, force: Boolean = false) {
+        // 同团队重复选择默认跳过（避免冗余请求）；force=true 用于项目列表已被清空的场景（如 GitHub 页）强制重载
+        if (!force && _currentTeam.value == team) return
         _currentTeam.value = team
         loadedProjectsTeam = null  // 失效旧缓存，防止 projectsOf 串数据
         _projects.value = emptyList()  // 先清空，避免加载期间显示上一个团队的项目
@@ -156,6 +158,12 @@ class MainViewModel(
     fun currentProjectId(): String? {
         val teamId = teamNameToId[_currentTeam.value] ?: return null
         return projectIdsByTeam[teamId]?.get(_currentProject.value)
+    }
+
+    /** 退回列表页时刷新群聊最新消息摘要（onResume 调用）；projectId 未就绪时跳过，避免冷启动误清空 */
+    fun refreshGroups() {
+        if (currentProjectId() == null) return
+        loadGroups(_currentProject.value)
     }
 
     /** 标记群聊为已读（未读数清零，并持久化到已读集合） */
@@ -241,6 +249,14 @@ class MainViewModel(
         loadGroupsJob?.cancel()
         loadGroupsJob = viewModelScope.launch {
             val dtos = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
+            dtos.forEach { dto ->
+                Log.d(
+                    "MainViewModel",
+                    "group=${dto.title} latestActivityAt=${dto.latestActivityAt} " +
+                        "formatted=${formatGroupTime(parseRfc3339(dto.latestActivityAt.orEmpty()))} " +
+                        "latestMessage=${dto.latestMessage}"
+                )
+            }
             _groups.value = toChatGroups(dtos)
             resolveRoutingReady()
         }

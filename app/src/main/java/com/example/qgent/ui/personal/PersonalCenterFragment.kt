@@ -38,6 +38,7 @@ class PersonalCenterFragment : Fragment() {
     }
     private lateinit var teamAdapter: TeamAdapter
     private lateinit var projectAdapter: ProjectAdapter
+    private var onGithubPage = false
 
     private val navController: NavController
         get() = (requireActivity().supportFragmentManager
@@ -103,12 +104,15 @@ class PersonalCenterFragment : Fragment() {
             refreshHighlight()
         }
 
-        // 进入 GitHub 页时自动清除上个界面留下的团队/项目高光；离开后恢复当前选中
+        // 进入 GitHub 页时清空项目列表信息并清除团队/项目高光；离开后恢复
         navController.addOnDestinationChangedListener { _, dest, _ ->
-            if (dest.id == R.id.githubFragment) {
+            onGithubPage = dest.id == R.id.githubFragment
+            if (onGithubPage) {
                 teamAdapter.selectedPosition = NO_SELECTION
+                projectAdapter.submitList(emptyList())
                 projectAdapter.selectedPosition = NO_SELECTION
             } else {
+                projectAdapter.submitList(mainViewModel.projects.value.orEmpty())
                 refreshHighlight()
             }
         }
@@ -176,9 +180,14 @@ class PersonalCenterFragment : Fragment() {
 
     /** 点击团队切换：若该团队未创建任何项目，则收起抽屉并进入 GitHub 页 */
     private fun onTeamClick(teamName: String) {
-        mainViewModel.setCurrentTeam(teamName) { hasProjects ->
-            if (!hasProjects) openGithub()
-        }
+        // 在 GitHub 页时项目列表已被清空，重复点选同一团队也强制重载
+        mainViewModel.setCurrentTeam(
+            teamName,
+            force = onGithubPage,
+            onProjectsLoaded = { hasProjects ->
+                if (!hasProjects) openGithub()
+            }
+        )
     }
 
     /** 刷新抽屉团队/项目高光：始终恢复当前团队/项目选中 */
@@ -196,6 +205,8 @@ class PersonalCenterFragment : Fragment() {
     /** 收起个人中心抽屉，并在主内容区打开 GitHub 页 */
     private fun openGithub() {
         (activity as? MainActivity)?.closeDrawer()
+        // 已在 GitHub 页时避免重复压栈（团队无项目时 onTeamClick 回调会再次进入）
+        if (onGithubPage) return
         navController.navigate(R.id.githubFragment)
     }
 

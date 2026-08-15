@@ -196,4 +196,6 @@
     <string name="action_enter">进入</string>
     <string name="avatar">头像</string>
     <string name="group_avatar">群头像</string>
+    <string name="search_chat_history_hint">搜索聊天记录</string>
+    <string name="search_chat_history_empty">输入关键词搜索聊天记录</string>
 </resources>

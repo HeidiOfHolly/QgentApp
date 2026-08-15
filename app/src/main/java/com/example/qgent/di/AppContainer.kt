@@ -1,11 +1,15 @@
 package com.example.qgent.di
 
+import android.content.Context
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.qgent.data.api.RetrofitClient
+import com.example.qgent.data.local.MessageCache
+import com.example.qgent.data.local.QgentDatabase
 import com.example.qgent.data.repository.AgentRepository
 import com.example.qgent.data.repository.AgentRepositoryImpl
+import com.example.qgent.data.repository.AttachmentUploader
 import com.example.qgent.data.repository.AuthRepository
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.ChatRepositoryImpl
@@ -23,7 +27,11 @@ import com.example.qgent.viewmodel.NewProjectViewModel
  *
  * 全部直接使用真实后端实现，不使用 mock 回退。
  */
-class AppContainer {
+class AppContainer(context: Context) {
+
+    val database = QgentDatabase.getInstance(context)
+    val messageCache = MessageCache(database.messageDao())
+    val attachmentUploader = AttachmentUploader(RetrofitClient.service, RetrofitClient.uploadClient)
 
     val authRepository = AuthRepository(RetrofitClient.service)
 

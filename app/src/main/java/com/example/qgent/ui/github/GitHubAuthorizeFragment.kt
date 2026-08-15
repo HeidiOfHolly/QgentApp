@@ -78,10 +78,11 @@ class GitHubAuthorizeFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        // 从 GitHub 授权页返回（或初次进入）时刷新安装/仓库状态
+        // 从 GitHub 授权页返回（或初次进入）时刷新安装/仓库状态；
+        // syncInstallations 会强制后端重拉仓库元数据，让网页端删除的仓库也能同步消失
         if (teamId.isNotEmpty()) {
             githubViewModel.refreshInstallations(teamId)
-            githubViewModel.loadRepositories(teamId)
+            githubViewModel.syncInstallations(teamId)
         }
     }
 

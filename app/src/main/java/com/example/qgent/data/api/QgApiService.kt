@@ -5,6 +5,7 @@ import com.example.qgent.data.model.AgentSkillBindingsRequest
 import com.example.qgent.data.model.AddProjectMemberRequest
 import com.example.qgent.data.model.ApiResponse
 import com.example.qgent.data.model.AttachmentDto
+import com.example.qgent.data.model.AttachmentConfirmDto
 import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.CreateAttachmentRequest
 import com.example.qgent.data.model.CreateAgentRequest
@@ -51,6 +52,11 @@ import retrofit2.http.Query
  *
  * 所有接口返回 [retrofit2.Response] 包裹的 [ApiResponse]，
  * 由 data.model 中的 toDataOrThrow() / toUnitOrThrow() 统一解析错误契约。
+ *
+ * 幂等性：后端对所有写操作（POST/PUT/PATCH/DELETE）强制要求 Idempotency-Key 请求头，
+ * 缺失返回 400 IDEMPOTENCY_KEY_REQUIRED。该头不是鉴权（鉴权走 Authorization: Bearer），
+ * 而是防重复：同一逻辑操作重试时复用同一 UUID，后端据此去重，避免连点/重试产生重复数据。
+ * 因此每个写接口都带 @Header("Idempotency-Key")，由调用方生成 UUID.randomUUID() 传入。
  */
 interface QgApiService {
 
@@ -153,6 +159,7 @@ interface QgApiService {
     @POST("projects/{projectId}/groups")
     suspend fun createGroup(
         @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: CreateGroupRequest
     ): Response<ApiResponse<GroupDto>>
 
@@ -166,13 +173,15 @@ interface QgApiService {
     suspend fun updateGroup(
         @Path("projectId") projectId: String,
         @Path("groupId") groupId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: UpdateGroupRequest
     ): Response<ApiResponse<GroupDto>>
 
     @POST("projects/{projectId}/groups/{groupId}/archive")
     suspend fun archiveGroup(
         @Path("projectId") projectId: String,
-        @Path("groupId") groupId: String
+        @Path("groupId") groupId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
     ): Response<ApiResponse<GroupDto>>
 
     // ── 群成员 ──
@@ -186,7 +195,8 @@ interface QgApiService {
     @POST("projects/{projectId}/groups/{groupId}/leave")
     suspend fun leaveGroup(
         @Path("projectId") projectId: String,
-        @Path("groupId") groupId: String
+        @Path("groupId") groupId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
     ): Response<Unit>
 
     // ── 群聊消息 ──
@@ -203,6 +213,7 @@ interface QgApiService {
     suspend fun sendMessage(
         @Path("projectId") projectId: String,
         @Path("groupId") groupId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: SendMessageRequest
     ): Response<ApiResponse<GroupMessageDto>>
 
@@ -211,8 +222,16 @@ interface QgApiService {
     @POST("projects/{projectId}/attachments")
     suspend fun createAttachment(
         @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: CreateAttachmentRequest
     ): Response<ApiResponse<AttachmentDto>>
+
+    @POST("projects/{projectId}/attachments/{attachmentId}/confirm")
+    suspend fun confirmAttachment(
+        @Path("projectId") projectId: String,
+        @Path("attachmentId") attachmentId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<AttachmentConfirmDto>>
 
     // ── Agent（§11）──
 
@@ -224,6 +243,7 @@ interface QgApiService {
     @POST("teams/{teamId}/agents")
     suspend fun createAgent(
         @Path("teamId") teamId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: CreateAgentRequest
     ): Response<ApiResponse<AgentDto>>
 
@@ -237,31 +257,36 @@ interface QgApiService {
     suspend fun updateAgent(
         @Path("teamId") teamId: String,
         @Path("agentId") agentId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: UpdateAgentRequest
     ): Response<ApiResponse<AgentDto>>
 
     @POST("teams/{teamId}/agents/{agentId}/publish")
     suspend fun publishAgent(
         @Path("teamId") teamId: String,
-        @Path("agentId") agentId: String
+        @Path("agentId") agentId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
     ): Response<ApiResponse<AgentDto>>
 
     @POST("teams/{teamId}/agents/{agentId}/unpublish")
     suspend fun unpublishAgent(
         @Path("teamId") teamId: String,
-        @Path("agentId") agentId: String
+        @Path("agentId") agentId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
     ): Response<ApiResponse<AgentDto>>
 
     @POST("teams/{teamId}/agents/{agentId}/archive")
     suspend fun archiveAgent(
         @Path("teamId") teamId: String,
-        @Path("agentId") agentId: String
+        @Path("agentId") agentId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
     ): Response<ApiResponse<AgentDto>>
 
     @PUT("projects/{projectId}/agent-skill-bindings/{agentId}")
     suspend fun bindAgentSkills(
         @Path("projectId") projectId: String,
         @Path("agentId") agentId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: AgentSkillBindingsRequest
     ): Response<ApiResponse<AgentDto>>
 

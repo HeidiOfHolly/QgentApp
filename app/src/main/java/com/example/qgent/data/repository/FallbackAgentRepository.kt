@@ -17,8 +17,9 @@ class FallbackAgentRepository(
         role: String,
         avatar: String?,
         capabilities: List<String>?,
-        prompt: String?
-    ) = fb.call { createAgent(teamId, name, role, avatar, capabilities, prompt) }
+        prompt: String?,
+        idempotencyKey: String
+    ) = fb.call { createAgent(teamId, name, role, avatar, capabilities, prompt, idempotencyKey) }
 
     override suspend fun updateAgent(
         teamId: String,
@@ -26,15 +27,19 @@ class FallbackAgentRepository(
         name: String?,
         avatar: String?,
         capabilities: List<String>?,
-        prompt: String?
-    ) = fb.call { updateAgent(teamId, agentId, name, avatar, capabilities, prompt) }
+        prompt: String?,
+        idempotencyKey: String
+    ) = fb.call { updateAgent(teamId, agentId, name, avatar, capabilities, prompt, idempotencyKey) }
 
-    override suspend fun publishAgent(teamId: String, agentId: String) = fb.call { publishAgent(teamId, agentId) }
+    override suspend fun publishAgent(teamId: String, agentId: String, idempotencyKey: String) =
+        fb.call { publishAgent(teamId, agentId, idempotencyKey) }
 
-    override suspend fun unpublishAgent(teamId: String, agentId: String) = fb.call { unpublishAgent(teamId, agentId) }
+    override suspend fun unpublishAgent(teamId: String, agentId: String, idempotencyKey: String) =
+        fb.call { unpublishAgent(teamId, agentId, idempotencyKey) }
 
-    override suspend fun archiveAgent(teamId: String, agentId: String) = fb.call { archiveAgent(teamId, agentId) }
+    override suspend fun archiveAgent(teamId: String, agentId: String, idempotencyKey: String) =
+        fb.call { archiveAgent(teamId, agentId, idempotencyKey) }
 
-    override suspend fun bindAgentSkills(projectId: String, agentId: String, skillIds: List<String>) =
-        fb.call { bindAgentSkills(projectId, agentId, skillIds) }
+    override suspend fun bindAgentSkills(projectId: String, agentId: String, skillIds: List<String>, idempotencyKey: String) =
+        fb.call { bindAgentSkills(projectId, agentId, skillIds, idempotencyKey) }
 }

@@ -174,39 +174,6 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
-                    <!-- 管理群 -->
-                    <LinearLayout
-                        android:id="@+id/btnManageGroup"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:padding="16dp">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/manage_group"
-                            android:textColor="@color/text_primary"
-                            android:textSize="18sp" />
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            app:tint="@color/charcoal"
-                            android:contentDescription="@string/action_enter"
-                            android:src="@drawable/ic_chevron_right" />
-                    </LinearLayout>
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginStart="16dp"
-                        android:layout_marginEnd="16dp"
-                        android:background="@color/divider" />
-
                     <!-- 查看聊天记录 -->
                     <LinearLayout
                         android:id="@+id/btnViewHistory"
