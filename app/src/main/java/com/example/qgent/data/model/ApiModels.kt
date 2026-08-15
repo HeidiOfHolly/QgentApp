@@ -130,6 +130,21 @@ data class TeamMemberDto(
     val email: String
 )
 
+/** 团队邀请（GET /teams/{teamId}/invitations，§5.1）：email + status + expiresAt */
+data class TeamInvitationDto(
+    val id: String,
+    val email: String,
+    val status: String,                 // PENDING / ACCEPTED / REVOKED / EXPIRED
+    @SerializedName("expiresAt") val expiresAt: String
+)
+
+/** 创建团队邀请（POST /teams/{teamId}/invitations，§5.1）：按邮箱邀请，role + 有效期必填 */
+data class InviteTeamMemberRequest(
+    val email: String,
+    val role: String,                   // TEAM_MEMBER（当前仅按普通成员邀请）
+    @SerializedName("expiresInDays") val expiresInDays: Int
+)
+
 /** 创建团队（POST /teams） */
 data class CreateTeamRequest(
     val name: String,

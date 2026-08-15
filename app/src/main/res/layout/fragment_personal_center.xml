@@ -106,11 +106,12 @@
 
             <LinearLayout
                 android:id="@+id/card"
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
+                app:layout_constraintHorizontal_bias="0.0"
                 app:layout_constraintLeft_toRightOf="@+id/btnAvatar"
-                app:layout_constraintRight_toLeftOf="@+id/btnNotification"
+                app:layout_constraintRight_toRightOf="parent"
                 app:layout_constraintTop_toTopOf="@+id/btnAvatar">
 
                 <TextView
@@ -130,6 +131,17 @@
                     android:textColor="@color/gray"
                     android:textSize="15sp" />
             </LinearLayout>
+
+            <ImageView
+                android:id="@+id/tvAddTeam"
+                android:src="@drawable/ic_add"
+                app:tint="@color/teal"
+                android:background="@drawable/bg_oval"
+                android:backgroundTint="@color/bg_chat_pinned"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintRight_toRightOf="parent"
+                android:layout_width="28dp"
+                android:layout_height="28dp"/>
             <TextView
                 android:id="@+id/tvTeamName"
                 android:layout_width="wrap_content"
@@ -139,18 +151,6 @@
                 tools:text="团队A"
                 app:layout_constraintTop_toBottomOf="@+id/card"
                 app:layout_constraintLeft_toLeftOf="@+id/card"/>
-            <ImageView
-                android:id="@+id/btnNotification"
-                android:layout_width="30dp"
-                android:layout_height="30dp"
-                android:background="@drawable/bg_oval"
-                android:clickable="true"
-                android:contentDescription="@string/notification"
-                android:focusable="true"
-                android:padding="4dp"
-                android:src="@drawable/ic_bell"
-                app:layout_constraintRight_toRightOf="parent"
-                app:layout_constraintTop_toTopOf="@+id/btnAvatar" />
         </androidx.constraintlayout.widget.ConstraintLayout>
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnNewProject"

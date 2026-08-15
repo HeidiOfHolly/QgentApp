@@ -1,12 +1,16 @@
 package com.example.qgent.ui.team
 
-import android.animation.ObjectAnimator
 import android.app.AlertDialog
+import android.app.Dialog
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Toast
+import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
@@ -14,21 +18,22 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.QgentApp
 import com.example.qgent.R
-import com.example.qgent.data.repository.GitHubRepository
+import com.example.qgent.data.model.InviteTeamMemberRequest
+import com.example.qgent.data.model.TeamInvitationDto
+import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.repository.UserRepository
-import com.example.qgent.databinding.DialogNewProjectBinding
+import com.example.qgent.databinding.DialogInviteHistoryBinding
+import com.example.qgent.databinding.DialogInviteMemberBinding
 import com.example.qgent.databinding.FragmentTeamDetailBinding
 import com.example.qgent.ui.github.GithubViewModel
-import com.example.qgent.databinding.ItemRepoSelectBinding
 import com.example.qgent.ui.tasks.TeamProjectAdapter
 import com.example.qgent.ui.personal.bindCollapsibleSection
-import com.example.qgent.ui.personal.newInputDialog
 import com.example.qgent.ui.personal.setupRecyclerList
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 /**
  * 团队详情页：管理成员 / 管理项目 / 管理仓库三个下拉分组（默认收起，展开时顶部有增加按钮），底部解散团队。
@@ -45,8 +50,6 @@ class TeamDetailFragment : Fragment() {
         (requireActivity().application as QgentApp).container.githubViewModelFactory
     }
 
-    private val githubRepository: GitHubRepository
-        get() = (requireActivity().application as QgentApp).container.githubRepository
     private val userRepository: UserRepository
         get() = (requireActivity().application as QgentApp).container.userRepository
 
@@ -74,19 +77,30 @@ class TeamDetailFragment : Fragment() {
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
         binding.tvTeamName.text = teamName
 
+        // 右上角邀请记录：弹窗查看该团队近 7 天邀请，可撤销待接受邀请
+        binding.btnInviteHistory.setOnClickListener {
+            if (teamId.isNotEmpty()) showInviteHistoryDialog(teamId)
+        }
+
         // 三个三角下拉分组：默认收起，点击头部展开 / 收起
         bindCollapsibleSection(binding.headerMembers, binding.ivArrowMembers, binding.sectionMembers)
         bindCollapsibleSection(binding.headerProjects, binding.ivArrowProjects, binding.sectionProjects)
         bindCollapsibleSection(binding.headerRepository, binding.ivArrowRepository, binding.sectionRepository)
 
         // 展开时分组顶部显示增加按钮
-        binding.btnAddMember.setOnClickListener { showTodoToast() }
-        binding.btnAddProject.setOnClickListener { showNewProjectDialog() }
+        binding.btnAddMember.setOnClickListener {
+            if (teamId.isNotEmpty()) showInviteMemberDialog(teamId)
+        }
+        binding.btnAddProject.setOnClickListener { openNewProject(teamId) }
         binding.btnRepository.setOnClickListener { showTodoToast() }
 
         setupRecyclerList(binding.rvProjects, projectAdapter)
         setupRecyclerList(binding.rvRepository, repositoryAdapter)
         setupRecyclerList(binding.rvMembers, memberAdapter)
+
+        // 仅我创建的团队可移除成员；创建者行由适配器隐藏删除按钮
+        memberAdapter.showDelete = isOwner
+        memberAdapter.onDeleteMember = { member -> confirmRemoveMember(teamId, member) }
 
         // 项目列表来自 MainViewModel（真实数据流）
         mainViewModel.projects.observe(viewLifecycleOwner) { projectAdapter.submitList(it) }
@@ -122,118 +136,152 @@ class TeamDetailFragment : Fragment() {
             .show()
     }
 
-    /** 新建项目：弹出名称/简介输入弹窗，GitHub 仓库下拉选择已授权未绑定的仓库 */
-    private fun showNewProjectDialog() {
-        val dialogBinding = DialogNewProjectBinding.inflate(layoutInflater)
-        val dialog = newInputDialog(dialogBinding.root)
-
-        dialogBinding.etName.doAfterTextChanged {
-            if (dialogBinding.nameLayout.error != null) dialogBinding.nameLayout.error = null
+    /** 邀请记录弹窗：加载该团队邀请并支持撤销待接受邀请 */
+    private fun showInviteHistoryDialog(teamId: String) {
+        val dialogBinding = DialogInviteHistoryBinding.inflate(layoutInflater)
+        val dialog = Dialog(requireContext()).apply {
+            setContentView(dialogBinding.root)
+            window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            window?.setLayout(
+                (resources.displayMetrics.widthPixels * 0.9f).toInt(),
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
         }
+        dialogBinding.btnClose.setOnClickListener { dialog.dismiss() }
 
-        val repoAdapter = RepoSelectAdapter { repoName ->
-            dialogBinding.tvRepoSelect.text = repoName
-            setRepoListExpanded(dialogBinding, expanded = false)
+        lateinit var inviteAdapter: InviteHistoryAdapter
+        inviteAdapter = InviteHistoryAdapter { invitation ->
+            confirmRevokeInvitation(teamId, invitation) {
+                loadInvitationsInto(dialogBinding, inviteAdapter, teamId)
+            }
         }
-        dialogBinding.rvRepositories.layoutManager = LinearLayoutManager(requireContext())
-        dialogBinding.rvRepositories.adapter = repoAdapter
+        dialogBinding.rvInvitations.layoutManager = LinearLayoutManager(requireContext())
+        dialogBinding.rvInvitations.adapter = inviteAdapter
 
-        var repoLoading = false
-        dialogBinding.layoutGithub.setOnClickListener {
-            when {
-                dialogBinding.rvRepositories.isVisible -> setRepoListExpanded(dialogBinding, expanded = false)
-                repoLoading -> Unit // 加载中忽略重复点击
-                else -> {
-                    repoLoading = true
-                    loadUnboundRepositories { names ->
-                        repoLoading = false
-                        if (names.isEmpty()) {
-                            Toast.makeText(requireContext(), R.string.github_repo_empty, Toast.LENGTH_SHORT).show()
-                        } else {
-                            repoAdapter.submitList(names)
-                            setRepoListExpanded(dialogBinding, expanded = true)
+        loadInvitationsInto(dialogBinding, inviteAdapter, teamId)
+        dialog.show()
+    }
+
+    /** 加载邀请记录并填充弹窗列表（空时显示空态） */
+    private fun loadInvitationsInto(
+        dialogBinding: DialogInviteHistoryBinding,
+        adapter: InviteHistoryAdapter,
+        teamId: String
+    ) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            userRepository.getTeamInvitations(teamId)
+                .onSuccess { list ->
+                    adapter.submitList(list)
+                    dialogBinding.tvEmpty.isVisible = list.isEmpty()
+                }
+                .onFailure {
+                    adapter.submitList(emptyList())
+                    dialogBinding.tvEmpty.isVisible = true
+                }
+        }
+    }
+
+    /** 确认撤销邀请，成功后回调以刷新弹窗列表 */
+    private fun confirmRevokeInvitation(
+        teamId: String,
+        invitation: TeamInvitationDto,
+        onRevoked: () -> Unit
+    ) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.revoke_invitation)
+            .setMessage(R.string.revoke_invitation_confirm)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.revoke_invitation) { _, _ ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    userRepository.revokeInvitation(teamId, invitation.id, UUID.randomUUID().toString())
+                        .onSuccess {
+                            Toast.makeText(requireContext(), R.string.revoke_invitation_success, Toast.LENGTH_SHORT).show()
+                            onRevoked()
                         }
-                    }
+                        .onFailure {
+                            Toast.makeText(requireContext(), R.string.revoke_invitation_failed, Toast.LENGTH_SHORT).show()
+                        }
                 }
             }
+            .show()
+    }
+
+    /** 邀请成员弹窗：输入邮箱后发送邀请请求 */
+    private fun showInviteMemberDialog(teamId: String) {
+        val dialogBinding = DialogInviteMemberBinding.inflate(layoutInflater)
+        val dialog = Dialog(requireContext()).apply {
+            setContentView(dialogBinding.root)
+            window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            window?.setLayout(
+                (resources.displayMetrics.widthPixels * 0.85f).toInt(),
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
         }
 
-        dialogBinding.bnNewTeam.setOnClickListener {
-            if (dialogBinding.etName.text.toString().trim().isEmpty()) {
-                dialogBinding.nameLayout.error = getString(R.string.error_project_name_required)
-                return@setOnClickListener
+        dialogBinding.etEmail.doAfterTextChanged {
+            if (dialogBinding.emailLayout.error != null) dialogBinding.emailLayout.error = null
+        }
+
+        dialogBinding.btnSend.setOnClickListener {
+            val email = dialogBinding.etEmail.text?.toString()?.trim().orEmpty()
+            when {
+                email.isEmpty() -> dialogBinding.emailLayout.error = getString(R.string.error_invite_email_required)
+                !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches() ->
+                    dialogBinding.emailLayout.error = getString(R.string.error_invite_email_invalid)
+                else -> {
+                    dialog.dismiss()
+                    sendInvitation(teamId, email)
+                }
             }
-            dialog.dismiss()
-            // 创建项目 API 待后端就绪后接入
-            Toast.makeText(requireContext(), R.string.new_project_placeholder, Toast.LENGTH_SHORT).show()
         }
 
         dialog.show()
     }
 
-    private fun setRepoListExpanded(binding: DialogNewProjectBinding, expanded: Boolean) {
-        binding.rvRepositories.isVisible = expanded
-        ObjectAnimator.ofFloat(
-            binding.ivRepoChevron,
-            View.ROTATION,
-            if (expanded) -90f else 90f
-        ).setDuration(180).start()
-    }
-
-    /** 加载当前团队所有已授权且未被任何项目绑定的仓库名 */
-    private fun loadUnboundRepositories(onLoaded: (List<String>) -> Unit) {
-        val teamName = arguments?.getString(ARG_TEAM_NAME).orEmpty()
+    /** 发送邀请请求：调 POST 接口，成功提示 */
+    private fun sendInvitation(teamId: String, email: String) {
         viewLifecycleOwner.lifecycleScope.launch {
-            val teamId = mainViewModel.teamDtos.value?.find { it.name == teamName }?.id
-            if (teamId == null) {
-                onLoaded(emptyList())
-                return@launch
+            userRepository.createInvitation(
+                teamId,
+                InviteTeamMemberRequest(email = email, role = "TEAM_MEMBER", expiresInDays = 7),
+                UUID.randomUUID().toString()
+            ).onSuccess {
+                Toast.makeText(requireContext(), R.string.invite_sent_success, Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Toast.makeText(requireContext(), R.string.invite_send_failed, Toast.LENGTH_SHORT).show()
             }
-            val projects = userRepository.getProjects(teamId).getOrNull() ?: emptyList()
-            val boundIds = projects
-                .mapNotNull { githubRepository.getProjectRepositories(it.id).getOrNull() }
-                .flatten()
-                .map { it.repositoryId }
-                .toSet()
-            val authorized = githubRepository.getGithubRepositories(teamId).getOrNull() ?: emptyList()
-            onLoaded(authorized.filter { it.id !in boundIds }.map { it.fullName })
         }
     }
 
-    /** 仓库下拉列表 adapter：点击仓库回调仓库名 */
-    private class RepoSelectAdapter(
-        private val onSelect: (String) -> Unit
-    ) : RecyclerView.Adapter<RepoSelectAdapter.VH>() {
-
-        private val items = mutableListOf<String>()
-
-        fun submitList(list: List<String>) {
-            items.clear()
-            items.addAll(list)
-            notifyDataSetChanged()
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-            val binding = ItemRepoSelectBinding.inflate(
-                LayoutInflater.from(parent.context), parent, false
-            )
-            return VH(binding)
-        }
-
-        override fun onBindViewHolder(holder: VH, position: Int) {
-            holder.bind(items[position])
-        }
-
-        override fun getItemCount(): Int = items.size
-
-        inner class VH(private val binding: ItemRepoSelectBinding) :
-            RecyclerView.ViewHolder(binding.root) {
-
-            fun bind(name: String) {
-                binding.tvRepoName.text = name
-                binding.root.setOnClickListener { onSelect(name) }
+    /** 确认移除团队成员：调 DELETE 接口后刷新成员列表 */
+    private fun confirmRemoveMember(teamId: String, member: TeamMemberDto) {
+        if (teamId.isEmpty()) return
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.remove_member_title)
+            .setMessage(getString(R.string.remove_member_confirm, member.displayName))
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.remove_member) { _, _ ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    userRepository.removeTeamMember(teamId, member.userId, UUID.randomUUID().toString())
+                        .onSuccess {
+                            Toast.makeText(requireContext(), R.string.remove_member_success, Toast.LENGTH_SHORT).show()
+                            userRepository.getTeamMembers(teamId).onSuccess { memberAdapter.submitList(it) }
+                        }
+                        .onFailure {
+                            Toast.makeText(requireContext(), R.string.remove_member_failed, Toast.LENGTH_SHORT).show()
+                        }
+                }
             }
+            .show()
+    }
+
+    /** 新建项目：与抽屉一致，跳转新建项目页并传入当前团队 id */
+    private fun openNewProject(teamId: String) {
+        if (teamId.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.new_project_missing_team, Toast.LENGTH_SHORT).show()
+            return
         }
+        findNavController().navigate(R.id.newProjectFragment, bundleOf("teamId" to teamId))
     }
 
     private fun showTodoToast() {

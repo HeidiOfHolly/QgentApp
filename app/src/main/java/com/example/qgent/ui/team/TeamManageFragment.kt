@@ -1,26 +1,30 @@
 package com.example.qgent.ui.team
 
+import android.app.Dialog
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
+import android.view.WindowManager
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.TeamDto
+import com.example.qgent.databinding.DialogJoinTeamBinding
 import com.example.qgent.databinding.DialogNewTewmBinding
 import com.example.qgent.databinding.FragmentTeamManageBinding
 import com.example.qgent.ui.personal.bindCollapsibleSection
 import com.example.qgent.ui.personal.newInputDialog
 import com.example.qgent.ui.personal.setupRecyclerList
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 /** 团队管理页：三角下拉分组展示“我加入的 / 我创建的”团队，右上角可创建团队 */
 class TeamManageFragment : Fragment() {
@@ -100,19 +104,49 @@ class TeamManageFragment : Fragment() {
         }
     }
 
-    /** 加入团队：输入团队邀请码后加入（后端接口待接入，先占位提示） */
+    /** 加入团队：输入邀请码调用接受邀请接口，成功后刷新团队列表（与其余入口保持一致） */
     private fun showJoinTeamDialog() {
-        val input = EditText(requireContext()).apply {
-            hint = getString(R.string.join_team_invite_hint)
+        val dialogBinding = DialogJoinTeamBinding.inflate(layoutInflater)
+        val dialog = Dialog(requireContext()).apply {
+            setContentView(dialogBinding.root)
+            window?.setBackgroundDrawableResource(R.drawable.bg_card)
+            window?.setLayout(
+                (resources.displayMetrics.widthPixels * 0.85f).toInt(),
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
         }
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.action_join_team)
-            .setView(input)
-            .setNegativeButton(R.string.cancel, null)
-            .setPositiveButton("确定") { _, _ ->
-                Toast.makeText(requireContext(), R.string.join_team_placeholder, Toast.LENGTH_SHORT).show()
+
+        dialogBinding.etCode.doAfterTextChanged {
+            if (dialogBinding.codeLayout.error != null) dialogBinding.codeLayout.error = null
+        }
+
+        dialogBinding.btnJoin.setOnClickListener {
+            val reference = dialogBinding.etCode.text.toString().trim()
+            if (reference.isEmpty()) {
+                dialogBinding.codeLayout.error = getString(R.string.error_join_code_required)
+                return@setOnClickListener
             }
-            .show()
+            dialogBinding.btnJoin.isEnabled = false
+            val userRepository = (requireActivity().application as QgentApp).container.userRepository
+            viewLifecycleOwner.lifecycleScope.launch {
+                userRepository.acceptTeamInvitation(reference, UUID.randomUUID().toString())
+                    .onSuccess {
+                        dialog.dismiss()
+                        Toast.makeText(requireContext(), R.string.join_team_success, Toast.LENGTH_SHORT).show()
+                        mainViewModel.refreshTeams()
+                    }
+                    .onFailure {
+                        dialogBinding.btnJoin.isEnabled = true
+                        Toast.makeText(
+                            requireContext(),
+                            it.message ?: getString(R.string.join_team_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+            }
+        }
+
+        dialog.show()
     }
 
     /** 创建团队：弹出输入团队名称 / 简介的弹窗（创建 API 待后端就绪后接入） */

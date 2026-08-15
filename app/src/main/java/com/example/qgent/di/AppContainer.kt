@@ -9,16 +9,8 @@ import com.example.qgent.data.repository.AgentRepositoryImpl
 import com.example.qgent.data.repository.AuthRepository
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.ChatRepositoryImpl
-import com.example.qgent.data.repository.FallbackAgentRepository
-import com.example.qgent.data.repository.FallbackChatRepository
-import com.example.qgent.data.repository.FallbackGitHubRepository
-import com.example.qgent.data.repository.FallbackUserRepository
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.GitHubRepositoryImpl
-import com.example.qgent.data.repository.MockAgentRepository
-import com.example.qgent.data.repository.MockChatRepository
-import com.example.qgent.data.repository.MockGitHubRepository
-import com.example.qgent.data.repository.MockUserRepository
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.data.repository.UserRepositoryImpl
 import com.example.qgent.ui.auth.AuthViewModel
@@ -29,33 +21,19 @@ import com.example.qgent.viewmodel.NewProjectViewModel
 /**
  * 手工 DI 容器：由 QgentApp 持有，统一装配数据/网络层与 ViewModel Factory。
  *
- * Repository 采用「真实 → mock 回退」组合，后端不可用时自动降级到演示数据。
+ * 全部直接使用真实后端实现，不使用 mock 回退。
  */
 class AppContainer {
 
     val authRepository = AuthRepository(RetrofitClient.service)
 
-    val realUserRepository = UserRepositoryImpl(RetrofitClient.service)
-    val userRepository: UserRepository = FallbackUserRepository(
-        real = realUserRepository,
-        mock = MockUserRepository()
-    )
+    val userRepository: UserRepository = UserRepositoryImpl(RetrofitClient.service)
 
-    val realChatRepository = ChatRepositoryImpl(RetrofitClient.service)
-    val chatRepository: ChatRepository = FallbackChatRepository(
-        real = realChatRepository,
-        mock = MockChatRepository()
-    )
+    val chatRepository: ChatRepository = ChatRepositoryImpl(RetrofitClient.service)
 
-    val agentRepository: AgentRepository = FallbackAgentRepository(
-        real = AgentRepositoryImpl(RetrofitClient.service),
-        mock = MockAgentRepository()
-    )
+    val agentRepository: AgentRepository = AgentRepositoryImpl(RetrofitClient.service)
 
-    val githubRepository: GitHubRepository = FallbackGitHubRepository(
-        real = GitHubRepositoryImpl(RetrofitClient.service),
-        mock = MockGitHubRepository()
-    )
+    val githubRepository: GitHubRepository = GitHubRepositoryImpl(RetrofitClient.service)
 
     val authViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer { AuthViewModel(authRepository) }

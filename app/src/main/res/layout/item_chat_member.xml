@@ -42,5 +42,19 @@
         android:visibility="gone"
         tools:visibility="visible" />
 
+    <!-- 移除成员：仅我创建的团队详情页显示，Owner 行不可移除 -->
+    <ImageView
+        android:id="@+id/ivDeleteMember"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_marginStart="4dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/remove_member"
+        android:padding="6dp"
+        android:src="@drawable/ic_close"
+        android:tint="@color/gray"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
     <!-- 群聊内无角色区分，均为平等 member -->
 </LinearLayout>

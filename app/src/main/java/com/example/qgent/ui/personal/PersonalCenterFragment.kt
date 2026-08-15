@@ -1,14 +1,18 @@
 package com.example.qgent.ui.personal
 
+import android.app.Dialog
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
+import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.fragment.NavHostFragment
@@ -18,9 +22,12 @@ import com.example.qgent.MainActivity
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
+import com.example.qgent.databinding.DialogJoinTeamBinding
 import com.example.qgent.databinding.FragmentPersonalCenterBinding
 import com.example.qgent.ui.team.TeamAdapter
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 class PersonalCenterFragment : Fragment() {
 
@@ -115,11 +122,56 @@ class PersonalCenterFragment : Fragment() {
         // GitHub 图标 → 收起抽屉并进入 GitHub 页
         binding.ivGithub.setOnClickListener { openGithub() }
 
-        // 铃铛 → 消息列表
-        binding.btnNotification.setOnClickListener { openMessageList() }
-
         // 新建项目 → 关闭抽屉并进入新建项目页
         binding.btnNewProject.setOnClickListener { openNewProject() }
+
+        // 右上角加号 → 弹出输入邀请码加入团队
+        binding.tvAddTeam.setOnClickListener { showJoinTeamDialog() }
+    }
+
+    /** 加入团队：输入邀请码调用接受邀请接口，成功后刷新团队列表 */
+    private fun showJoinTeamDialog() {
+        val dialogBinding = DialogJoinTeamBinding.inflate(layoutInflater)
+        val dialog = Dialog(requireContext()).apply {
+            setContentView(dialogBinding.root)
+            window?.setBackgroundDrawableResource(R.drawable.bg_card)
+            window?.setLayout(
+                (resources.displayMetrics.widthPixels * 0.85f).toInt(),
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        dialogBinding.etCode.doAfterTextChanged {
+            if (dialogBinding.codeLayout.error != null) dialogBinding.codeLayout.error = null
+        }
+
+        dialogBinding.btnJoin.setOnClickListener {
+            val token = dialogBinding.etCode.text.toString().trim()
+            if (token.isEmpty()) {
+                dialogBinding.codeLayout.error = getString(R.string.error_join_code_required)
+                return@setOnClickListener
+            }
+            dialogBinding.btnJoin.isEnabled = false
+            val userRepository = (requireActivity().application as QgentApp).container.userRepository
+            viewLifecycleOwner.lifecycleScope.launch {
+                userRepository.acceptTeamInvitation(token, UUID.randomUUID().toString())
+                    .onSuccess {
+                        dialog.dismiss()
+                        Toast.makeText(requireContext(), R.string.join_team_success, Toast.LENGTH_SHORT).show()
+                        mainViewModel.refreshTeams()
+                    }
+                    .onFailure {
+                        dialogBinding.btnJoin.isEnabled = true
+                        Toast.makeText(
+                            requireContext(),
+                            it.message ?: getString(R.string.join_team_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+            }
+        }
+
+        dialog.show()
     }
 
     /** 点击团队切换：若该团队未创建任何项目，则收起抽屉并进入 GitHub 页 */
@@ -158,12 +210,6 @@ class PersonalCenterFragment : Fragment() {
                 launchSingleTop = true
             }
         )
-    }
-
-    /** 收起个人中心抽屉，并在主内容区打开消息列表页 */
-    private fun openMessageList() {
-        (activity as? MainActivity)?.closeDrawer()
-        navController.navigate(R.id.messageListFragment)
     }
 
     /** 收起个人中心抽屉，并在主内容区打开个人信息页 */

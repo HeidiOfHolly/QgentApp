@@ -16,6 +16,7 @@ import com.example.qgent.data.model.GitHubInstallationUrlDto
 import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
+import com.example.qgent.data.model.InviteTeamMemberRequest
 import com.example.qgent.data.model.AuthSessionDto
 import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.model.LoginRequest
@@ -26,6 +27,7 @@ import com.example.qgent.data.model.RefreshRequest
 import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.SendMessageRequest
 import com.example.qgent.data.model.TeamDto
+import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.model.UpdateAgentRequest
 import com.example.qgent.data.model.UpdateGroupRequest
@@ -85,6 +87,38 @@ interface QgApiService {
         @Query("cursor") cursor: String? = null,
         @Query("limit") limit: Int = 30
     ): Response<ApiResponse<List<TeamMemberDto>>>
+
+    @DELETE("teams/{teamId}/members/{userId}")
+    suspend fun removeTeamMember(
+        @Path("teamId") teamId: String,
+        @Path("userId") userId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<Unit>
+
+    @POST("teams/{teamId}/invitations")
+    suspend fun createInvitation(
+        @Path("teamId") teamId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: InviteTeamMemberRequest
+    ): Response<ApiResponse<TeamInvitationDto>>
+
+    @GET("teams/{teamId}/invitations")
+    suspend fun getTeamInvitations(
+        @Path("teamId") teamId: String
+    ): Response<ApiResponse<List<TeamInvitationDto>>>
+
+    @POST("team-invitations/{reference}/accept")
+    suspend fun acceptTeamInvitation(
+        @Path("reference") reference: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<TeamMemberDto>>
+
+    @DELETE("teams/{teamId}/invitations/{invitationId}")
+    suspend fun revokeInvitation(
+        @Path("teamId") teamId: String,
+        @Path("invitationId") invitationId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<Unit>
 
     // ── 项目 ──
 

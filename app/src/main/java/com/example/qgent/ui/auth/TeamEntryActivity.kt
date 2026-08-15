@@ -12,6 +12,7 @@ import com.example.qgent.MainActivity
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.databinding.ActivityTeamEntryBinding
+import com.example.qgent.databinding.DialogJoinTeamBinding
 import com.example.qgent.databinding.DialogNewTewmBinding
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -27,9 +28,55 @@ class TeamEntryActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.btnCreateTeam.setOnClickListener { showCreateTeamDialog() }
-        binding.btnJoinTeam.setOnClickListener {
-            Toast.makeText(this, R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
+        binding.btnJoinTeam.setOnClickListener { showJoinTeamDialog() }
+    }
+
+    /** 加入团队：输入邀请码后调用接受邀请接口，成功后进入主界面 */
+    private fun showJoinTeamDialog() {
+        val dialogBinding = DialogJoinTeamBinding.inflate(layoutInflater)
+        val dialog = Dialog(this)
+        dialog.setContentView(dialogBinding.root)
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_card)
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.85f).toInt(),
+            WindowManager.LayoutParams.WRAP_CONTENT
+        )
+
+        dialogBinding.etCode.doAfterTextChanged {
+            if (dialogBinding.codeLayout.error != null) dialogBinding.codeLayout.error = null
         }
+
+        dialogBinding.btnJoin.setOnClickListener {
+            val token = dialogBinding.etCode.text.toString().trim()
+            if (token.isEmpty()) {
+                dialogBinding.codeLayout.error = getString(R.string.error_join_code_required)
+                return@setOnClickListener
+            }
+            dialogBinding.btnJoin.isEnabled = false
+            val repo = (application as QgentApp).container.userRepository
+            lifecycleScope.launch {
+                repo.acceptTeamInvitation(token, UUID.randomUUID().toString())
+                    .onSuccess {
+                        dialog.dismiss()
+                        Toast.makeText(
+                            this@TeamEntryActivity,
+                            R.string.join_team_success,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        startActivity(Intent(this@TeamEntryActivity, MainActivity::class.java))
+                        finish()
+                    }
+                    .onFailure {
+                        dialogBinding.btnJoin.isEnabled = true
+                        Toast.makeText(
+                            this@TeamEntryActivity,
+                            it.message ?: getString(R.string.join_team_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+            }
+        }
+        dialog.show()
     }
 
     private fun showCreateTeamDialog() {

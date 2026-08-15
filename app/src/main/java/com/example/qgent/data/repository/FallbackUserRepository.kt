@@ -1,5 +1,7 @@
 package com.example.qgent.data.repository
 
+import com.example.qgent.data.model.InviteTeamMemberRequest
+
 /** 真实请求失败时回退到 mock，保证演示环境可用 */
 class FallbackUserRepository(
     real: UserRepository,
@@ -12,6 +14,20 @@ class FallbackUserRepository(
     override suspend fun getTeams() = fb.call { getTeams() }
 
     override suspend fun getTeamMembers(teamId: String, cursor: String?, limit: Int) = fb.call { getTeamMembers(teamId, cursor, limit) }
+
+    override suspend fun removeTeamMember(teamId: String, userId: String, idempotencyKey: String) =
+        fb.call { removeTeamMember(teamId, userId, idempotencyKey) }
+
+    override suspend fun createInvitation(teamId: String, request: InviteTeamMemberRequest, idempotencyKey: String) =
+        fb.call { createInvitation(teamId, request, idempotencyKey) }
+
+    override suspend fun getTeamInvitations(teamId: String) = fb.call { getTeamInvitations(teamId) }
+
+    override suspend fun revokeInvitation(teamId: String, invitationId: String, idempotencyKey: String) =
+        fb.call { revokeInvitation(teamId, invitationId, idempotencyKey) }
+
+    override suspend fun acceptTeamInvitation(reference: String, idempotencyKey: String) =
+        fb.call { acceptTeamInvitation(reference, idempotencyKey) }
 
     override suspend fun getProjects(teamId: String) = fb.call { getProjects(teamId) }
 

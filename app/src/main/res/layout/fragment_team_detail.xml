@@ -17,7 +17,7 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="8dp"
-        android:paddingTop="10dp"
+        android:paddingTop="15dp"
         android:paddingEnd="16dp"
         android:paddingBottom="10dp">
 
@@ -39,6 +39,23 @@
             android:textColor="@color/blue_tint"
             android:textStyle="bold"
             tools:text="团队A" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnInviteHistory"
+            style="?attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="@string/invite_history"
+            android:textColor="@color/blue_tint"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:icon="@drawable/ic_history"
+            app:iconGravity="textStart"
+            app:iconPadding="4dp"
+            app:iconTint="@color/blue_tint" />
     </LinearLayout>
 
     <View

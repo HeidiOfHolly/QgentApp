@@ -117,6 +117,9 @@ class MainViewModel(
         loadTeams()
     }
 
+    /** 加入团队后刷新团队列表（复用 init 的加载逻辑） */
+    fun refreshTeams() = loadTeams()
+
     fun setCurrentTeam(team: String, onProjectsLoaded: ((Boolean) -> Unit)? = null) {
         if (_currentTeam.value == team) return
         _currentTeam.value = team
