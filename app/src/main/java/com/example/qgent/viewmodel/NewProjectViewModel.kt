@@ -69,7 +69,16 @@ class NewProjectViewModel(
 
     private fun loadRepos() {
         viewModelScope.launch {
-            githubRepo.getGithubRepositories(teamId).onSuccess { _repos.value = it }
+            val authorized = githubRepo.getGithubRepositories(teamId).getOrNull().orEmpty()
+                .filter { it.authorizationStatus == "AUTHORIZED" }
+            // 排除已绑定到本团队任一项目的仓库：只展示已授权且未绑定的
+            val projects = userRepo.getProjects(teamId).getOrNull().orEmpty()
+            val boundIds = projects
+                .mapNotNull { githubRepo.getProjectRepositories(it.id).getOrNull() }
+                .flatten()
+                .map { it.repositoryId }
+                .toSet()
+            _repos.value = authorized.filter { it.id !in boundIds }
         }
     }
 }

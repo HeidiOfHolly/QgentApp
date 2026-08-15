@@ -5,6 +5,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
+import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.GitHubInstallationDto
 import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.repository.GitHubRepository
@@ -51,7 +52,11 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(
                         loading = false,
-                        error = e.message ?: "获取安装链接失败，请稍后重试"
+                        error = if (e is ApiException && e.code == "GITHUB_INSTALLATION_TEAM_CONFLICT") {
+                            "该 GitHub 账号已绑定其他团队，无法重复授权"
+                        } else {
+                            e.message ?: "获取安装链接失败，请稍后重试"
+                        }
                     )
                 }
         }

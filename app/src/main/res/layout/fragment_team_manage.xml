@@ -105,14 +105,12 @@
 
             </LinearLayout>
 
-            <androidx.recyclerview.widget.RecyclerView
+            <LinearLayout
                 android:id="@+id/rvJoined"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:clipToPadding="false"
-                android:overScrollMode="never"
-                android:paddingBottom="4dp"
-                android:nestedScrollingEnabled="false" />
+                android:orientation="vertical"
+                android:paddingBottom="4dp" />
 
             <View
                 android:layout_width="match_parent"
@@ -158,14 +156,12 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
-            <androidx.recyclerview.widget.RecyclerView
+            <LinearLayout
                 android:id="@+id/rvCreated"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:clipToPadding="false"
-                android:overScrollMode="never"
-                android:paddingBottom="4dp"
-                android:nestedScrollingEnabled="false" />
+                android:orientation="vertical"
+                android:paddingBottom="4dp" />
         </LinearLayout>
     </ScrollView>
 

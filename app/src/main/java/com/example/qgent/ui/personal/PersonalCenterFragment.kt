@@ -235,11 +235,15 @@ class PersonalCenterFragment : Fragment() {
         navController.navigate(R.id.teamManageFragment)
     }
 
-    /** 收起个人中心抽屉，并在主内容区打开新建项目页 */
+    /** 收起个人中心抽屉，并在主内容区打开新建项目页（无创建权限时拦截提示） */
     private fun openNewProject() {
         val teamId = mainViewModel.currentTeamId()
         if (teamId == null) {
             Toast.makeText(requireContext(), R.string.new_project_missing_team, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!mainViewModel.canCreateProject(mainViewModel.currentTeam.value.orEmpty())) {
+            Toast.makeText(requireContext(), R.string.new_project_no_permission, Toast.LENGTH_SHORT).show()
             return
         }
         (activity as? MainActivity)?.closeDrawer()

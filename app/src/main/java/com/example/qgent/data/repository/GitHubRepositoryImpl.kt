@@ -24,7 +24,18 @@ class GitHubRepositoryImpl(private val service: QgApiService) : GitHubRepository
         apiCall { service.syncInstallation(teamId, installationId, idempotencyKey).toDataOrThrow() }
 
     override suspend fun getGithubRepositories(teamId: String): Result<List<GitHubRepositoryDto>> =
-        apiCall { service.getGithubRepositories(teamId).toDataOrThrow() }
+        apiCall {
+            // 接口按 cursor/limit 分页（文档 §2，默认 30），循环拉全量避免仓库数量被截断
+            val all = mutableListOf<GitHubRepositoryDto>()
+            var cursor: String? = null
+            do {
+                val resp = service.getGithubRepositories(teamId, cursor)
+                all += resp.toDataOrThrow()
+                val page = resp.body()?.page
+                cursor = page?.nextCursor?.takeIf { page.hasMore }
+            } while (cursor != null)
+            all
+        }
 
     override suspend fun getProjectRepositories(projectId: String): Result<List<ProjectRepositoryDto>> =
         apiCall { service.getProjectRepositories(projectId).toDataOrThrow() }

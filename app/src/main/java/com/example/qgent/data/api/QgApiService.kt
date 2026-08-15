@@ -320,7 +320,9 @@ interface QgApiService {
 
     @GET("teams/{teamId}/integrations/github/repositories")
     suspend fun getGithubRepositories(
-        @Path("teamId") teamId: String
+        @Path("teamId") teamId: String,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 100
     ): Response<ApiResponse<List<GitHubRepositoryDto>>>
 
     @GET("projects/{projectId}/repositories")
