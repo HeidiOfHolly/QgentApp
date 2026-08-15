@@ -4,6 +4,7 @@ import com.example.qgent.data.datasource.MockDataSource
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.GroupMessageDto
+import com.example.qgent.data.model.MessageContentDto
 
 class MockChatRepository : ChatRepository {
 
@@ -16,7 +17,8 @@ class MockChatRepository : ChatRepository {
     override suspend fun createGroup(
         projectId: String,
         title: String,
-        description: String?
+        description: String?,
+        idempotencyKey: String
     ): Result<GroupDto> = Result.failure(UnsupportedOperationException("mock 不支持创建群"))
 
     override suspend fun getGroup(projectId: String, groupId: String): Result<GroupDto> {
@@ -29,16 +31,17 @@ class MockChatRepository : ChatRepository {
         projectId: String,
         groupId: String,
         title: String?,
-        description: String?
+        description: String?,
+        idempotencyKey: String
     ): Result<GroupDto> = Result.failure(UnsupportedOperationException("mock 不支持更新群"))
 
-    override suspend fun archiveGroup(projectId: String, groupId: String): Result<GroupDto> =
+    override suspend fun archiveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<GroupDto> =
         Result.failure(UnsupportedOperationException("mock 不支持归档群"))
 
     override suspend fun getMembers(projectId: String, groupId: String): Result<List<GroupMemberDto>> =
-        Result.success(listOf(GroupMemberDto("m1", "张三", null), GroupMemberDto("m2", "李四", null)))
+        Result.success(listOf(GroupMemberDto(id = "m1", nickname = "张三", avatar = null), GroupMemberDto(id = "m2", nickname = "李四", avatar = null)))
 
-    override suspend fun leaveGroup(projectId: String, groupId: String): Result<Unit> = Result.success(Unit)
+    override suspend fun leaveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<Unit> = Result.success(Unit)
 
     override suspend fun getMessages(
         projectId: String,
@@ -50,8 +53,9 @@ class MockChatRepository : ChatRepository {
     override suspend fun sendMessage(
         projectId: String,
         groupId: String,
-        text: String,
         type: String,
-        clientMessageId: String?
+        content: MessageContentDto,
+        clientMessageId: String?,
+        idempotencyKey: String
     ): Result<GroupMessageDto> = Result.failure(UnsupportedOperationException("mock 不支持发送消息"))
 }

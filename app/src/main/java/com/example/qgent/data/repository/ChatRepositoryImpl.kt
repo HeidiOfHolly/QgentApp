@@ -24,10 +24,12 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
     override suspend fun createGroup(
         projectId: String,
         title: String,
-        description: String?
+        description: String?,
+        idempotencyKey: String
     ): Result<GroupDto> = apiCall {
         service.createGroup(
             projectId,
+            idempotencyKey,
             CreateGroupRequest(title = title, description = description)
         ).toDataOrThrow()
     }
@@ -40,24 +42,26 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         projectId: String,
         groupId: String,
         title: String?,
-        description: String?
+        description: String?,
+        idempotencyKey: String
     ): Result<GroupDto> = apiCall {
         service.updateGroup(
             projectId, groupId,
+            idempotencyKey,
             UpdateGroupRequest(title = title, description = description)
         ).toDataOrThrow()
     }
 
-    override suspend fun archiveGroup(projectId: String, groupId: String): Result<GroupDto> = apiCall {
-        service.archiveGroup(projectId, groupId).toDataOrThrow()
+    override suspend fun archiveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<GroupDto> = apiCall {
+        service.archiveGroup(projectId, groupId, idempotencyKey).toDataOrThrow()
     }
 
     override suspend fun getMembers(projectId: String, groupId: String): Result<List<GroupMemberDto>> = apiCall {
         service.getGroupMembers(projectId, groupId).toDataOrThrow()
     }
 
-    override suspend fun leaveGroup(projectId: String, groupId: String): Result<Unit> = apiCall {
-        service.leaveGroup(projectId, groupId).toUnitOrThrow()
+    override suspend fun leaveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<Unit> = apiCall {
+        service.leaveGroup(projectId, groupId, idempotencyKey).toUnitOrThrow()
     }
 
     override suspend fun getMessages(
@@ -72,15 +76,17 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
     override suspend fun sendMessage(
         projectId: String,
         groupId: String,
-        text: String,
         type: String,
-        clientMessageId: String?
+        content: MessageContentDto,
+        clientMessageId: String?,
+        idempotencyKey: String
     ): Result<GroupMessageDto> = apiCall {
         service.sendMessage(
             projectId, groupId,
+            idempotencyKey,
             SendMessageRequest(
                 type = type,
-                content = MessageContentDto(text = text),
+                content = content,
                 clientMessageId = clientMessageId
             )
         ).toDataOrThrow()

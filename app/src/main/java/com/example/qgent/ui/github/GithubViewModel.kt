@@ -1,5 +1,6 @@
 package com.example.qgent.ui.github
 
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
@@ -72,24 +73,45 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
         }
     }
 
-    /** 拉取团队授权仓库列表 */
+    /** 拉取团队授权仓库列表（只保留 AUTHORIZED，REVOKED 是网页端已撤销授权的，不显示） */
     fun loadRepositories(teamId: String) {
         viewModelScope.launch {
             repo.getGithubRepositories(teamId).onSuccess { repos ->
-                _uiState.value = _uiState.value.copy(repositories = repos)
+                Log.d("GithubViewModel", "repos raw: ${repos.map { "${it.fullName}=${it.authorizationStatus}" }}")
+                _uiState.value = _uiState.value.copy(
+                    repositories = repos.filter { it.authorizationStatus == "AUTHORIZED" }
+                )
             }
         }
     }
 
-    /** 逐团队拉取授权仓库数量，供 GitHub 页团队卡片展示真实仓库数 */
+    /** 逐团队拉取授权仓库数量，供 GitHub 页团队卡片展示真实仓库数（只统计 AUTHORIZED） */
     fun loadRepositoryCounts(teamIds: List<String>) {
         teamIds.forEach { teamId ->
             viewModelScope.launch {
                 repo.getGithubRepositories(teamId).onSuccess { repos ->
                     _uiState.value = _uiState.value.copy(
-                        repoCounts = _uiState.value.repoCounts + (teamId to repos.size)
+                        repoCounts = _uiState.value.repoCounts +
+                            (teamId to repos.count { it.authorizationStatus == "AUTHORIZED" })
                     )
                 }
+            }
+        }
+    }
+
+    /**
+     * 从 GitHub 网页返回后强制重同步所有 ACTIVE 安装的仓库元数据。
+     * 网页端「增加/删除仓库」不会自动同步到后端，必须靠 syncInstallation 重拉，
+     * 否则删除的仓库在后端始终停留在 AUTHORIZED，不会消失。
+     */
+    fun syncInstallations(teamId: String) {
+        viewModelScope.launch {
+            repo.getInstallations(teamId).onSuccess { installations ->
+                _uiState.value = _uiState.value.copy(installations = installations)
+                installations.filter { it.status == "ACTIVE" }.forEach { inst ->
+                    repo.syncInstallation(teamId, inst.id, UUID.randomUUID().toString())
+                }
+                loadRepositories(teamId)
             }
         }
     }

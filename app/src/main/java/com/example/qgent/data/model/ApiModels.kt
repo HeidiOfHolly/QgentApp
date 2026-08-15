@@ -179,14 +179,19 @@ data class GroupDto(
 /** 群列表摘要（文档 §7 群列表 DTO 补充）：{ senderName, text }；SYSTEM 消息 senderName 为空 */
 data class GroupLatestMessageDto(
     @SerializedName("senderName") val senderName: String?,
-    val text: String?
+    val text: String?,
+    val type: String? = null
 )
 
 data class GroupMemberDto(
     val id: String,
     val nickname: String?,
+    @SerializedName("displayName") val displayName: String? = null,
     val avatar: String?
-)
+) {
+    /** 后端用户表用 display_name，群成员昵称可能是 displayName；兼容 nickname，兜底「成员」 */
+    val resolvedName: String get() = displayName ?: nickname ?: "成员"
+}
 
 // ── 消息 ──
 
@@ -194,7 +199,7 @@ data class GroupMessageDto(
     val id: String,
     @SerializedName("groupId") val groupId: String,
     @SerializedName("senderId") val senderId: String,
-    @SerializedName("senderName") val senderName: String,
+    @SerializedName("senderName") val senderName: String?,
     val type: String,               // TEXT / CODE / IMAGE / FILE / SYSTEM / QUOTE
     val content: MessageContentDto?,
     val mentions: List<String>?,
@@ -206,24 +211,32 @@ data class GroupMessageDto(
 
 data class MessageContentDto(
     val text: String?,
-    @SerializedName("imageUrl") val imageUrl: String? = null
+    @SerializedName("url") val url: String? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("size") val size: Long? = null,
+    @SerializedName("mimeType") val mimeType: String? = null
 )
 
-/**
- * 创建对象存储直传凭证（文档 §7：POST /projects/{projectId}/attachments）。
- * 上传图片前先取凭证，上传后把 URL 填入消息 content.imageUrl。
- * 具体字段以 A 联调约定为准，此处为最小骨架。
- */
+/** 创建对象存储直传凭证（§18.1：POST /projects/{projectId}/attachments） */
 data class CreateAttachmentRequest(
     @SerializedName("fileName") val fileName: String,
-    @SerializedName("contentType") val contentType: String
+    @SerializedName("contentType") val contentType: String?,
+    @SerializedName("sizeBytes") val sizeBytes: Long
 )
 
-/** 直传凭证响应（字段待后端确认，先占位） */
+/** 直传凭证响应（§18.1）：uploadUrl 为预签名 PUT 地址，method 恒 PUT */
 data class AttachmentDto(
     @SerializedName("attachmentId") val attachmentId: String,
     @SerializedName("uploadUrl") val uploadUrl: String?,
-    @SerializedName("expiresAt") val expiresAt: String?
+    @SerializedName("method") val method: String?,
+    @SerializedName("expiresAt") val expiresAt: String?,
+    @SerializedName("headers") val headers: Map<String, String>?
+)
+
+/** 上传完成确认（§18.2）：confirm 后 status = READY */
+data class AttachmentConfirmDto(
+    @SerializedName("attachmentId") val attachmentId: String,
+    val status: String
 )
 
 // ── 请求体 ──

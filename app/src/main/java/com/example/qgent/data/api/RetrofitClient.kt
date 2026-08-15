@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
-    private const val BASE_URL = "http://47.113.224.195:32500/api/v1/"
+    const val BASE_URL = "http://47.113.224.195:32500/api/v1/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
@@ -37,6 +37,19 @@ object RetrofitClient {
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    // 预签名 PUT 直传专用：不带鉴权拦截器（签名已在 URL 中）
+    val uploadClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .build()
+
+    /** content.url 相对路径 → 绝对地址；本地 uri / http 原样返回 */
+    fun resolveMediaUrl(path: String): String = when {
+        path.startsWith("content://") || path.startsWith("http") -> path
+        else -> BASE_URL.trimEnd('/') + (if (path.startsWith("/")) path else "/$path")
+    }
 
     val service: QgApiService by lazy {
         Retrofit.Builder()

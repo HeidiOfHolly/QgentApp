@@ -27,29 +27,40 @@ fun AgentDto.toAgent(): Agent = Agent(
 
 /** GroupMemberDto → UI GroupMember。API 无 member/agent 类型字段，统一按 HUMAN。 */
 fun GroupMemberDto.toGroupMember(): GroupMember = GroupMember(
-    name = nickname ?: "成员",
+    name = resolvedName,
     type = MemberType.HUMAN
 )
 
 /** GroupMessageDto → UI ChatMessage。isMine 依据当前用户 id 与 senderId 比对。 */
 fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String, String>): ChatMessage {
     val parsedType = runCatching { MessageType.valueOf(type) }.getOrDefault(MessageType.TEXT)
+    val displayContent = if (parsedType == MessageType.IMAGE || parsedType == MessageType.FILE) {
+        content?.url ?: ""
+    } else {
+        content?.text ?: ""
+    }
     return ChatMessage(
         id = id,
-        // 文档 §7：senderName 后端不返回，前端用 senderId 反查群成员 displayName
-        senderName = memberNamesById[senderId] ?: senderName,
-        content = content?.text ?: "",
+        // v1.6.0 起后端返回 senderName（用户=displayName、Agent=name、SYSTEM=null），反查仅兜底
+        senderName = senderName?.takeIf { it.isNotBlank() } ?: memberNamesById[senderId] ?: "成员",
+        content = displayContent,
         type = parsedType,
         timestamp = parseRfc3339(createdAt),
-        isMine = myUserId != null && senderId == myUserId
+        isMine = myUserId != null && senderId == myUserId,
+        fileName = content?.name,
+        fileSize = content?.size
     )
 }
 
-/** 群列表摘要：senderName 为空（如 SYSTEM 消息）时只显示 text。 */
-fun GroupLatestMessageDto?.toSummary(): String = when {
-    this == null -> ""
-    senderName.isNullOrBlank() -> text ?: ""
-    else -> "$senderName：${text ?: ""}"
+/** 群列表摘要：图片/文件消息显示 [图片]/[文件]，其余显示 text；senderName 为空（如 SYSTEM 消息）时只显示正文。 */
+fun GroupLatestMessageDto?.toSummary(): String {
+    if (this == null) return ""
+    val body = when (type) {
+        "IMAGE" -> "[图片]"
+        "FILE" -> "[文件]"
+        else -> text ?: ""
+    }
+    return if (senderName.isNullOrBlank()) body else "$senderName：$body"
 }
 
 /** 解析 UTC RFC3339 时间到 epoch 毫秒，失败回退当前时间。 */

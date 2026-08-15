@@ -9,12 +9,14 @@ data class ChatMessage(
     val type: MessageType,
     val timestamp: Long,
     val isMine: Boolean,
-    val diff: List<DiffFile>? = null
+    val diff: List<DiffFile>? = null,
+    val fileName: String? = null,
+    val fileSize: Long? = null
 ) {
     fun displayContent(): String = when (type) {
         MessageType.TEXT, MessageType.CODE -> content
         MessageType.IMAGE -> "[图片]"
-        MessageType.FILE -> "[文件]"
+        MessageType.FILE -> fileName ?: "[文件]"
         MessageType.SYSTEM -> content
         MessageType.QUOTE -> "[引用消息]"
         MessageType.DIFF -> "[代码变更]"

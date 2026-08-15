@@ -8,12 +8,17 @@ import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.model.GlideUrl
+import com.bumptech.glide.load.model.LazyHeaders
 import com.example.qgent.R
+import com.example.qgent.data.SessionStore
+import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.databinding.ItemMessageBinding
 import com.example.qgent.databinding.ItemMessageDiffBinding
 import com.example.qgent.databinding.ItemMessageTimeBinding
 import com.example.qgent.model.ChatMessage
 import com.example.qgent.model.MessageType
+import java.util.Locale
 
 sealed class ChatRow {
     data class Time(val text: String) : ChatRow()
@@ -70,29 +75,41 @@ class ChatMessageAdapter(
         fun bind(message: ChatMessage) {
             val mine = message.isMine
             val isImage = message.type == MessageType.IMAGE
+            val isFile = message.type == MessageType.FILE
             binding.rowContainer.gravity = if (mine) Gravity.END else Gravity.START
             binding.rowInner.gravity = if (mine) Gravity.END else Gravity.START
             binding.ivAvatar.isVisible = !mine
             binding.tvSenderName.isVisible = !mine
             binding.tvSenderName.text = message.senderName
 
-            binding.tvBubble.isVisible = !isImage
+            binding.tvBubble.isVisible = !isImage && !isFile
             binding.ivBubbleImage.isVisible = isImage
-            if (isImage) {
-                // 图片消息无气泡背景
-                binding.flBubble.background = null
-                bindImage(message.content)
-            } else {
-                binding.flBubble.setBackgroundResource(
-                    if (mine) R.drawable.bg_bubble_mine else R.drawable.bg_bubble_other
-                )
-                binding.tvBubble.text = message.displayContent()
-                binding.tvBubble.setTextColor(
-                    ContextCompat.getColor(
-                        binding.root.context,
-                        if (mine) R.color.white else R.color.text_primary
+            binding.llBubbleFile.isVisible = isFile
+            when {
+                isImage -> {
+                    // 图片消息无气泡背景
+                    binding.flBubble.background = null
+                    bindImage(message.content)
+                }
+                isFile -> {
+                    binding.flBubble.setBackgroundResource(
+                        if (mine) R.drawable.bg_bubble_mine else R.drawable.bg_bubble_other
                     )
-                )
+                    binding.tvFileName.text = message.fileName ?: "[文件]"
+                    binding.tvFileSize.text = formatFileSize(message.fileSize)
+                }
+                else -> {
+                    binding.flBubble.setBackgroundResource(
+                        if (mine) R.drawable.bg_bubble_mine else R.drawable.bg_bubble_other
+                    )
+                    binding.tvBubble.text = message.displayContent()
+                    binding.tvBubble.setTextColor(
+                        ContextCompat.getColor(
+                            binding.root.context,
+                            if (mine) R.color.white else R.color.text_primary
+                        )
+                    )
+                }
             }
             binding.ivAvatar.setOnLongClickListener {
                 onAvatarLongClick?.invoke(message.senderName)
@@ -111,9 +128,17 @@ class ChatMessageAdapter(
             lp.width = halfScreenW
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
             view.layoutParams = lp
-            // adjustViewBounds 会根据加载到的图片比例自动算高度
-            Glide.with(view).load(uri).into(view)
+            // content.url 是后端鉴权接口，Glide 需带 Bearer 头才能下载；adjustViewBounds 按比例自动算高
+            Glide.with(view).load(authedGlideUrl(uri)).into(view)
             view.setOnClickListener { onImageClick?.invoke(uri) }
+        }
+
+        private fun authedGlideUrl(uri: String): GlideUrl {
+            val token = SessionStore.accessToken()
+            val headers = LazyHeaders.Builder().apply {
+                if (!token.isNullOrEmpty()) addHeader("Authorization", "Bearer $token")
+            }.build()
+            return GlideUrl(RetrofitClient.resolveMediaUrl(uri), headers)
         }
     }
 
@@ -150,5 +175,15 @@ class ChatMessageAdapter(
         private const val TYPE_TIME = 0
         private const val TYPE_MESSAGE = 1
         private const val TYPE_DIFF = 2
+
+        private fun formatFileSize(size: Long?): String {
+            if (size == null || size <= 0) return ""
+            val kb = size / 1024.0
+            return if (kb < 1024) {
+                String.format(Locale.US, "%.1f KB", kb)
+            } else {
+                String.format(Locale.US, "%.1f MB", kb / 1024.0)
+            }
+        }
     }
 }

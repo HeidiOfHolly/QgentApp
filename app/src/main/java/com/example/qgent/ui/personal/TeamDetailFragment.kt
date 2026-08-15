@@ -1,28 +1,21 @@
 package com.example.qgent.ui.personal
 
-import android.animation.ObjectAnimator
 import android.app.AlertDialog
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
-import androidx.core.view.isVisible
-import androidx.core.widget.doAfterTextChanged
+import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.QgentApp
 import com.example.qgent.R
-import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.UserRepository
-import com.example.qgent.databinding.DialogNewProjectBinding
 import com.example.qgent.databinding.FragmentTeamDetailBinding
 import com.example.qgent.ui.github.GithubViewModel
-import com.example.qgent.databinding.ItemRepoSelectBinding
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 
@@ -41,8 +34,6 @@ class TeamDetailFragment : Fragment() {
         (requireActivity().application as QgentApp).container.githubViewModelFactory
     }
 
-    private val githubRepository: GitHubRepository
-        get() = (requireActivity().application as QgentApp).container.githubRepository
     private val userRepository: UserRepository
         get() = (requireActivity().application as QgentApp).container.userRepository
 
@@ -75,7 +66,7 @@ class TeamDetailFragment : Fragment() {
 
         // 展开时分组顶部显示增加按钮
         binding.btnAddMember.setOnClickListener { showTodoToast() }
-        binding.btnAddProject.setOnClickListener { showNewProjectDialog() }
+        binding.btnAddProject.setOnClickListener { openNewProject(teamId) }
         binding.btnRepository.setOnClickListener { showTodoToast() }
 
         setupRecyclerList(binding.rvProjects, projectAdapter)
@@ -110,118 +101,13 @@ class TeamDetailFragment : Fragment() {
             .show()
     }
 
-    /** 新建项目：弹出名称/简介输入弹窗，GitHub 仓库下拉选择已授权未绑定的仓库 */
-    private fun showNewProjectDialog() {
-        val dialogBinding = DialogNewProjectBinding.inflate(layoutInflater)
-        val dialog = newInputDialog(dialogBinding.root)
-
-        dialogBinding.etName.doAfterTextChanged {
-            if (dialogBinding.nameLayout.error != null) dialogBinding.nameLayout.error = null
+    /** 新建项目：与抽屉页一致，进入新建项目页 */
+    private fun openNewProject(teamId: String) {
+        if (teamId.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.new_project_missing_team, Toast.LENGTH_SHORT).show()
+            return
         }
-
-        val repoAdapter = RepoSelectAdapter { repoName ->
-            dialogBinding.tvRepoSelect.text = repoName
-            setRepoListExpanded(dialogBinding, expanded = false)
-        }
-        dialogBinding.rvRepositories.layoutManager = LinearLayoutManager(requireContext())
-        dialogBinding.rvRepositories.adapter = repoAdapter
-
-        var repoLoading = false
-        dialogBinding.layoutGithub.setOnClickListener {
-            when {
-                dialogBinding.rvRepositories.isVisible -> setRepoListExpanded(dialogBinding, expanded = false)
-                repoLoading -> Unit // 加载中忽略重复点击
-                else -> {
-                    repoLoading = true
-                    loadUnboundRepositories { names ->
-                        repoLoading = false
-                        if (names.isEmpty()) {
-                            Toast.makeText(requireContext(), R.string.github_repo_empty, Toast.LENGTH_SHORT).show()
-                        } else {
-                            repoAdapter.submitList(names)
-                            setRepoListExpanded(dialogBinding, expanded = true)
-                        }
-                    }
-                }
-            }
-        }
-
-        dialogBinding.bnNewTeam.setOnClickListener {
-            if (dialogBinding.etName.text.toString().trim().isEmpty()) {
-                dialogBinding.nameLayout.error = getString(R.string.error_project_name_required)
-                return@setOnClickListener
-            }
-            dialog.dismiss()
-            // 创建项目 API 待后端就绪后接入
-            Toast.makeText(requireContext(), R.string.new_project_placeholder, Toast.LENGTH_SHORT).show()
-        }
-
-        dialog.show()
-    }
-
-    private fun setRepoListExpanded(binding: DialogNewProjectBinding, expanded: Boolean) {
-        binding.rvRepositories.isVisible = expanded
-        ObjectAnimator.ofFloat(
-            binding.ivRepoChevron,
-            View.ROTATION,
-            if (expanded) -90f else 90f
-        ).setDuration(180).start()
-    }
-
-    /** 加载当前团队所有已授权且未被任何项目绑定的仓库名 */
-    private fun loadUnboundRepositories(onLoaded: (List<String>) -> Unit) {
-        val teamName = arguments?.getString(ARG_TEAM_NAME).orEmpty()
-        viewLifecycleOwner.lifecycleScope.launch {
-            val teamId = mainViewModel.teamDtos.value?.find { it.name == teamName }?.id
-            if (teamId == null) {
-                onLoaded(emptyList())
-                return@launch
-            }
-            val projects = userRepository.getProjects(teamId).getOrNull() ?: emptyList()
-            val boundIds = projects
-                .mapNotNull { githubRepository.getProjectRepositories(it.id).getOrNull() }
-                .flatten()
-                .map { it.repositoryId }
-                .toSet()
-            val authorized = githubRepository.getGithubRepositories(teamId).getOrNull() ?: emptyList()
-            onLoaded(authorized.filter { it.id !in boundIds }.map { it.fullName })
-        }
-    }
-
-    /** 仓库下拉列表 adapter：点击仓库回调仓库名 */
-    private class RepoSelectAdapter(
-        private val onSelect: (String) -> Unit
-    ) : RecyclerView.Adapter<RepoSelectAdapter.VH>() {
-
-        private val items = mutableListOf<String>()
-
-        fun submitList(list: List<String>) {
-            items.clear()
-            items.addAll(list)
-            notifyDataSetChanged()
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-            val binding = ItemRepoSelectBinding.inflate(
-                LayoutInflater.from(parent.context), parent, false
-            )
-            return VH(binding)
-        }
-
-        override fun onBindViewHolder(holder: VH, position: Int) {
-            holder.bind(items[position])
-        }
-
-        override fun getItemCount(): Int = items.size
-
-        inner class VH(private val binding: ItemRepoSelectBinding) :
-            RecyclerView.ViewHolder(binding.root) {
-
-            fun bind(name: String) {
-                binding.tvRepoName.text = name
-                binding.root.setOnClickListener { onSelect(name) }
-            }
-        }
+        findNavController().navigate(R.id.newProjectFragment, bundleOf("teamId" to teamId))
     }
 
     private fun showTodoToast() {

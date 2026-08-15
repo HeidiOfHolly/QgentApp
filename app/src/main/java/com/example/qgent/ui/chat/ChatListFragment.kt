@@ -40,6 +40,12 @@ class ChatListFragment : Fragment() {
         return binding.root
     }
 
+    // 从详情页返回时刷新最新消息摘要（图片/文件显示 [图片]/[文件]）
+    override fun onResume() {
+        super.onResume()
+        mainViewModel.refreshGroups()
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 

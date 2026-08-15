@@ -1,5 +1,6 @@
 package com.example.qgent.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.ViewModel
@@ -142,6 +143,12 @@ class MainViewModel(
         return projectIdsByTeam[teamId]?.get(_currentProject.value)
     }
 
+    /** 退回列表页时刷新群聊最新消息摘要（onResume 调用）；projectId 未就绪时跳过，避免冷启动误清空 */
+    fun refreshGroups() {
+        if (currentProjectId() == null) return
+        loadGroups(_currentProject.value)
+    }
+
     /** 标记群聊为已读（未读数清零，并持久化到已读集合） */
     fun markAsRead(groupId: String) {
         readGroupIds.add(groupId)
@@ -215,6 +222,14 @@ class MainViewModel(
         }
         viewModelScope.launch {
             val dtos = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
+            dtos.forEach { dto ->
+                Log.d(
+                    "MainViewModel",
+                    "group=${dto.title} latestActivityAt=${dto.latestActivityAt} " +
+                        "formatted=${formatGroupTime(parseRfc3339(dto.latestActivityAt.orEmpty()))} " +
+                        "latestMessage=${dto.latestMessage}"
+                )
+            }
             _groups.value = toChatGroups(dtos)
             resolveRoutingReady()
         }

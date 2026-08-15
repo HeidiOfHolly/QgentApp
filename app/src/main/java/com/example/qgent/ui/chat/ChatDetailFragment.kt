@@ -1,8 +1,11 @@
 package com.example.qgent.ui.chat
 import android.app.Dialog
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -21,11 +24,17 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.model.GlideUrl
+import com.bumptech.glide.load.model.LazyHeaders
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
+import com.example.qgent.data.api.RetrofitClient
+import com.example.qgent.data.local.MessageCache
+import com.example.qgent.data.model.MessageContentDto
 import com.example.qgent.data.model.toChatMessage
 import com.example.qgent.data.model.toGroupMember
+import com.example.qgent.data.repository.AttachmentUploader
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.databinding.BottomSheetMentionMemberBinding
 import com.example.qgent.databinding.DialogImagePreviewBinding
@@ -35,7 +44,10 @@ import com.example.qgent.model.GroupMember
 import com.example.qgent.model.MessageType
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -51,6 +63,12 @@ class ChatDetailFragment : Fragment() {
     private val chatRepo: ChatRepository by lazy {
         (requireActivity().application as QgentApp).container.chatRepository
     }
+    private val messageCache: MessageCache by lazy {
+        (requireActivity().application as QgentApp).container.messageCache
+    }
+    private val attachmentUploader: AttachmentUploader by lazy {
+        (requireActivity().application as QgentApp).container.attachmentUploader
+    }
 
     private val messages = mutableListOf<ChatMessage>()
     private lateinit var rows: MutableList<ChatRow>
@@ -60,18 +78,14 @@ class ChatDetailFragment : Fragment() {
     private val pickImage = registerForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
-        if (uri != null) {
-            appendMessage(
-                ChatMessage(
-                    UUID.randomUUID().toString(),
-                    "我",
-                    uri.toString(),
-                    MessageType.IMAGE,
-                    System.currentTimeMillis(),
-                    true
-                )
-            )
-        }
+        if (uri != null) sendMediaMessage("IMAGE", uri)
+    }
+
+    // 系统文件选择器：任意类型文件，返回 content:// URI
+    private val pickFile = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) sendMediaMessage("FILE", uri)
     }
 
     // 群成员 id → 昵称（文档 §7：消息 senderName 需按 senderId 反查）
@@ -159,7 +173,8 @@ class ChatDetailFragment : Fragment() {
 
         if (projectId != null && groupId.isNotEmpty()) {
             viewLifecycleOwner.lifecycleScope.launch {
-                chatRepo.sendMessage(projectId, groupId, text).onSuccess { dto ->
+                // Idempotency-Key 后端强制要求，防重复提交；每次发送都是全新消息，生成新 UUID
+                chatRepo.sendMessage(projectId, groupId, "TEXT", MessageContentDto(text = text), idempotencyKey = UUID.randomUUID().toString()).onSuccess { dto ->
                     appendMessage(dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
                 }.onFailure {
                     appendLocalMessage(text)
@@ -168,6 +183,73 @@ class ChatDetailFragment : Fragment() {
         } else {
             appendLocalMessage(text)
         }
+    }
+
+    /** 上传附件 → 发送 IMAGE/FILE 消息 */
+    private fun sendMediaMessage(type: String, uri: Uri) {
+        val projectId = mainViewModel.currentProjectId()
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (projectId == null || groupId.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            Toast.makeText(requireContext(), "正在上传…", Toast.LENGTH_SHORT).show()
+            val meta = readFileMeta(uri)
+            val bytes = readBytes(uri)
+            if (bytes == null) {
+                Toast.makeText(requireContext(), "读取文件失败", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            // 部分 provider 读不到 SIZE，用实际字节数兜底，避免 sizeBytes=0 被后端拒绝
+            val size = if (meta.sizeBytes > 0) meta.sizeBytes else bytes.size.toLong()
+
+            attachmentUploader.upload(projectId, meta.fileName, meta.mimeType, size, bytes)
+                .onSuccess { url ->
+                    val content = if (type == "IMAGE") {
+                        MessageContentDto(text = null, url = url)
+                    } else {
+                        MessageContentDto(
+                            text = null, url = url,
+                            name = meta.fileName, size = size, mimeType = meta.mimeType
+                        )
+                    }
+                    chatRepo.sendMessage(projectId, groupId, type, content, idempotencyKey = UUID.randomUUID().toString())
+                        .onSuccess { dto ->
+                            appendMessage(dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
+                        }
+                        .onFailure { e ->
+                            Toast.makeText(requireContext(), "发送失败：${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), "上传失败：${e.message}", Toast.LENGTH_LONG).show()
+                }
+        }
+    }
+
+    private data class FileMeta(val fileName: String, val sizeBytes: Long, val mimeType: String?)
+
+    private fun readFileMeta(uri: Uri): FileMeta {
+        val resolver = requireContext().contentResolver
+        var fileName = "file"
+        var sizeBytes = 0L
+        resolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIdx >= 0) fileName = cursor.getString(nameIdx) ?: fileName
+                val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (sizeIdx >= 0 && !cursor.isNull(sizeIdx)) sizeBytes = cursor.getLong(sizeIdx)
+            }
+        }
+        return FileMeta(fileName, sizeBytes, resolver.getType(uri))
+    }
+
+    private suspend fun readBytes(uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            requireContext().contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        }.getOrNull()
     }
 
     private fun appendLocalMessage(text: String) {
@@ -209,7 +291,13 @@ class ChatDetailFragment : Fragment() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT
         )
-        Glide.with(previewBinding.ivPreview).load(uri).into(previewBinding.ivPreview)
+        val token = SessionStore.accessToken()
+        val headers = LazyHeaders.Builder().apply {
+            if (!token.isNullOrEmpty()) addHeader("Authorization", "Bearer $token")
+        }.build()
+        Glide.with(previewBinding.ivPreview)
+            .load(GlideUrl(RetrofitClient.resolveMediaUrl(uri), headers))
+            .into(previewBinding.ivPreview)
         previewBinding.previewRoot.setOnClickListener { dialog.dismiss() }
         dialog.show()
     }
@@ -238,7 +326,7 @@ class ChatDetailFragment : Fragment() {
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 )
             } else {
-                Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
+                pickFile.launch(arrayOf("*/*"))
             }
             true
         }
@@ -255,6 +343,11 @@ class ChatDetailFragment : Fragment() {
         rows.add(ChatRow.Message(message))
         adapter.notifyItemRangeInserted(start, rows.size - start)
         scrollToBottom()
+        // 发送后立即落缓存，避免退出重进后新消息丢失
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (groupId.isNotEmpty()) {
+            viewLifecycleOwner.lifecycleScope.launch { messageCache.save(groupId, messages) }
+        }
     }
 
     private fun buildRows(list: List<ChatMessage>): List<ChatRow> {
@@ -283,22 +376,39 @@ class ChatDetailFragment : Fragment() {
         val projectId = mainViewModel.currentProjectId()
         val groupId = arguments?.getString("groupId").orEmpty()
 
-        if (projectId != null && groupId.isNotEmpty()) {
-            viewLifecycleOwner.lifecycleScope.launch {
-                // 先取成员表再拉消息，保证 senderName 能按 senderId 反查（顺序 await）
-                chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
-                    groupMembers = dtos.map { it.toGroupMember() }
-                    memberNamesById = dtos.associate { it.id to (it.nickname ?: "成员") }
-                }
-                chatRepo.getMessages(projectId, groupId).onSuccess { dtos ->
-                    val myId = SessionStore.user()?.id
-                    setMessages(dtos.map { it.toChatMessage(myId, memberNamesById) })
-                }.onFailure {
-                    setMessages(emptyList())
-                }
-            }
-        } else {
+        if (projectId == null || groupId.isEmpty()) {
             setMessages(emptyList())
+            return
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            // 先读本地缓存秒开，无缓存则等网络
+            val cached = messageCache.load(groupId)
+            if (cached.isNotEmpty()) setMessages(cached)
+
+            // 并行拉成员表 + 消息（原串行改并发）
+            val membersDeferred = async { chatRepo.getMembers(projectId, groupId) }
+            val messagesDeferred = async { chatRepo.getMessages(projectId, groupId) }
+
+            val membersResult = membersDeferred.await()
+            membersResult.onSuccess { dtos ->
+                groupMembers = dtos.map { it.toGroupMember() }
+                memberNamesById = dtos.associate { it.id to it.resolvedName }
+            }
+
+            val messagesResult = messagesDeferred.await()
+            val myId = SessionStore.user()?.id
+            messagesResult.onSuccess { dtos ->
+                Log.d("ChatDetail", "getMessages raw: $dtos")
+                val list = dtos.map { it.toChatMessage(myId, memberNamesById) }
+                // 与本地缓存合并去重（保留刚发送但后端可能尚未返回的消息），再按时间升序
+                val merged = (cached + list).distinctBy { it.id }.sortedBy { it.timestamp }
+                setMessages(merged)
+                messageCache.save(groupId, merged)
+            }.onFailure {
+                // 网络失败但已有缓存时保留缓存显示，不清空
+                if (messages.isEmpty()) setMessages(emptyList())
+            }
         }
     }
 

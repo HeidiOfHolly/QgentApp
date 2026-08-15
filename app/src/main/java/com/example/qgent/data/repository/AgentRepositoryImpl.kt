@@ -23,10 +23,12 @@ class AgentRepositoryImpl(private val service: QgApiService) : AgentRepository {
         role: String,
         avatar: String?,
         capabilities: List<String>?,
-        prompt: String?
+        prompt: String?,
+        idempotencyKey: String
     ): Result<AgentDto> = apiCall {
         service.createAgent(
             teamId,
+            idempotencyKey,
             CreateAgentRequest(name, avatar, role, capabilities, prompt)
         ).toDataOrThrow()
     }
@@ -37,31 +39,34 @@ class AgentRepositoryImpl(private val service: QgApiService) : AgentRepository {
         name: String?,
         avatar: String?,
         capabilities: List<String>?,
-        prompt: String?
+        prompt: String?,
+        idempotencyKey: String
     ): Result<AgentDto> = apiCall {
         service.updateAgent(
             teamId, agentId,
+            idempotencyKey,
             UpdateAgentRequest(name, avatar, capabilities, prompt)
         ).toDataOrThrow()
     }
 
-    override suspend fun publishAgent(teamId: String, agentId: String): Result<AgentDto> = apiCall {
-        service.publishAgent(teamId, agentId).toDataOrThrow()
+    override suspend fun publishAgent(teamId: String, agentId: String, idempotencyKey: String): Result<AgentDto> = apiCall {
+        service.publishAgent(teamId, agentId, idempotencyKey).toDataOrThrow()
     }
 
-    override suspend fun unpublishAgent(teamId: String, agentId: String): Result<AgentDto> = apiCall {
-        service.unpublishAgent(teamId, agentId).toDataOrThrow()
+    override suspend fun unpublishAgent(teamId: String, agentId: String, idempotencyKey: String): Result<AgentDto> = apiCall {
+        service.unpublishAgent(teamId, agentId, idempotencyKey).toDataOrThrow()
     }
 
-    override suspend fun archiveAgent(teamId: String, agentId: String): Result<AgentDto> = apiCall {
-        service.archiveAgent(teamId, agentId).toDataOrThrow()
+    override suspend fun archiveAgent(teamId: String, agentId: String, idempotencyKey: String): Result<AgentDto> = apiCall {
+        service.archiveAgent(teamId, agentId, idempotencyKey).toDataOrThrow()
     }
 
     override suspend fun bindAgentSkills(
         projectId: String,
         agentId: String,
-        skillIds: List<String>
+        skillIds: List<String>,
+        idempotencyKey: String
     ): Result<AgentDto> = apiCall {
-        service.bindAgentSkills(projectId, agentId, AgentSkillBindingsRequest(skillIds)).toDataOrThrow()
+        service.bindAgentSkills(projectId, agentId, idempotencyKey, AgentSkillBindingsRequest(skillIds)).toDataOrThrow()
     }
 }
