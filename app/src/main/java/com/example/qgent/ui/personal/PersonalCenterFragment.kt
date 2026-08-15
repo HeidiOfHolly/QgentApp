@@ -6,10 +6,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.os.bundleOf
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.fragment.NavHostFragment
+import androidx.navigation.navOptions
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.MainActivity
 import com.example.qgent.QgentApp
@@ -28,8 +31,6 @@ class PersonalCenterFragment : Fragment() {
     }
     private lateinit var teamAdapter: TeamAdapter
     private lateinit var projectAdapter: ProjectAdapter
-    /** 当前主内容页是否为 GitHub 页：是则抽屉不显示团队/项目高光 */
-    private var isOnGithub = false
 
     private val navController: NavController
         get() = (requireActivity().supportFragmentManager
@@ -54,7 +55,13 @@ class PersonalCenterFragment : Fragment() {
 
         // 右列：项目列表（随团队切换，点击切换当前项目）
         projectAdapter = ProjectAdapter { projectName, _ ->
+            // 未选中团队时不允许选择项目，点击无效
+            if (teamAdapter.selectedPosition < 0) {
+                return@ProjectAdapter false
+            }
             mainViewModel.setCurrentProject(projectName)
+            openMainPage()
+            true
         }
         binding.rvProjects.layoutManager = LinearLayoutManager(requireContext())
         binding.rvProjects.adapter = projectAdapter
@@ -79,15 +86,24 @@ class PersonalCenterFragment : Fragment() {
             refreshHighlight()
         }
 
+        // 切换团队加载项目期间，抽屉中央显示 ProgressBar
+        mainViewModel.projectsLoading.observe(viewLifecycleOwner) { loading ->
+            binding.progressBar.isVisible = loading
+        }
+
         // 当前项目变化：右列项目高亮同步
         mainViewModel.currentProject.observe(viewLifecycleOwner) {
             refreshHighlight()
         }
 
-        // 在 GitHub 页时清空抽屉团队/项目高光，离开后恢复当前选中
+        // 进入 GitHub 页时自动清除上个界面留下的团队/项目高光；离开后恢复当前选中
         navController.addOnDestinationChangedListener { _, dest, _ ->
-            isOnGithub = dest.id == R.id.githubFragment
-            refreshHighlight()
+            if (dest.id == R.id.githubFragment) {
+                teamAdapter.selectedPosition = NO_SELECTION
+                projectAdapter.selectedPosition = NO_SELECTION
+            } else {
+                refreshHighlight()
+            }
         }
 
         // 头像 → 收起抽屉并进入个人信息页
@@ -113,20 +129,15 @@ class PersonalCenterFragment : Fragment() {
         }
     }
 
-    /** 刷新抽屉团队/项目高光：GitHub 页不显示高光，其余页面恢复当前团队/项目选中 */
+    /** 刷新抽屉团队/项目高光：始终恢复当前团队/项目选中 */
     private fun refreshHighlight() {
         if (!::teamAdapter.isInitialized) return
-        if (isOnGithub) {
-            teamAdapter.selectedPosition = NO_SELECTION
-            projectAdapter.selectedPosition = NO_SELECTION
-        } else {
-            val teams = mainViewModel.teams.value ?: emptyList()
-            val curTeam = mainViewModel.currentTeam.value
-            if (curTeam in teams) teamAdapter.selectedPosition = teams.indexOf(curTeam)
-            val curProject = mainViewModel.currentProject.value
-            if (!curProject.isNullOrEmpty()) {
-                projectAdapter.selectedPosition = projectAdapter.indexOf(curProject)
-            }
+        val teams = mainViewModel.teams.value ?: emptyList()
+        val curTeam = mainViewModel.currentTeam.value
+        if (curTeam in teams) teamAdapter.selectedPosition = teams.indexOf(curTeam)
+        val curProject = mainViewModel.currentProject.value
+        if (!curProject.isNullOrEmpty()) {
+            projectAdapter.selectedPosition = projectAdapter.indexOf(curProject)
         }
     }
 
@@ -134,6 +145,19 @@ class PersonalCenterFragment : Fragment() {
     private fun openGithub() {
         (activity as? MainActivity)?.closeDrawer()
         navController.navigate(R.id.githubFragment)
+    }
+
+    /** 收起个人中心抽屉，并跳转至主界面（群聊 / 任务 / Agent 三 Tab） */
+    private fun openMainPage() {
+        (activity as? MainActivity)?.closeDrawer()
+        navController.navigate(
+            R.id.chatListFragment,
+            null,
+            navOptions {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+            }
+        )
     }
 
     /** 收起个人中心抽屉，并在主内容区打开消息列表页 */

@@ -18,6 +18,7 @@ import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.model.Agent
 import com.example.qgent.model.ChatGroup
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -69,6 +70,11 @@ class MainViewModel(
     private val _projects = MutableStateFlow<List<String>>(emptyList())
     val projects: LiveData<List<String>> = _projects.asLiveData()
 
+    // ── 项目加载中标记：切换团队拉取项目期间为 true，供抽屉显示 ProgressBar ──
+
+    private val _projectsLoading = MutableStateFlow(false)
+    val projectsLoading: LiveData<Boolean> = _projectsLoading.asLiveData()
+
     // ── 缓存：id 反查映射。团队名全局唯一，teamNameToId 全局共享；
     //    项目名只在其所属团队内唯一，projectIdsByTeam 按 teamId 分桶，
     //    避免两个团队同名项目时跨团队串 id ──
@@ -83,6 +89,12 @@ class MainViewModel(
     // ── 当前已加载 projects 对应的团队（防止串数据） ──
 
     private var loadedProjectsTeam: String? = null
+
+    // ── 加载任务句柄：快速切换团队时取消上一次未完成的加载，只保留最后停下的团队 ──
+
+    private var loadProjectsJob: Job? = null
+    private var loadGroupsJob: Job? = null
+    private var loadAgentsJob: Job? = null
 
     // ── 冷启动初始数据就绪信号：teams + 首个团队 projects + 首个项目群聊都就绪后置 true，供 MainActivity 路由 ──
 
@@ -109,6 +121,7 @@ class MainViewModel(
         if (_currentTeam.value == team) return
         _currentTeam.value = team
         loadedProjectsTeam = null  // 失效旧缓存，防止 projectsOf 串数据
+        _projects.value = emptyList()  // 先清空，避免加载期间显示上一个团队的项目
         loadAgents(team)
         loadProjects(team) {
             val firstProject = projectsOf(team).firstOrNull() ?: ""
@@ -188,7 +201,15 @@ class MainViewModel(
     }
 
     private fun loadProjects(team: String, onLoaded: (() -> Unit)? = null) {
-        viewModelScope.launch {
+        // 切换团队时取消上一次未完成的加载，防止旧团队项目后完成覆盖新团队结果
+        loadProjectsJob?.cancel()
+        _projectsLoading.value = true
+        // 包装回调：加载结束（成功或空/失败）统一关闭加载标记
+        val finished: () -> Unit = {
+            _projectsLoading.value = false
+            onLoaded?.invoke()
+        }
+        loadProjectsJob = viewModelScope.launch {
             val teamDto = _teamDtos.value.find { it.name == team }
             if (teamDto != null) {
                 userRepo.getProjects(teamDto.id).onSuccess { projectDtos ->
@@ -196,13 +217,13 @@ class MainViewModel(
                     // 每次全量刷新该团队的项目映射，覆盖旧桶，防止跨团队残留
                     projectIdsByTeam[teamDto.id] = projectDtos.associate { it.name to it.id }
                     loadedProjectsTeam = team
-                    onLoaded?.invoke()
+                    finished()
                     return@launch
                 }
             }
             _projects.value = emptyList()
             loadedProjectsTeam = team
-            onLoaded?.invoke()
+            finished()
         }
     }
 
@@ -213,7 +234,9 @@ class MainViewModel(
             resolveRoutingReady()
             return
         }
-        viewModelScope.launch {
+        // 切换项目 / 团队时取消上一次未完成的群聊加载，防止旧项目群聊覆盖新结果
+        loadGroupsJob?.cancel()
+        loadGroupsJob = viewModelScope.launch {
             val dtos = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
             _groups.value = toChatGroups(dtos)
             resolveRoutingReady()
@@ -243,7 +266,9 @@ class MainViewModel(
     }
 
     private fun loadAgents(teamName: String) {
-        viewModelScope.launch {
+        // 切换团队时取消上一次未完成的加载，防止旧团队 Agent 后完成覆盖新结果
+        loadAgentsJob?.cancel()
+        loadAgentsJob = viewModelScope.launch {
             val teamId = teamNameToId[teamName] ?: return@launch
             agentRepo.getAgents(teamId).onSuccess { dtos ->
                 _agents.value = dtos.map { it.toAgent() }

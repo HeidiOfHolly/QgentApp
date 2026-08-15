@@ -7,8 +7,9 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.R
 import com.example.qgent.databinding.ItemProjectBinding
 
+/** 点击回调返回是否允许选中（false 表示未选中团队等场景，点击无效且不高亮） */
 class ProjectAdapter(
-    private val onProjectClick: (String, Int) -> Unit
+    private val onProjectClick: (String, Int) -> Boolean
 ) : RecyclerView.Adapter<ProjectAdapter.VH>() {
 
     private val items = mutableListOf<String>()
@@ -48,8 +49,9 @@ class ProjectAdapter(
             )
         )
         holder.itemView.setOnClickListener {
-            selectedPosition = position
-            onProjectClick(items[position], position)
+            if (onProjectClick(items[position], position)) {
+                selectedPosition = position
+            }
         }
     }
 
