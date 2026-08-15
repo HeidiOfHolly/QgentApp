@@ -1,6 +1,10 @@
 package com.example.qgent.ui.chat
 import android.app.Dialog
+import android.content.Intent
 import android.net.Uri
+import android.webkit.MimeTypeMap
+import android.widget.ScrollView
+import android.widget.TextView
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.text.Editable
@@ -15,6 +19,7 @@ import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -31,6 +36,7 @@ import com.example.qgent.R
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.local.MessageCache
+import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 import com.example.qgent.data.model.toChatMessage
 import com.example.qgent.data.model.toGroupMember
@@ -44,14 +50,19 @@ import com.example.qgent.model.GroupMember
 import com.example.qgent.model.MessageType
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import okhttp3.Request
 
 class ChatDetailFragment : Fragment() {
 
@@ -73,6 +84,7 @@ class ChatDetailFragment : Fragment() {
     private val messages = mutableListOf<ChatMessage>()
     private lateinit var rows: MutableList<ChatRow>
     private lateinit var adapter: ChatMessageAdapter
+    private var pollingJob: Job? = null
 
     // 系统相册选图：免存储权限，返回图片 content:// URI
     private val pickImage = registerForActivityResult(
@@ -155,7 +167,8 @@ class ChatDetailFragment : Fragment() {
         adapter = ChatMessageAdapter(
             rows,
             onAvatarLongClick = { senderName -> insertMention(senderName) },
-            onImageClick = { uri -> showImagePreview(uri) }
+            onImageClick = { uri -> showImagePreview(uri) },
+            onFileClick = { message -> openFile(message) }
         )
         binding.rvMessages.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMessages.adapter = adapter
@@ -166,6 +179,8 @@ class ChatDetailFragment : Fragment() {
     private fun sendTextMessage() {
         val text = binding.etInput.text.toString().trim()
         if (text.isEmpty()) return
+        val mentions = extractMentions(text)
+        Log.d("SendMsg", "send text=$text mentions=$mentions memberNamesById=$memberNamesById")
         binding.etInput.text.clear()
 
         val projectId = mainViewModel.currentProjectId()
@@ -174,15 +189,31 @@ class ChatDetailFragment : Fragment() {
         if (projectId != null && groupId.isNotEmpty()) {
             viewLifecycleOwner.lifecycleScope.launch {
                 // Idempotency-Key 后端强制要求，防重复提交；每次发送都是全新消息，生成新 UUID
-                chatRepo.sendMessage(projectId, groupId, "TEXT", MessageContentDto(text = text), idempotencyKey = UUID.randomUUID().toString()).onSuccess { dto ->
-                    appendMessage(dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
-                }.onFailure {
-                    appendLocalMessage(text)
-                }
+                chatRepo.sendMessage(projectId, groupId, "TEXT", MessageContentDto(text = text), mentions = mentions, idempotencyKey = UUID.randomUUID().toString())
+                    .onSuccess { dto ->
+                        Log.d("SendMsg", "send success id=${dto.id} senderId=${dto.senderId} mentions=${dto.mentions}")
+                        appendMessage(dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
+                    }
+                    .onFailure { e ->
+                        Log.e("SendMsg", "send FAILED: ${e::class.simpleName} message=${e.message}", e)
+                        appendLocalMessage(text)
+                    }
             }
         } else {
+            Log.d("SendMsg", "no projectId/groupId → local fallback. projectId=$projectId groupId=$groupId")
             appendLocalMessage(text)
         }
+    }
+
+    /** 解析输入文本中的 @成员名，反查 userId 组装结构化 mentions（后端据此实现 @ 通知）；当前群成员统一按 USER 处理 */
+    private fun extractMentions(text: String): List<MentionDto> {
+        if (memberNamesById.isEmpty()) return emptyList()
+        val mentions = mutableListOf<MentionDto>()
+        Regex("@([^@\\s]+)").findAll(text).forEach { match ->
+            val name = match.groupValues[1]
+            memberNamesById.entries.firstOrNull { it.value == name }?.let { mentions.add(MentionDto(type = "USER", id = it.key)) }
+        }
+        return mentions.distinct()
     }
 
     /** 上传附件 → 发送 IMAGE/FILE 消息 */
@@ -298,8 +329,102 @@ class ChatDetailFragment : Fragment() {
         Glide.with(previewBinding.ivPreview)
             .load(GlideUrl(RetrofitClient.resolveMediaUrl(uri), headers))
             .into(previewBinding.ivPreview)
-        previewBinding.previewRoot.setOnClickListener { dialog.dismiss() }
+        previewBinding.ivPreview.onSingleTap = { dialog.dismiss() }
         dialog.show()
+    }
+
+    /** 点击文件气泡：文本类下载后内置预览，其余下载后调系统应用打开 */
+    private fun openFile(message: ChatMessage) {
+        val url = message.content
+        if (url.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val fileName = message.fileName ?: "file"
+        val mimeType = inferMimeType(fileName)
+        viewLifecycleOwner.lifecycleScope.launch {
+            Toast.makeText(requireContext(), "正在打开…", Toast.LENGTH_SHORT).show()
+            val file = downloadFile(url, fileName, requireContext().cacheDir)
+            if (file == null) {
+                Toast.makeText(requireContext(), "下载失败", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (isTextFile(fileName, mimeType)) {
+                showTextPreview(fileName, readTextContent(file))
+            } else {
+                openWithSystemApp(file, mimeType)
+            }
+        }
+    }
+
+    /** 下载附件到 cacheDir/downloads，返回本地文件；失败返回 null */
+    private suspend fun downloadFile(url: String, fileName: String, cacheDir: File): File? = withContext(Dispatchers.IO) {
+        runCatching {
+            val target = File(File(cacheDir, "downloads"), fileName)
+            target.parentFile?.mkdirs()
+            val request = Request.Builder().url(RetrofitClient.resolveMediaUrl(url)).build()
+            RetrofitClient.httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
+                val body = response.body ?: throw IllegalStateException("empty body")
+                target.outputStream().use { out -> body.byteStream().copyTo(out) }
+            }
+            target
+        }.getOrNull()
+    }
+
+    private suspend fun readTextContent(file: File): String = withContext(Dispatchers.IO) {
+        val raw = runCatching { file.readText(Charsets.UTF_8) }
+            .getOrElse { runCatching { file.readText(Charsets.ISO_8859_1) }.getOrDefault("") }
+        if (raw.length > MAX_PREVIEW_CHARS) raw.take(MAX_PREVIEW_CHARS) + "\n…（内容过长已截断）" else raw
+    }
+
+    /** 文本文件内置预览：ScrollView + 可选中 TextView */
+    private fun showTextPreview(fileName: String, content: String) {
+        val scroll = ScrollView(requireContext())
+        val tv = TextView(requireContext()).apply {
+            text = content
+            setTextIsSelectable(true)
+            setPadding(48, 40, 48, 40)
+            textSize = 14f
+        }
+        scroll.addView(
+            tv,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(fileName)
+            .setView(scroll)
+            .setPositiveButton(R.string.close, null)
+            .show()
+    }
+
+    /** 非文本文件：下载后用 FileProvider 供系统应用打开 */
+    private fun openWithSystemApp(file: File, mimeType: String?) {
+        try {
+            val uri = FileProvider.getUriForFile(requireContext(), "${requireContext().packageName}.fileprovider", file)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mimeType ?: "*/*")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            if (intent.resolveActivity(requireContext().packageManager) == null) {
+                Toast.makeText(requireContext(), "未找到可打开此文件的应用", Toast.LENGTH_SHORT).show()
+                return
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "打开失败：${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun inferMimeType(fileName: String): String? {
+        val ext = MimeTypeMap.getFileExtensionFromUrl(fileName).lowercase()
+        return if (ext.isEmpty()) null else MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+    }
+
+    private fun isTextFile(fileName: String, mimeType: String?): Boolean {
+        if (mimeType?.startsWith("text/") == true) return true
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return ext in TEXT_EXTENSIONS
     }
 
     /** 将 @Name 插入到输入框当前光标位置 */
@@ -399,10 +524,11 @@ class ChatDetailFragment : Fragment() {
             val messagesResult = messagesDeferred.await()
             val myId = SessionStore.user()?.id
             messagesResult.onSuccess { dtos ->
-                Log.d("ChatDetail", "getMessages raw: $dtos")
                 val list = dtos.map { it.toChatMessage(myId, memberNamesById) }
-                // 与本地缓存合并去重（保留刚发送但后端可能尚未返回的消息），再按时间升序
-                val merged = (cached + list).distinctBy { it.id }.sortedBy { it.timestamp }
+                // 合并时必须以「当前内存列表」为基准（而非开头读的 cached 快照）：
+                // 若初始 getMessages 较慢，期间用户已发出消息并 append 到 messages，
+                // 用 cached 会把这几天新消息连同网络结果一起覆盖掉，导致「发出后几秒消失」。
+                val merged = (messages + list).distinctBy { it.id }.sortedChronologically()
                 setMessages(merged)
                 messageCache.save(groupId, merged)
             }.onFailure {
@@ -411,6 +537,46 @@ class ChatDetailFragment : Fragment() {
             }
         }
     }
+
+    /** 前台轮询新消息：后端暂无聊天 SSE，用定时 getMessages 兜底实现「别人发消息实时显示」 */
+    private fun startPolling() {
+        if (pollingJob?.isActive == true) return
+        val projectId = mainViewModel.currentProjectId()
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (projectId == null || groupId.isEmpty()) return
+
+        pollingJob = viewLifecycleOwner.lifecycleScope.launch {
+            while (true) {
+                delay(POLL_INTERVAL_MS)
+                pollMessages(projectId, groupId)
+            }
+        }
+    }
+
+    private fun stopPolling() {
+        pollingJob?.cancel()
+        pollingJob = null
+    }
+
+    /** 单次轮询：拉消息并与本地列表按 id 去重合并，仅在有新消息时刷新并落缓存 */
+    private suspend fun pollMessages(projectId: String, groupId: String) {
+        val myId = SessionStore.user()?.id
+        chatRepo.getMessages(projectId, groupId).onSuccess { dtos ->
+            val list = dtos.map { it.toChatMessage(myId, memberNamesById) }
+            val merged = (messages + list).distinctBy { it.id }.sortedChronologically()
+            if (merged != messages) {
+                setMessages(merged)
+                messageCache.save(groupId, merged)
+            }
+        }
+    }
+
+    /** 按后端单调 sequence 排序（本地兜底消息无 sequence，恒排末尾）；timestamp 因时区不一致不可靠，仅作 sequence 相同时的次级排序 */
+    private fun List<ChatMessage>.sortedChronologically(): List<ChatMessage> =
+        sortedWith(
+            compareBy<ChatMessage> { if (it.sequence > 0L) it.sequence else Long.MAX_VALUE }
+                .thenBy { it.timestamp }
+        )
 
     private fun setMessages(newMessages: List<ChatMessage>) {
         messages.clear()
@@ -421,6 +587,22 @@ class ChatDetailFragment : Fragment() {
         scrollToBottom()
     }
 
+    override fun onResume() {
+        super.onResume()
+        startPolling()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopPolling()
+        // 退出详情页时把已看到的最新消息时间回传，避免回到列表页仍显示红点
+        val groupId = arguments?.getString("groupId").orEmpty()
+        val lastSeen = messages.maxOfOrNull { it.timestamp }
+        if (groupId.isNotEmpty() && lastSeen != null) {
+            mainViewModel.markGroupRead(groupId, lastSeen)
+        }
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         binding.etInput.removeTextChangedListener(mentionWatcher)
@@ -429,5 +611,12 @@ class ChatDetailFragment : Fragment() {
 
     companion object {
         private const val TIME_GAP_MS = 5 * 60 * 1000L
+        private const val POLL_INTERVAL_MS = 3_000L
+        private const val MAX_PREVIEW_CHARS = 100_000
+        private val TEXT_EXTENSIONS = setOf(
+            "txt", "md", "json", "xml", "yaml", "yml", "csv", "log", "kt", "java", "py",
+            "js", "ts", "html", "css", "sql", "sh", "gradle", "properties", "ini", "conf",
+            "go", "rs", "c", "cpp", "h", "hpp", "rb", "php", "swift", "vue", "toml"
+        )
     }
 }

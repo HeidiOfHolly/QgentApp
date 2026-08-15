@@ -3,6 +3,7 @@ package com.example.qgent.data.repository
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.GroupMessageDto
+import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 
 /**
@@ -19,5 +20,5 @@ interface ChatRepository {
     suspend fun getMembers(projectId: String, groupId: String): Result<List<GroupMemberDto>>
     suspend fun leaveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<Unit>
     suspend fun getMessages(projectId: String, groupId: String, cursor: String? = null, limit: Int = 30): Result<List<GroupMessageDto>>
-    suspend fun sendMessage(projectId: String, groupId: String, type: String, content: MessageContentDto, clientMessageId: String? = null, idempotencyKey: String): Result<GroupMessageDto>
+    suspend fun sendMessage(projectId: String, groupId: String, type: String, content: MessageContentDto, clientMessageId: String? = null, mentions: List<MentionDto>? = null, idempotencyKey: String): Result<GroupMessageDto>
 }

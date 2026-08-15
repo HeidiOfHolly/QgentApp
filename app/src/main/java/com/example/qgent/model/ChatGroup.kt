@@ -7,5 +7,6 @@ data class ChatGroup(
     val time: String,
     val unread: Int,
     val isPinned: Boolean = false,
-    val lastActiveTime: Long = System.currentTimeMillis()
+    val lastActiveTime: Long = System.currentTimeMillis(),
+    val mentionedMe: Boolean = false
 )

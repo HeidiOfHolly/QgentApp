@@ -76,6 +76,10 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
         service.addProjectMember(projectId, idempotencyKey, AddProjectMemberRequest(userId)).toDataOrThrow()
     }
 
+    override suspend fun getProjectMembers(projectId: String): Result<List<ProjectMemberDto>> = apiCall {
+        service.getProjectMembers(projectId).toDataOrThrow()
+    }
+
     override suspend fun createTeam(name: String, description: String?, idempotencyKey: String): Result<TeamDto> =
         apiCall {
             service.createTeam(idempotencyKey, CreateTeamRequest(name, description)).toDataOrThrow()

@@ -4,6 +4,7 @@ import com.example.qgent.data.datasource.MockDataSource
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.GroupMessageDto
+import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 
 class MockChatRepository : ChatRepository {
@@ -56,6 +57,7 @@ class MockChatRepository : ChatRepository {
         type: String,
         content: MessageContentDto,
         clientMessageId: String?,
+        mentions: List<MentionDto>?,
         idempotencyKey: String
     ): Result<GroupMessageDto> = Result.failure(UnsupportedOperationException("mock 不支持发送消息"))
 }

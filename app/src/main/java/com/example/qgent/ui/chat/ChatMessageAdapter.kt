@@ -28,7 +28,8 @@ sealed class ChatRow {
 class ChatMessageAdapter(
     private val rows: List<ChatRow>,
     private val onAvatarLongClick: ((String) -> Unit)? = null,
-    private val onImageClick: ((String) -> Unit)? = null
+    private val onImageClick: ((String) -> Unit)? = null,
+    private val onFileClick: ((ChatMessage) -> Unit)? = null
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     override fun getItemViewType(position: Int): Int = when (val row = rows[position]) {
@@ -43,7 +44,8 @@ class ChatMessageAdapter(
             else -> MessageVH(
                 ItemMessageBinding.inflate(LayoutInflater.from(parent.context), parent, false),
                 onAvatarLongClick,
-                onImageClick
+                onImageClick,
+                onFileClick
             )
         }
     }
@@ -69,7 +71,8 @@ class ChatMessageAdapter(
     class MessageVH(
         private val binding: ItemMessageBinding,
         private val onAvatarLongClick: ((String) -> Unit)?,
-        private val onImageClick: ((String) -> Unit)?
+        private val onImageClick: ((String) -> Unit)?,
+        private val onFileClick: ((ChatMessage) -> Unit)?
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(message: ChatMessage) {
@@ -97,6 +100,7 @@ class ChatMessageAdapter(
                     )
                     binding.tvFileName.text = message.fileName ?: "[文件]"
                     binding.tvFileSize.text = formatFileSize(message.fileSize)
+                    binding.llBubbleFile.setOnClickListener { onFileClick?.invoke(message) }
                 }
                 else -> {
                     binding.flBubble.setBackgroundResource(

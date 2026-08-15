@@ -48,7 +48,8 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
         timestamp = parseRfc3339(createdAt),
         isMine = myUserId != null && senderId == myUserId,
         fileName = content?.name,
-        fileSize = content?.size
+        fileSize = content?.size,
+        sequence = sequence
     )
 }
 
@@ -63,16 +64,19 @@ fun GroupLatestMessageDto?.toSummary(): String {
     return if (senderName.isNullOrBlank()) body else "$senderName：$body"
 }
 
-/** 解析 UTC RFC3339 时间到 epoch 毫秒，失败回退当前时间。 */
+/** 解析 RFC3339 时间到 epoch 毫秒，失败回退当前时间。
+ *  兼容带小数秒（.123）与 Z / ±HH:MM 时区后缀；无时区后缀按 UTC 兜底。
+ *  此前 substringBefore('.') 会把小数秒连同末尾的 Z 一起截掉，导致带小数秒的 UTC 时间
+ *  被误按本地时区解析，整体偏移一个时区（东八区即 8 小时），进而红点误判。 */
 fun parseRfc3339(value: String): Long {
-    val cleaned = value.trim().substringBefore('.')
+    val s = value.trim().replace(Regex("\\.\\d+"), "")
     return runCatching {
-        if (cleaned.endsWith("Z")) {
+        if (s.endsWith("Z", ignoreCase = true) || Regex("[+-]\\d{2}:?\\d{2}$").containsMatchIn(s)) {
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).parse(s)?.time
+        } else {
             SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
                 .apply { timeZone = TimeZone.getTimeZone("UTC") }
-                .parse(cleaned.dropLast(1))?.time
-        } else {
-            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(cleaned)?.time
+                .parse(s)?.time
         }
     }.getOrNull() ?: System.currentTimeMillis()
 }

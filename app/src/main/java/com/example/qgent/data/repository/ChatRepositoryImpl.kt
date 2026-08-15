@@ -5,6 +5,7 @@ import com.example.qgent.data.model.CreateGroupRequest
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.GroupMessageDto
+import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 import com.example.qgent.data.model.SendMessageRequest
 import com.example.qgent.data.model.UpdateGroupRequest
@@ -79,6 +80,7 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         type: String,
         content: MessageContentDto,
         clientMessageId: String?,
+        mentions: List<MentionDto>?,
         idempotencyKey: String
     ): Result<GroupMessageDto> = apiCall {
         service.sendMessage(
@@ -87,7 +89,8 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
             SendMessageRequest(
                 type = type,
                 content = content,
-                clientMessageId = clientMessageId
+                clientMessageId = clientMessageId,
+                mentions = mentions
             )
         ).toDataOrThrow()
     }

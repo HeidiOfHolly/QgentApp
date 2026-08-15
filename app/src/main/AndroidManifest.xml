@@ -48,6 +48,17 @@
                     android:pathPrefix="/app/integrations/github" />
             </intent-filter>
         </activity>
+
+        <!-- 附件下载后供外部应用打开（ACTION_VIEW）的 FileProvider -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>
