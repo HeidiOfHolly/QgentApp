@@ -1,0 +1,218 @@
+package com.example.qgent.ui.tasks
+
+import android.app.AlertDialog
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Toast
+import androidx.core.view.isVisible
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
+import com.example.qgent.QgentApp
+import com.example.qgent.R
+import com.example.qgent.data.model.ApiException
+import com.example.qgent.data.model.TaskDetailDto
+import com.example.qgent.data.model.TaskStepListItemDto
+import com.example.qgent.data.repository.TaskRepository
+import com.example.qgent.databinding.FragmentTaskDetailBinding
+import com.example.qgent.databinding.ItemTaskRunBinding
+import com.example.qgent.databinding.ItemTaskStepBinding
+import com.example.qgent.ui.personal.fillLinearLayout
+import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
+import java.util.UUID
+
+/** 任务详情页：展示标题、需求、状态、仓库（§16.2） */
+class TaskDetailFragment : Fragment() {
+
+    private var _binding: FragmentTaskDetailBinding? = null
+    private val binding get() = _binding!!
+
+    private val taskRepository: TaskRepository
+        get() = (requireActivity().application as QgentApp).container.taskRepository
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
+
+    private val taskId: String by lazy { arguments?.getString(ARG_TASK_ID).orEmpty() }
+    private val projectId: String by lazy { arguments?.getString(ARG_PROJECT_ID).orEmpty() }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        _binding = FragmentTaskDetailBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        binding.ivBack.setOnClickListener { findNavController().navigateUp() }
+        binding.btnCancelTask.setOnClickListener { confirmCancelTask() }
+        loadDetail()
+    }
+
+    /** 取消任务确认弹窗 */
+    private fun confirmCancelTask() {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.cancel_task)
+            .setMessage(R.string.cancel_task_confirm)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.cancel_task) { _, _ ->
+                cancelTask()
+            }
+            .show()
+    }
+
+    /** 调用取消任务接口（§11.3，202 异步受理）；终态 409 专门提示 */
+    private fun cancelTask() {
+        if (projectId.isEmpty() || taskId.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepository.cancelTask(projectId, taskId, UUID.randomUUID().toString())
+                .onSuccess {
+                    Toast.makeText(requireContext(), R.string.cancel_task_success, Toast.LENGTH_SHORT).show()
+                }
+                .onFailure { e ->
+                    val message = if (e is ApiException && e.code == "TASK_NOT_CANCELLABLE") {
+                        "该任务已处于终态，无法取消"
+                    } else {
+                        e.message ?: getString(R.string.cancel_task_failed)
+                    }
+                    Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    private fun loadDetail() {
+        if (projectId.isEmpty() || taskId.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepository.getTaskDetail(projectId, taskId)
+                .onSuccess { detail -> bind(detail) }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), e.message ?: "加载任务详情失败", Toast.LENGTH_SHORT).show()
+                }
+        }
+        loadSteps()
+        loadRuns()
+    }
+
+    /** 加载任务步骤列表（§16.3）并填充 */
+    private fun loadSteps() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepository.getTaskSteps(projectId, taskId)
+                .onSuccess { steps ->
+                    binding.tvStepsEmpty.isVisible = steps.isEmpty()
+                    fillLinearLayout(binding.rvSteps, steps, R.layout.item_task_step) { view, step ->
+                        val item = ItemTaskStepBinding.bind(view)
+                        item.tvStepTitle.text = step.title.ifEmpty { step.role }
+                        item.tvStepStatus.text = stepStatusLabel(step.status)
+                        // 仅 PENDING 步骤可替换 Agent（§11.3）
+                        item.btnReplaceAgent.isVisible = step.status == "PENDING"
+                        item.btnReplaceAgent.setOnClickListener { showReplaceAgentDialog(step) }
+                    }
+                }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), "加载任务步骤失败：${e.message}", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    /** 加载任务运行列表（§16.4）并填充 */
+    private fun loadRuns() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepository.getTaskRunsOfTask(projectId, taskId)
+                .onSuccess { runs ->
+                    binding.tvRunsEmpty.isVisible = runs.isEmpty()
+                    fillLinearLayout(binding.rvRuns, runs, R.layout.item_task_run) { view, run ->
+                        val item = ItemTaskRunBinding.bind(view)
+                        item.tvRunTitle.text = run.taskStepTitle ?: run.role
+                        item.tvRunStatus.text = run.statusSummary ?: runStatusLabel(run.status)
+                        item.tvRunAgent.text = run.agent?.name ?: run.agentId
+                    }
+                }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), "加载任务运行失败：${e.message}", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    private fun stepStatusLabel(status: String): String = when (status) {
+        "PENDING" -> "待执行"
+        "RUNNING" -> "执行中"
+        "SUCCEEDED" -> "成功"
+        "FAILED" -> "失败"
+        "SKIPPED" -> "已跳过"
+        else -> status
+    }
+
+    private fun runStatusLabel(status: String): String = when (status) {
+        "QUEUED" -> "排队中"
+        "RUNNING" -> "执行中"
+        "SUCCEEDED" -> "成功"
+        "FAILED" -> "失败"
+        "WAITING_INPUT" -> "等待输入"
+        "WAITING_APPROVAL" -> "等待审批"
+        "BLOCKED" -> "已阻塞"
+        "CANCELLED" -> "已取消"
+        else -> status
+    }
+
+    private fun bind(detail: TaskDetailDto) {
+        binding.tvTitle.text = detail.title
+        binding.tvStatus.text = statusLabel(detail.status)
+        binding.tvRequirement.text = detail.requirement ?: detail.requirementSummary ?: "暂无需求描述"
+        binding.tvRepo.text = getString(
+            R.string.task_detail_repo,
+            detail.repositories?.joinToString { it.fullName.ifEmpty { it.name } }.orEmpty()
+        )
+    }
+
+    /** 替换步骤执行 Agent：弹出可选 Agent 列表（当前团队 Agent），选中后调用替换接口 */
+    private fun showReplaceAgentDialog(step: TaskStepListItemDto) {
+        val agents = mainViewModel.agents.value.orEmpty()
+        if (agents.isEmpty()) {
+            Toast.makeText(requireContext(), "暂无可选 Agent", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val names = agents.map { it.name }.toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle("替换 ${step.title.ifEmpty { step.role }} 的执行 Agent")
+            .setItems(names) { _, which ->
+                replaceStepAgent(step, agents[which].id)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** 调用替换 Agent 接口（§11.3），成功后刷新步骤列表 */
+    private fun replaceStepAgent(step: TaskStepListItemDto, agentId: String) {
+        if (projectId.isEmpty() || taskId.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepository.replaceAgent(projectId, taskId, step.id, agentId, UUID.randomUUID().toString())
+                .onSuccess {
+                    Toast.makeText(requireContext(), "已替换执行 Agent", Toast.LENGTH_SHORT).show()
+                    loadSteps()
+                }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), e.message ?: "替换失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    private fun statusLabel(status: String): String =
+        TaskListViewModel.STATUS_OPTIONS.firstOrNull { it.first == status }?.second ?: status
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+
+    companion object {
+        const val ARG_TASK_ID = "taskId"
+        const val ARG_PROJECT_ID = "projectId"
+    }
+}

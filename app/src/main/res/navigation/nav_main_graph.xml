@@ -38,7 +38,46 @@
         android:id="@+id/tasksFragment"
         android:name="com.example.qgent.ui.tasks.TasksFragment"
         android:label="@string/nav_tasks"
-        tools:layout="@layout/fragment_tasks" />
+        tools:layout="@layout/fragment_tasks">
+        <action
+            android:id="@+id/action_tasks_to_taskCardList"
+            app:destination="@id/taskCardListFragment" />
+        <action
+            android:id="@+id/action_tasks_to_mrList"
+            app:destination="@id/mergeRequestListFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/taskCardListFragment"
+        android:name="com.example.qgent.ui.tasks.TaskCardListFragment"
+        android:label="任务列表"
+        tools:layout="@layout/fragment_task_card_list">
+        <action
+            android:id="@+id/action_taskCardList_to_taskDetail"
+            app:destination="@id/taskDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/taskDetailFragment"
+        android:name="com.example.qgent.ui.tasks.TaskDetailFragment"
+        android:label="任务详情"
+        tools:layout="@layout/fragment_task_detail" />
+
+    <fragment
+        android:id="@+id/mergeRequestListFragment"
+        android:name="com.example.qgent.ui.tasks.MergeRequestListFragment"
+        android:label="MR 列表"
+        tools:layout="@layout/fragment_mr_list">
+        <action
+            android:id="@+id/action_mrList_to_mrDetail"
+            app:destination="@id/mergeRequestDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/mergeRequestDetailFragment"
+        android:name="com.example.qgent.ui.tasks.MergeRequestDetailFragment"
+        android:label="MR 详情"
+        tools:layout="@layout/fragment_mr_detail" />
 
     <fragment
         android:id="@+id/agentFragment"

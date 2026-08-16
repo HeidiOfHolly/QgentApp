@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 任务筛选条件项：标签 + 当前选中值 + 下拉箭头 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="8dp"
+    android:background="@drawable/bg_card"
+    android:backgroundTint="@color/teal"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="10dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="8dp"
+    android:paddingBottom="8dp">
+
+    <TextView
+        android:id="@+id/tvFilterName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/off_white"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        tools:text="需求群" />
+
+    <TextView
+        android:id="@+id/tvFilterValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:maxWidth="120dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/blue_tint"
+        android:textSize="13sp"
+        tools:text="登录功能" />
+
+    <ImageView
+        android:layout_width="14dp"
+        android:layout_height="14dp"
+        android:layout_marginStart="2dp"
+        android:contentDescription="@string/filter_dropdown"
+        android:src="@drawable/ic_triangle"
+        android:rotation="180"
+        app:tint="@color/off_white" />
+</LinearLayout>

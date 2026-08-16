@@ -1,12 +1,37 @@
 package com.example.qgent.ui.message
 
-import com.example.qgent.data.model.NotificationDto
+import android.os.Bundle
+import android.view.View
+import androidx.fragment.app.activityViewModels
+import com.example.qgent.QgentApp
+import com.example.qgent.viewmodel.MainViewModel
 
 /**
- * 任务界面铃铛入口的消息列表页：展示除“被邀请加入团队”外的其余所有通知
- * （任务完成/失败、需要输入、审批、MR 等；INVITED 归 MessageListFragment）。
+ * 任务界面铃铛入口的消息列表页：展示当前项目下的任务类通知（除“被邀请加入团队”外）。
+ * 跟随抽屉切换的当前团队/项目：过滤条件按当前项目 id 限定，顶部标题显示「团队名 · 项目名」。
  */
 class TaskMessageListFragment : BaseMessageListFragment() {
 
-    override val notificationsFilter: (NotificationDto) -> Boolean = { it.kind != "INVITED" }
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        refreshForCurrentContext()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 从抽屉切换团队/项目返回时，重新按当前项目过滤并刷新标题
+        refreshForCurrentContext()
+    }
+
+    /** 按当前项目更新过滤条件，并重新加载列表 */
+    private fun refreshForCurrentContext() {
+        val projectId = mainViewModel.currentProjectId()
+        // 项目未就绪时仅保留「非邀请」过滤，避免列表意外清空
+        notificationsFilter = { it.kind != "INVITED" && projectId != null && it.projectId == projectId }
+        reloadNotifications()
+    }
 }

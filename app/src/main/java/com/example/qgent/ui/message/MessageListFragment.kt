@@ -1,6 +1,8 @@
 package com.example.qgent.ui.message
 
-import com.example.qgent.data.model.NotificationDto
+import android.os.Bundle
+import android.view.View
+
 
 /**
  * 抽屉铃铛入口的消息列表页：仅展示“被邀请加入团队”的 INVITED 通知，
@@ -8,5 +10,8 @@ import com.example.qgent.data.model.NotificationDto
  */
 class MessageListFragment : BaseMessageListFragment() {
 
-    override val notificationsFilter: (NotificationDto) -> Boolean = { it.kind == "INVITED" }
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        notificationsFilter = { it.kind == "INVITED" }
+        super.onViewCreated(view, savedInstanceState)
+    }
 }

@@ -27,9 +27,19 @@ import com.example.qgent.data.model.ProjectMemberDto
 import com.example.qgent.data.model.ProjectRepositoryDto
 import com.example.qgent.data.model.ReceivedInvitationDto
 import com.example.qgent.data.model.RefreshRequest
+import com.example.qgent.data.model.ReplaceAgentRequest
 import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.SendMessageRequest
 import com.example.qgent.data.model.TeamDto
+import com.example.qgent.data.model.ActivityDto
+import com.example.qgent.data.model.DiffFileResponseDto
+import com.example.qgent.data.model.MergeRequestDetailDto
+import com.example.qgent.data.model.MergeRequestDto
+import com.example.qgent.data.model.TaskDetailDto
+import com.example.qgent.data.model.TaskListItemDto
+import com.example.qgent.data.model.TaskRunDetailListItemDto
+import com.example.qgent.data.model.TaskRunListItemDto
+import com.example.qgent.data.model.TaskStepListItemDto
 import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.model.UpdateAgentRequest
@@ -395,4 +405,94 @@ interface QgApiService {
         @Path("projectRepositoryId") projectRepositoryId: String,
         @Header("Idempotency-Key") idempotencyKey: String
     ): Response<Unit>
+
+    // ── 任务（§16 任务列表） ──
+
+    @GET("projects/{projectId}/tasks")
+    suspend fun getTasks(
+        @Path("projectId") projectId: String,
+        @Query("groupId") groupId: String? = null,
+        @Query("status") status: String? = null,
+        @Query("createdBy") createdBy: String? = null,
+        @Query("repositoryId") repositoryId: String? = null,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 20
+    ): Response<ApiResponse<List<TaskListItemDto>>>
+
+    // ── 团队最近动态（§19.4） ──
+
+    @GET("teams/{teamId}/activities")
+    suspend fun getActivities(
+        @Path("teamId") teamId: String,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 20
+    ): Response<ApiResponse<List<ActivityDto>>>
+
+    // ── MR（§13） ──
+
+    @GET("projects/{projectId}/merge-requests")
+    suspend fun getMergeRequests(
+        @Path("projectId") projectId: String,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 20
+    ): Response<ApiResponse<List<MergeRequestDto>>>
+
+    @GET("projects/{projectId}/merge-requests/{mergeRequestId}")
+    suspend fun getMergeRequestDetail(
+        @Path("projectId") projectId: String,
+        @Path("mergeRequestId") mergeRequestId: String
+    ): Response<ApiResponse<MergeRequestDetailDto>>
+
+    @GET("projects/{projectId}/diffs/{diffId}/files")
+    suspend fun getDiffFiles(
+        @Path("projectId") projectId: String,
+        @Path("diffId") diffId: String
+    ): Response<ApiResponse<List<DiffFileResponseDto>>>
+
+    @GET("projects/{projectId}/tasks/{taskId}")
+    suspend fun getTaskDetail(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String
+    ): Response<ApiResponse<TaskDetailDto>>
+
+    // ── 任务步骤 / 任务运行（§16.3 / §16.4） ──
+
+    @GET("projects/{projectId}/tasks/{taskId}/steps")
+    suspend fun getTaskSteps(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String
+    ): Response<ApiResponse<List<TaskStepListItemDto>>>
+
+    @POST("projects/{projectId}/tasks/{taskId}/cancel")
+    suspend fun cancelTask(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<Unit>
+
+    @POST("projects/{projectId}/tasks/{taskId}/steps/{stepId}/replace-agent")
+    suspend fun replaceAgent(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String,
+        @Path("stepId") stepId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: ReplaceAgentRequest
+    ): Response<ApiResponse<TaskStepListItemDto>>
+
+    @GET("projects/{projectId}/tasks/{taskId}/task-runs")
+    suspend fun getTaskRunsOfTask(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String
+    ): Response<ApiResponse<List<TaskRunDetailListItemDto>>>
+
+    // ── 项目级按 Agent 查询 TaskRun（§20.6） ──
+
+    @GET("projects/{projectId}/task-runs")
+    suspend fun getTaskRuns(
+        @Path("projectId") projectId: String,
+        @Query("agentId") agentId: String,
+        @Query("status") status: String? = null,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 20
+    ): Response<ApiResponse<List<TaskRunListItemDto>>>
 }

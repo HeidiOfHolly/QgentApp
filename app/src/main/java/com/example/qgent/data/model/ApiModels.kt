@@ -442,3 +442,277 @@ data class NotificationDto(
     @SerializedName("groupId") val groupId: String?,
     @SerializedName("resourceId") val resourceId: String?
 )
+
+// ── 任务（§16 任务列表 / 任务卡片） ──
+
+/** 需求群摘要（任务列表项的 requirementGroup 字段） */
+data class TaskRequirementGroupDto(
+    val id: String,
+    val name: String,
+    val status: String
+)
+
+/** 用户摘要（任务列表项的 createdByUser 字段） */
+data class TaskUserSummaryDto(
+    val id: String,
+    @SerializedName("displayName") val displayName: String,
+    @SerializedName("avatarUrl") val avatarUrl: String?
+)
+
+/** 任务仓库摘要（任务列表项的 repositories 字段） */
+data class TaskRepositoryDto(
+    @SerializedName("repositoryId") val repositoryId: String,
+    val name: String,
+    @SerializedName("fullName") val fullName: String,
+    val provider: String,
+    @SerializedName("defaultBranch") val defaultBranch: String,
+    @SerializedName("baseRef") val baseRef: String,
+    @SerializedName("baseCommit") val baseCommit: String?,
+    @SerializedName("sourceBranch") val sourceBranch: String?,
+    @SerializedName("headCommit") val headCommit: String?
+)
+
+/** 执行进度摘要（任务列表项的 executionSummary 字段，§16.1） */
+data class TaskExecutionSummaryDto(
+    @SerializedName("totalSteps") val totalSteps: Int,
+    @SerializedName("pendingSteps") val pendingSteps: Int,
+    @SerializedName("runningSteps") val runningSteps: Int,
+    @SerializedName("waitingSteps") val waitingSteps: Int,
+    @SerializedName("blockedSteps") val blockedSteps: Int,
+    @SerializedName("succeededSteps") val succeededSteps: Int,
+    @SerializedName("failedSteps") val failedSteps: Int,
+    @SerializedName("currentStage") val currentStage: String?,
+    @SerializedName("currentStageTitle") val currentStageTitle: String?,
+    @SerializedName("requiresUserAction") val requiresUserAction: Boolean
+)
+
+/** 任务列表项（GET /projects/{projectId}/tasks，§16.1）。priority 后端恒为 null，不展示。 */
+data class TaskListItemDto(
+    val id: String,
+    @SerializedName("displayCode") val displayCode: String,
+    @SerializedName("projectId") val projectId: String,
+    val title: String,
+    @SerializedName("requirementSummary") val requirementSummary: String?,
+    val status: String,
+    val priority: String? = null,
+    @SerializedName("deliveryMode") val deliveryMode: String,
+    @SerializedName("requirementGroup") val requirementGroup: TaskRequirementGroupDto?,
+    @SerializedName("createdByUser") val createdByUser: TaskUserSummaryDto?,
+    val repositories: List<TaskRepositoryDto>?,
+    @SerializedName("executionSummary") val executionSummary: TaskExecutionSummaryDto?,
+    val attention: String?,
+    @SerializedName("createdAt") val createdAt: String,
+    @SerializedName("updatedAt") val updatedAt: String
+)
+
+/** 任务详情（GET /projects/{projectId}/tasks/{taskId}，§16.2）：列表项字段 + 完整需求 */
+data class TaskDetailDto(
+    val id: String,
+    @SerializedName("displayCode") val displayCode: String,
+    @SerializedName("projectId") val projectId: String,
+    val title: String,
+    val requirement: String?,
+    @SerializedName("requirementSummary") val requirementSummary: String?,
+    val status: String,
+    @SerializedName("deliveryMode") val deliveryMode: String,
+    @SerializedName("requirementGroup") val requirementGroup: TaskRequirementGroupDto?,
+    @SerializedName("createdByUser") val createdByUser: TaskUserSummaryDto?,
+    val repositories: List<TaskRepositoryDto>?,
+    @SerializedName("executionSummary") val executionSummary: TaskExecutionSummaryDto?,
+    @SerializedName("createdAt") val createdAt: String,
+    @SerializedName("updatedAt") val updatedAt: String
+)
+
+// ── 任务步骤 / 任务运行（§16.3 / §16.4） ──
+
+/** 步骤执行 Agent 摘要（TaskStep 的 agent 字段） */
+data class TaskStepAgentDto(
+    val id: String,
+    val name: String,
+    val role: String,
+    @SerializedName("avatarUrl") val avatarUrl: String?,
+    val status: String
+)
+
+/** 步骤仓库摘要（TaskStep 的 repository 字段） */
+data class TaskStepRepositoryDto(
+    @SerializedName("repositoryId") val repositoryId: String,
+    val name: String,
+    @SerializedName("sourceBranch") val sourceBranch: String?
+)
+
+/** 步骤最新一次 TaskRun 摘要（TaskStep 的 latestRun 字段） */
+data class TaskStepLatestRunDto(
+    val id: String,
+    val status: String,
+    @SerializedName("startedAt") val startedAt: String?,
+    @SerializedName("finishedAt") val finishedAt: String?,
+    @SerializedName("durationMs") val durationMs: Long?
+)
+
+/** 替换步骤执行 Agent 请求（POST tasks/{taskId}/steps/{stepId}/replace-agent，§11.3） */
+data class ReplaceAgentRequest(
+    @SerializedName("agentId") val agentId: String
+)
+
+/** 任务步骤列表项（GET tasks/{taskId}/steps，§16.3） */
+data class TaskStepListItemDto(
+    val id: String,
+    @SerializedName("taskId") val taskId: String,
+    @SerializedName("sequenceNo") val sequenceNo: Int,
+    val title: String,
+    val description: String?,
+    val role: String,
+    val agent: TaskStepAgentDto?,
+    val repository: TaskStepRepositoryDto?,
+    val dependencies: List<String>?,
+    val status: String,                 // PENDING/RUNNING/SUCCEEDED/FAILED/SKIPPED
+    @SerializedName("acceptanceNotes") val acceptanceNotes: String?,
+    @SerializedName("latestRun") val latestRun: TaskStepLatestRunDto?,
+    @SerializedName("runCount") val runCount: Int,
+    @SerializedName("startedAt") val startedAt: String?,
+    @SerializedName("finishedAt") val finishedAt: String?,
+    @SerializedName("createdAt") val createdAt: String,
+    @SerializedName("updatedAt") val updatedAt: String
+)
+
+/** 运行 Agent 摘要（任务运行列表项的 agent 字段） */
+data class TaskRunAgentDto(
+    val id: String,
+    val name: String,
+    val role: String,
+    @SerializedName("avatarUrl") val avatarUrl: String?
+)
+
+/** 任务运行列表项（GET tasks/{taskId}/task-runs，§16.4） */
+data class TaskRunDetailListItemDto(
+    val id: String,
+    @SerializedName("projectId") val projectId: String,
+    @SerializedName("taskId") val taskId: String,
+    @SerializedName("taskStepId") val taskStepId: String,
+    @SerializedName("taskStepTitle") val taskStepTitle: String?,
+    @SerializedName("agentId") val agentId: String,
+    val role: String,
+    val agent: TaskRunAgentDto?,
+    val status: String,                 // QUEUED/RUNNING/SUCCEEDED/FAILED/WAITING_INPUT/...
+    @SerializedName("statusSummary") val statusSummary: String?,
+    @SerializedName("startedAt") val startedAt: String?,
+    @SerializedName("finishedAt") val finishedAt: String?,
+    @SerializedName("durationMs") val durationMs: Long?,
+    @SerializedName("createdAt") val createdAt: String,
+    @SerializedName("updatedAt") val updatedAt: String
+)
+
+// ── 团队最近动态（§19.4） ──
+
+/** 动态 actor（§19.4：{id, displayName, avatar}，无可靠来源为 null，avatar 恒为 null） */
+data class ActivityActorDto(
+    val id: String,
+    @SerializedName("displayName") val displayName: String,
+    val avatar: String? = null
+)
+
+/** 动态 target（§19.4：{type, id, title}，type ∈ TASK/DIFF/MR/PROJECT） */
+data class ActivityTargetDto(
+    val type: String,
+    val id: String,
+    val title: String
+)
+
+/** 团队最近动态（GET /teams/{teamId}/activities，§19.4），按 createdAt 倒序 */
+data class ActivityDto(
+    val id: String,
+    val type: String,
+    val title: String,
+    val summary: String? = null,
+    val actor: ActivityActorDto? = null,
+    val target: ActivityTargetDto,
+    val link: String? = null,
+    @SerializedName("createdAt") val createdAt: String
+)
+
+// ── MR（§13） ──
+
+/** 质量门禁摘要（MR 的 qualityGate 字段） */
+data class MergeRequestQualityGateDto(
+    val status: String,
+    @SerializedName("requiredChecks") val requiredChecks: List<String>?
+)
+
+/** MR 列表项（GET /projects/{projectId}/merge-requests，§13/§21.2） */
+data class MergeRequestDto(
+    val id: String,
+    @SerializedName("repositoryId") val repositoryId: String,
+    @SerializedName("groupIds") val groupIds: List<String>?,
+    val provider: String,
+    val number: Int,
+    val title: String?,
+    @SerializedName("sourceBranch") val sourceBranch: String,
+    @SerializedName("targetBranch") val targetBranch: String,
+    val status: String,                 // OPEN / MERGED / CLOSED
+    @SerializedName("headCommit") val headCommit: String?,
+    @SerializedName("qualityGate") val qualityGate: MergeRequestQualityGateDto?,
+    @SerializedName("createdAt") val createdAt: String?
+)
+
+/**
+ * MR 详情（GET /projects/{projectId}/merge-requests/{mergeRequestId}，§13 + §21.2 Q2 扩展）。
+ * 列表字段基础上补充 diffId（后端已支持返回该仓库该任务已 ACCEPTED 的 Diff id，无则 null）。
+ */
+data class MergeRequestDetailDto(
+    val id: String,
+    @SerializedName("repositoryId") val repositoryId: String,
+    @SerializedName("groupIds") val groupIds: List<String>?,
+    val provider: String,
+    val number: Int,
+    val title: String?,
+    @SerializedName("sourceBranch") val sourceBranch: String,
+    @SerializedName("targetBranch") val targetBranch: String,
+    val status: String,                 // OPEN / MERGED / CLOSED
+    @SerializedName("headCommit") val headCommit: String?,
+    @SerializedName("qualityGate") val qualityGate: MergeRequestQualityGateDto?,
+    @SerializedName("diffId") val diffId: String?,
+    @SerializedName("createdAt") val createdAt: String?
+)
+
+/** Diff 文件行（GET /diffs/{diffId}/files 的 lines 项） */
+data class DiffLineResponseDto(
+    val type: String,                   // ADD / DELETE / CONTEXT
+    @SerializedName("oldLineNo") val oldLineNo: Int?,
+    @SerializedName("newLineNo") val newLineNo: Int?,
+    val text: String
+)
+
+/** Diff 文件（GET /diffs/{diffId}/files，§12.3 / §21.2） */
+data class DiffFileResponseDto(
+    val id: String?,
+    val sequence: Int?,
+    val path: String,
+    @SerializedName("changeType") val changeType: String,   // ADDED / MODIFIED / DELETED
+    val additions: Int,
+    val deletions: Int,
+    val binary: Boolean?,
+    val lines: List<DiffLineResponseDto>? = null,
+    @SerializedName("fileName") val fileName: String? = null
+)
+
+// ── 项目级 TaskRun（§20.6） ──
+
+/**
+ * TaskRun 列表项（GET /projects/{projectId}/task-runs，§20.6）。
+ * §12.2 摘要字段 + taskDisplayCode/taskTitle/taskStepRole。
+ */
+data class TaskRunListItemDto(
+    val id: String,
+    @SerializedName("projectId") val projectId: String,
+    @SerializedName("taskId") val taskId: String,
+    @SerializedName("taskStepId") val taskStepId: String,
+    @SerializedName("agentId") val agentId: String,
+    val role: String,
+    val status: String,
+    @SerializedName("taskDisplayCode") val taskDisplayCode: String?,
+    @SerializedName("taskTitle") val taskTitle: String?,
+    @SerializedName("taskStepRole") val taskStepRole: String?,
+    @SerializedName("createdAt") val createdAt: String,
+    @SerializedName("updatedAt") val updatedAt: String
+)
