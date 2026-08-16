@@ -6,11 +6,10 @@
     android:background="#CC000000"
     android:clickable="true">
 
-    <ImageView
+    <com.example.qgent.ui.chat.ZoomableImageView
         android:id="@+id/ivPreview"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:adjustViewBounds="true"
-        android:contentDescription="@string/image"
-        android:scaleType="fitCenter" />
+        android:contentDescription="@string/image" />
 </FrameLayout>

@@ -14,5 +14,6 @@ data class MessageEntity(
     val timestamp: Long,
     val isMine: Boolean,
     val fileName: String?,
-    val fileSize: Long?
+    val fileSize: Long?,
+    val sequence: Long
 )

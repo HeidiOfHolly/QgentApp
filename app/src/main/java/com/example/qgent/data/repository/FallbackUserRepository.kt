@@ -37,6 +37,9 @@ class FallbackUserRepository(
     override suspend fun addProjectMember(projectId: String, userId: String, idempotencyKey: String) =
         fb.call { addProjectMember(projectId, userId, idempotencyKey) }
 
+    override suspend fun getProjectMembers(projectId: String) =
+        fb.call { getProjectMembers(projectId) }
+
     override suspend fun createTeam(name: String, description: String?, idempotencyKey: String) =
         fb.call { createTeam(name, description, idempotencyKey) }
 

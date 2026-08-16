@@ -30,7 +30,8 @@ object RetrofitClient {
             .create(QgApiService::class.java)
     }
 
-    private val httpClient = OkHttpClient.Builder()
+    // 带鉴权拦截器的通用 client：供 Retrofit service 与附件下载（GET content.url）共用
+    val httpClient: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(AuthInterceptor())
         .authenticator(TokenAuthenticator(refreshService))
         .addInterceptor(loggingInterceptor)

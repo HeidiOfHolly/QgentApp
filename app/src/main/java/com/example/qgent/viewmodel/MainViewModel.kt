@@ -5,6 +5,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.qgent.data.SessionStore
 import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.model.GroupDto
@@ -83,9 +84,9 @@ class MainViewModel(
     private val teamNameToId = mutableMapOf<String, String>()
     private val projectIdsByTeam = mutableMapOf<String, Map<String, String>>()
 
-    // ── 已读群聊 ID 集合（跨项目切换保持） ──
+    // ── 群聊最后已读时间：记录进入群聊时的 lastActiveTime，跨项目切换保持 ──
 
-    private val readGroupIds = mutableSetOf<String>()
+    private val lastReadAt = mutableMapOf<String, Long>()
 
     // ── 当前已加载 projects 对应的团队（防止串数据） ──
 
@@ -170,11 +171,16 @@ class MainViewModel(
         loadGroups(_currentProject.value)
     }
 
-    /** 标记群聊为已读（未读数清零，并持久化到已读集合） */
-    fun markAsRead(groupId: String) {
-        readGroupIds.add(groupId)
+    /** 标记群聊为已读：记录最后已读时间（列表点击用列表 lastActiveTime，详情页退出传最新消息时间），未读数与 @我 标记清零 */
+    fun markGroupRead(groupId: String, lastSeenAt: Long? = null) {
+        // 详情页退出传的是消息 createdAt 解析值，后端 createdAt 时区不一致时会是未来时间，
+        // 会把已读基线推到未来，导致后续 unread/@me 恒被「无新活动」短路；钳制到当前时间兜底。
+        val ts = (lastSeenAt ?: _groups.value.find { it.id == groupId }?.lastActiveTime ?: return)
+            .coerceAtMost(System.currentTimeMillis())
+        val prev = lastReadAt[groupId]
+        if (prev == null || ts > prev) lastReadAt[groupId] = ts
         _groups.value = _groups.value.map {
-            if (it.id == groupId) it.copy(unread = 0) else it
+            if (it.id == groupId) it.copy(unread = 0, mentionedMe = false) else it
         }
     }
 
@@ -253,22 +259,49 @@ class MainViewModel(
         loadGroupsJob?.cancel()
         loadGroupsJob = viewModelScope.launch {
             val dtos = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
-            dtos.forEach { dto ->
-                Log.d(
-                    "MainViewModel",
-                    "group=${dto.title} latestActivityAt=${dto.latestActivityAt} " +
-                        "formatted=${formatGroupTime(parseRfc3339(dto.latestActivityAt.orEmpty()))} " +
-                        "latestMessage=${dto.latestMessage}"
-                )
+            val myId = SessionStore.user()?.id
+            val withUnread = toChatGroups(dtos).map { g ->
+                val info = countUnread(projectId, g.id, myId, g.lastActiveTime)
+                g.copy(unread = info.unread, mentionedMe = info.mentionedMe)
             }
-            _groups.value = toChatGroups(dtos)
+            _groups.value = withUnread
             resolveRoutingReady()
         }
     }
 
-    /** GroupDto → ChatGroup 映射（排序 + 已读状态） */
+    /** 某群未读状态：未读条数 + 是否有人 @ 我 */
+    private data class UnreadInfo(val unread: Int, val mentionedMe: Boolean)
+
+    /** 统计某群未读：首次加载以当前活动时间为已读基线；仅当有新活动时才拉消息列表，数未读并判断是否 @ 我 */
+    private suspend fun countUnread(projectId: String, groupId: String, myId: String?, lastActive: Long): UnreadInfo {
+        val lastRead = lastReadAt[groupId]
+        if (lastRead == null) {
+            lastReadAt[groupId] = lastActive
+            Log.d("Mention", "baseline group=$groupId lastActive=$lastActive")
+            return UnreadInfo(0, false)
+        }
+        if (lastActive <= lastRead) {
+            Log.d("Mention", "no-new-activity group=$groupId lastRead=$lastRead lastActive=$lastActive")
+            return UnreadInfo(0, false)
+        }
+        val dtos = chatRepo.getMessages(projectId, groupId).getOrNull() ?: run {
+            Log.d("Mention", "getMessages-failed group=$groupId")
+            return UnreadInfo(0, false)
+        }
+        val newFromOthers = dtos.filter {
+            it.type != "SYSTEM" && it.senderId != myId && parseRfc3339(it.createdAt) > lastRead
+        }
+        val mentioned = myId != null && newFromOthers.any { it.mentions?.any { m -> m.id == myId } == true }
+        Log.d("Mention", "group=$groupId myId=$myId lastRead=$lastRead msgs=${dtos.map { "${it.senderId}|${it.mentions}|${it.createdAt}" }} mentioned=$mentioned newCount=${newFromOthers.size}")
+        return UnreadInfo(
+            unread = newFromOthers.size,
+            mentionedMe = mentioned
+        )
+    }
+
+    /** GroupDto → ChatGroup 基础映射（排序，未读默认 0，由 loadGroups 统计后回填） */
     private fun toChatGroups(dtos: List<GroupDto>): List<ChatGroup> =
-        applyReadState(sortGroups(dtos.map { dto ->
+        sortGroups(dtos.map { dto ->
             val lastActive = parseRfc3339(dto.latestActivityAt.orEmpty())
             ChatGroup(
                 id = dto.id,
@@ -278,7 +311,7 @@ class MainViewModel(
                 unread = 0,
                 lastActiveTime = lastActive
             )
-        }))
+        })
 
     /** 冷启动路由就绪：仅当存在待解析的冷启动标记时解除（普通切项目时的 loadGroups 是 no-op） */
     private fun resolveRoutingReady() {
@@ -298,10 +331,6 @@ class MainViewModel(
             }
         }
     }
-
-    /** 对已读群聊清零未读数 */
-    private fun applyReadState(groups: List<ChatGroup>): List<ChatGroup> =
-        groups.map { if (it.id in readGroupIds) it.copy(unread = 0) else it }
 
     /**
      * 创建项目：POST /teams/{teamId}/projects，随后逐条绑定已选仓库，

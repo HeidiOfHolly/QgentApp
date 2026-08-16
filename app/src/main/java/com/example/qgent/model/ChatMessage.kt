@@ -11,7 +11,8 @@ data class ChatMessage(
     val isMine: Boolean,
     val diff: List<DiffFile>? = null,
     val fileName: String? = null,
-    val fileSize: Long? = null
+    val fileSize: Long? = null,
+    val sequence: Long = 0
 ) {
     fun displayContent(): String = when (type) {
         MessageType.TEXT, MessageType.CODE -> content

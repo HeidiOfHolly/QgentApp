@@ -21,6 +21,7 @@ interface UserRepository {
     suspend fun getProjects(teamId: String): Result<List<ProjectDto>>
     suspend fun createProject(teamId: String, name: String, description: String?, idempotencyKey: String): Result<ProjectDto>
     suspend fun addProjectMember(projectId: String, userId: String, idempotencyKey: String): Result<ProjectMemberDto>
+    suspend fun getProjectMembers(projectId: String): Result<List<ProjectMemberDto>>
     suspend fun createTeam(name: String, description: String? = null, idempotencyKey: String): Result<TeamDto>
     suspend fun getNotifications(): Result<List<NotificationDto>>
     suspend fun markNotificationRead(notificationId: String, idempotencyKey: String): Result<Unit>

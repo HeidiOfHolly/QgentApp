@@ -210,6 +210,12 @@ data class GroupMemberDto(
 
 // ── 消息 ──
 
+/** 消息 @ 提及目标：type=USER/AGENT，id=被提及者 userId/agentId */
+data class MentionDto(
+    val type: String,
+    val id: String
+)
+
 data class GroupMessageDto(
     val id: String,
     @SerializedName("groupId") val groupId: String,
@@ -217,7 +223,7 @@ data class GroupMessageDto(
     @SerializedName("senderName") val senderName: String?,
     val type: String,               // TEXT / CODE / IMAGE / FILE / SYSTEM / QUOTE
     val content: MessageContentDto?,
-    val mentions: List<String>?,
+    val mentions: List<MentionDto>?,
     @SerializedName("replyToId") val replyToId: String?,
     @SerializedName("clientMessageId") val clientMessageId: String?,
     val sequence: Long,
@@ -272,7 +278,7 @@ data class UpdateGroupRequest(
 data class SendMessageRequest(
     val type: String,
     val content: MessageContentDto,
-    val mentions: List<String>? = null,
+    val mentions: List<MentionDto>? = null,
     @SerializedName("replyToId") val replyToId: String? = null,
     @SerializedName("clientMessageId") val clientMessageId: String? = null
 )

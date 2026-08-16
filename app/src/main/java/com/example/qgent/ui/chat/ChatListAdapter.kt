@@ -44,13 +44,20 @@ class ChatListAdapter(
 
         fun bind(group: ChatGroup) {
             binding.tvName.text = group.name
-            binding.tvLastMessage.text = group.lastMessage
             binding.tvTime.text = group.time
             binding.tvUnread.isVisible = group.unread > 0
             binding.tvUnread.text = if (group.unread > 99) "99+" else group.unread.toString()
+            val context = binding.root.context
+            if (group.mentionedMe) {
+                binding.tvLastMessage.text = context.getString(R.string.mentioned_me) + " " + group.lastMessage
+                binding.tvLastMessage.setTextColor(ContextCompat.getColor(context, R.color.unread_badge))
+            } else {
+                binding.tvLastMessage.text = group.lastMessage
+                binding.tvLastMessage.setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+            }
             binding.root.setBackgroundColor(
                 ContextCompat.getColor(
-                    binding.root.context,
+                    context,
                     if (group.isPinned) R.color.bg_chat_pinned else android.R.color.transparent
                 )
             )

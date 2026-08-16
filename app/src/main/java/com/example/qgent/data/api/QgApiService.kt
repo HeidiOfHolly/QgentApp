@@ -148,6 +148,11 @@ interface QgApiService {
         @Body body: AddProjectMemberRequest
     ): Response<ApiResponse<ProjectMemberDto>>
 
+    @GET("projects/{projectId}/members")
+    suspend fun getProjectMembers(
+        @Path("projectId") projectId: String
+    ): Response<ApiResponse<List<ProjectMemberDto>>>
+
     // ── 群（Group） ──
 
     @GET("projects/{projectId}/groups")
