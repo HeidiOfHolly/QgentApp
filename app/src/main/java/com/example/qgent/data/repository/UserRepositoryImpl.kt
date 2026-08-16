@@ -5,6 +5,7 @@ import com.example.qgent.data.model.AddProjectMemberRequest
 import com.example.qgent.data.model.CreateProjectRequest
 import com.example.qgent.data.model.CreateTeamRequest
 import com.example.qgent.data.model.InviteTeamMemberRequest
+import com.example.qgent.data.model.NotificationDto
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.ProjectMemberDto
 import com.example.qgent.data.model.TeamDto
@@ -79,5 +80,19 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
     override suspend fun createTeam(name: String, description: String?, idempotencyKey: String): Result<TeamDto> =
         apiCall {
             service.createTeam(idempotencyKey, CreateTeamRequest(name, description)).toDataOrThrow()
+        }
+
+    override suspend fun getNotifications(): Result<List<NotificationDto>> = apiCall {
+        service.getNotifications().toDataOrThrow()
+    }
+
+    override suspend fun markNotificationRead(notificationId: String, idempotencyKey: String): Result<Unit> =
+        apiCall {
+            service.markNotificationRead(notificationId, idempotencyKey).toUnitOrThrow()
+        }
+
+    override suspend fun markAllNotificationsRead(idempotencyKey: String): Result<Unit> =
+        apiCall {
+            service.markAllNotificationsRead(idempotencyKey).toUnitOrThrow()
         }
 }

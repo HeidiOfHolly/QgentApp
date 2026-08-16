@@ -382,3 +382,21 @@ data class BindProjectRepositoryRequest(
     @SerializedName("repositoryId") val repositoryId: String,
     @SerializedName("displayName") val displayName: String
 )
+
+/**
+ * 通知（§7.1 通知中心，GET /notifications）。
+ * kind: TASK_COMPLETED / TASK_FAILED / AGENT_INPUT_REQUIRED / DELIVERABLE_PENDING /
+ *       MR_PENDING / INVITED / TEAM_JOINED / PROJECT_ADDED
+ * projectId/groupId/resourceId 仅定位用，点击跳转的关联资源 id（taskId/mrId/diffId）。
+ */
+data class NotificationDto(
+    val id: String,
+    val kind: String,
+    val title: String,
+    val description: String?,
+    @SerializedName("isRead") val isRead: Boolean,
+    @SerializedName("createdAt") val createdAt: String,
+    @SerializedName("projectId") val projectId: String?,
+    @SerializedName("groupId") val groupId: String?,
+    @SerializedName("resourceId") val resourceId: String?
+)
