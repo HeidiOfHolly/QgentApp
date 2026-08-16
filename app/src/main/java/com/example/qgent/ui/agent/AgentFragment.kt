@@ -6,16 +6,22 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.databinding.FragmentAgentBinding
 import com.example.qgent.model.MemoryItem
-import com.example.qgent.model.ResourceStatus
 import com.example.qgent.model.SkillItem
+import com.example.qgent.model.toMemoryItem
+import com.example.qgent.model.toSkillItem
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
 
+/**
+ * Agent 页：Agent 卡片列表 + Memory / Skill 预览（真实接口，失败由数据层 mock 保底）。
+ */
 class AgentFragment : Fragment() {
 
     private var _binding: FragmentAgentBinding? = null
@@ -23,19 +29,6 @@ class AgentFragment : Fragment() {
     private val mainViewModel: MainViewModel by activityViewModels {
         (requireActivity().application as QgentApp).container.mainViewModelFactory
     }
-
-    // 预览用 mock：混合 pending + approved，取前三
-    private val mockMemoryPreview = listOf(
-        MemoryItem("m1", "登录状态持久化方案", "跨 Activity 登录状态管理策略", ResourceStatus.PENDING),
-        MemoryItem("m3", "React 组件规范", "统一项目组件命名与文件结构规范", ResourceStatus.APPROVED),
-        MemoryItem("m4", "API 接口约定", "RESTful 统一返回格式与错误码约定", ResourceStatus.APPROVED)
-    )
-
-    private val mockSkillPreview = listOf(
-        SkillItem("s1", "Docker 部署脚本", "自动构建并推送镜像到私有仓库", ResourceStatus.PENDING),
-        SkillItem("s2", "TypeScript 检查", "对 .ts/.tsx 运行 tsc --noEmit", ResourceStatus.APPROVED),
-        SkillItem("s3", "ESLint 格式化", "基于团队规则自动修复格式问题", ResourceStatus.APPROVED)
-    )
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -66,25 +59,54 @@ class AgentFragment : Fragment() {
             agentAdapter.submitList(agents)
         }
 
-        // ── Memory 预览 ──
-        val memoryAdapter = PreviewAdapter(mockMemoryPreview) {
-            findNavController().navigate(R.id.action_agent_to_memoryPool)
-        }
+        // ── Memory 预览（真实接口，取已共享前 3 条） ──
         binding.rvMemoryPreview.layoutManager = LinearLayoutManager(requireContext())
-        binding.rvMemoryPreview.adapter = memoryAdapter
         binding.tvMemoryMore.setOnClickListener {
             findNavController().navigate(R.id.action_agent_to_memoryPool)
         }
 
-        // ── Skill 预览 ──
-        val skillAdapter = PreviewAdapter(mockSkillPreview) {
-            findNavController().navigate(R.id.action_agent_to_skillPool)
-        }
+        // ── Skill 预览（真实接口，取已共享前 3 条） ──
         binding.rvSkillPreview.layoutManager = LinearLayoutManager(requireContext())
-        binding.rvSkillPreview.adapter = skillAdapter
         binding.tvSkillMore.setOnClickListener {
             findNavController().navigate(R.id.action_agent_to_skillPool)
         }
+
+        loadPreviews()
+    }
+
+    private fun loadPreviews() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val app = requireActivity().application as QgentApp
+        viewLifecycleOwner.lifecycleScope.launch {
+            val memoryRepo = app.container.memoryRepository
+            val skillRepo = app.container.skillRepository
+
+            val approvedMemories = memoryRepo.getMemories(projectId).getOrNull().orEmpty()
+                .filter { it.status == "APPROVED" }
+                .take(3)
+                .map { it.toMemoryItem() }
+            renderMemoryPreview(approvedMemories)
+
+            val publishedSkills = skillRepo.getSkills(projectId).getOrNull().orEmpty()
+                .filter { it.status == "PUBLISHED" }
+                .take(3)
+                .map { it.toSkillItem() }
+            renderSkillPreview(publishedSkills)
+        }
+    }
+
+    private fun renderMemoryPreview(items: List<MemoryItem>) {
+        val adapter = PreviewAdapter(items) {
+            findNavController().navigate(R.id.action_agent_to_memoryPool)
+        }
+        binding.rvMemoryPreview.adapter = adapter
+    }
+
+    private fun renderSkillPreview(items: List<SkillItem>) {
+        val adapter = PreviewAdapter(items) {
+            findNavController().navigate(R.id.action_agent_to_skillPool)
+        }
+        binding.rvSkillPreview.adapter = adapter
     }
 
     override fun onDestroyView() {

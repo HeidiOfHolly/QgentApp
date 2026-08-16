@@ -13,8 +13,20 @@ import com.example.qgent.data.repository.AttachmentUploader
 import com.example.qgent.data.repository.AuthRepository
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.ChatRepositoryImpl
+import com.example.qgent.data.repository.DiffRepository
+import com.example.qgent.data.repository.DiffRepositoryImpl
+import com.example.qgent.data.repository.FallbackDiffRepository
+import com.example.qgent.data.repository.FallbackMemoryRepository
+import com.example.qgent.data.repository.FallbackSkillRepository
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.GitHubRepositoryImpl
+import com.example.qgent.data.repository.MemoryRepository
+import com.example.qgent.data.repository.MemoryRepositoryImpl
+import com.example.qgent.data.repository.MockDiffRepository
+import com.example.qgent.data.repository.MockMemoryRepository
+import com.example.qgent.data.repository.MockSkillRepository
+import com.example.qgent.data.repository.SkillRepository
+import com.example.qgent.data.repository.SkillRepositoryImpl
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.data.repository.UserRepositoryImpl
 import com.example.qgent.data.sse.ProjectEventStream
@@ -41,6 +53,26 @@ class AppContainer(context: Context) {
     val chatRepository: ChatRepository = ChatRepositoryImpl(RetrofitClient.service)
 
     val agentRepository: AgentRepository = AgentRepositoryImpl(RetrofitClient.service)
+
+    /**
+     * Skill / Memory：真实接口优先，失败回退 mock 保底（Fallback 层）。
+     * 等真实接口全部测试通过后，可移除 Fallback 与 Mock 实现。
+     */
+    val skillRepository: SkillRepository = FallbackSkillRepository(
+        SkillRepositoryImpl(RetrofitClient.service),
+        MockSkillRepository()
+    )
+
+    val memoryRepository: MemoryRepository = FallbackMemoryRepository(
+        MemoryRepositoryImpl(RetrofitClient.service),
+        MockMemoryRepository()
+    )
+
+    /** Diff 文件内容：真实接口优先，失败 mock 保底（测试完成后移除 Fallback/Mock） */
+    val diffRepository: DiffRepository = FallbackDiffRepository(
+        DiffRepositoryImpl(RetrofitClient.service),
+        MockDiffRepository()
+    )
 
     val githubRepository: GitHubRepository = GitHubRepositoryImpl(RetrofitClient.service)
 

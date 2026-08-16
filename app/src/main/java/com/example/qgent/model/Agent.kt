@@ -29,5 +29,7 @@ data class Agent(
     val role: AgentRole,
     val capabilities: List<String> = emptyList(),
     val status: AgentStatus = AgentStatus.ACTIVE,
-    val visibility: AgentVisibility = AgentVisibility.TEAM_SHARED
+    val visibility: AgentVisibility = AgentVisibility.TEAM_SHARED,
+    val avatar: String? = null,
+    val createdBy: String? = null
 )

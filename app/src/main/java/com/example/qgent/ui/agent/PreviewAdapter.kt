@@ -7,10 +7,10 @@ import com.example.qgent.databinding.ItemPreviewResourceBinding
 import com.example.qgent.model.MemoryItem
 import com.example.qgent.model.SkillItem
 
-class PreviewAdapter(
-    private val items: List<Any>,
-    private val onItemClick: (Any) -> Unit
-) : RecyclerView.Adapter<PreviewAdapter.VH>() {
+class PreviewAdapter<T : Any>(
+    private val items: List<T>,
+    private val onItemClick: (T) -> Unit
+) : RecyclerView.Adapter<PreviewAdapter<T>.VH>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val binding = ItemPreviewResourceBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -25,7 +25,7 @@ class PreviewAdapter(
 
     inner class VH(private val binding: ItemPreviewResourceBinding) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(item: Any) {
+        fun bind(item: T) {
             val (name, desc) = when (item) {
                 is MemoryItem -> item.name to item.description
                 is SkillItem -> item.name to item.description

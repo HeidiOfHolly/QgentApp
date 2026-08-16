@@ -4,6 +4,8 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
@@ -11,11 +13,17 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DividerItemDecoration
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.model.GlideUrl
+import com.bumptech.glide.load.model.LazyHeaders
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.SessionStore
+import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.model.toAgent
 import com.example.qgent.data.repository.AgentRepository
 import com.example.qgent.databinding.FragmentAgentDetailBinding
+import com.example.qgent.model.Agent
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 
@@ -61,13 +69,7 @@ class AgentDetailFragment : Fragment() {
         if (teamId != null && agentId.isNotEmpty()) {
             viewLifecycleOwner.lifecycleScope.launch {
                 agentRepo.getAgent(teamId, agentId).onSuccess { dto ->
-                    val agent = dto.toAgent()
-                    renderIdentity(
-                        agent.name,
-                        agent.description,
-                        agent.role.name,
-                        agent.capabilities.joinToString(", ")
-                    )
+                    renderIdentity(dto.toAgent())
                 }
             }
         }
@@ -101,15 +103,73 @@ class AgentDetailFragment : Fragment() {
         }
     }
 
-    private fun renderIdentity(name: String, desc: String, role: String, capabilities: String) {
+    private fun renderIdentity(agent: Agent) = renderIdentity(
+        name = agent.name,
+        desc = agent.description,
+        role = agent.role.name,
+        capabilities = agent.capabilities,
+        avatar = agent.avatar
+    )
+
+    private fun renderIdentity(name: String, desc: String, role: String, capabilities: String) =
+        renderIdentity(
+            name = name,
+            desc = desc,
+            role = role,
+            capabilities = capabilities.split(",").map { it.trim() }.filter { it.isNotEmpty() },
+            avatar = null
+        )
+
+    private fun renderIdentity(
+        name: String,
+        desc: String,
+        role: String,
+        capabilities: List<String>,
+        avatar: String?
+    ) {
         binding.tvDetailAgentName.text = name
         binding.tvDetailAgentDesc.text = desc
 
         binding.tvDetailRole.text = mapRoleDisplay(role)
         binding.tvDetailRole.isVisible = role.isNotEmpty()
 
-        binding.tvDetailCapabilities.isVisible = capabilities.isNotEmpty()
-        binding.tvDetailCapabilities.text = capabilities
+        // 能力标签组：chips 样式，无能力时隐藏
+        binding.containerDetailCapabilities.removeAllViews()
+        binding.containerDetailCapabilities.isVisible = capabilities.isNotEmpty()
+        capabilities.forEach { cap ->
+            val chip = TextView(requireContext()).apply {
+                text = cap
+                textSize = 12f
+                setTextColor(android.graphics.Color.WHITE)
+                background = resources.getDrawable(R.drawable.bg_status_tag, null)
+                setPadding(
+                    resources.getDimensionPixelSize(R.dimen.chip_padding_h),
+                    resources.getDimensionPixelSize(R.dimen.chip_padding_v),
+                    resources.getDimensionPixelSize(R.dimen.chip_padding_h),
+                    resources.getDimensionPixelSize(R.dimen.chip_padding_v)
+                )
+                setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
+            }
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginEnd = resources.getDimensionPixelSize(R.dimen.chip_margin_end) }
+            binding.containerDetailCapabilities.addView(chip, lp)
+        }
+
+        // 头像：有 URL 用 Glide 带鉴权头加载，否则默认占位
+        if (avatar.isNullOrBlank()) {
+            binding.ivDetailAvatar.setImageResource(R.drawable.ic_person)
+        } else {
+            val token = SessionStore.accessToken()
+            val headers = LazyHeaders.Builder().apply {
+                if (!token.isNullOrEmpty()) addHeader("Authorization", "Bearer $token")
+            }.build()
+            Glide.with(binding.ivDetailAvatar)
+                .load(GlideUrl(RetrofitClient.resolveMediaUrl(avatar), headers))
+                .placeholder(R.drawable.ic_person)
+                .into(binding.ivDetailAvatar)
+        }
     }
 
     private fun mapRoleDisplay(role: String): String = when (role) {

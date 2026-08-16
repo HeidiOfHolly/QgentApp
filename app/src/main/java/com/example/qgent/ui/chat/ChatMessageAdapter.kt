@@ -17,8 +17,10 @@ import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.databinding.ItemMessageBinding
 import com.example.qgent.databinding.ItemMessageDiffBinding
 import com.example.qgent.databinding.ItemMessageSystemBinding
+import com.example.qgent.databinding.ItemMessageTaskStatusBinding
 import com.example.qgent.databinding.ItemMessageTimeBinding
 import com.example.qgent.model.ChatMessage
+import com.example.qgent.model.DiffFile
 import com.example.qgent.model.MessageType
 import java.util.Locale
 
@@ -31,20 +33,42 @@ sealed class ChatRow {
  * 消息列表适配器。
  * 行类型：时间 / 普通消息（含图片/文件/引用）/ Diff / 系统提示（SYSTEM，居中灰色小字）。
  * 普通消息支持长按菜单（引用/复制/多选，由 [onMessageLongClick] 回调到 Fragment 弹出）。
+ * Diff 行通过 [onLoadDiff] 异步拉取文件内容（真实接口优先，失败由数据层 mock 保底）。
  */
 class ChatMessageAdapter(
     private val rows: List<ChatRow>,
     private val onAvatarLongClick: ((String) -> Unit)? = null,
     private val onImageClick: ((String) -> Unit)? = null,
     private val onFileClick: ((ChatMessage) -> Unit)? = null,
-    private val onMessageLongClick: ((View, ChatMessage) -> Unit)? = null
+    private val onMessageLongClick: ((View, ChatMessage) -> Unit)? = null,
+    private val onLoadDiff: ((String, (List<DiffFile>) -> Unit) -> Unit)? = null,
+    private val onMessageClick: ((ChatMessage) -> Unit)? = null
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+    /** 多选模式下被选中的消息 id（非多选模式为空集，不参与高亮） */
+    private var selectedIds: Set<String> = emptySet()
+
+    /** 是否多选模式：控制复选框显示 */
+    private var multiSelectMode = false
+
+    /** 更新选中集合（多选模式切换选中时调用） */
+    fun setSelectedIds(ids: Set<String>) {
+        selectedIds = ids
+        notifyDataSetChanged()
+    }
+
+    /** 进入/退出多选模式：显示/隐藏复选框 */
+    fun setMultiSelectMode(enabled: Boolean) {
+        multiSelectMode = enabled
+        notifyDataSetChanged()
+    }
 
     override fun getItemViewType(position: Int): Int = when (val row = rows[position]) {
         is ChatRow.Time -> TYPE_TIME
         is ChatRow.Message -> when (row.message.type) {
             MessageType.SYSTEM -> TYPE_SYSTEM
             MessageType.DIFF -> TYPE_DIFF
+            MessageType.TASK_STATUS -> TYPE_TASK_STATUS
             else -> TYPE_MESSAGE
         }
     }
@@ -52,14 +76,18 @@ class ChatMessageAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         return when (viewType) {
             TYPE_TIME -> TimeVH(ItemMessageTimeBinding.inflate(LayoutInflater.from(parent.context), parent, false))
-            TYPE_DIFF -> DiffVH(ItemMessageDiffBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+            TYPE_DIFF -> DiffVH(ItemMessageDiffBinding.inflate(LayoutInflater.from(parent.context), parent, false), onLoadDiff)
             TYPE_SYSTEM -> SystemVH(ItemMessageSystemBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+            TYPE_TASK_STATUS -> TaskStatusVH(
+                ItemMessageTaskStatusBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+            )
             else -> MessageVH(
                 ItemMessageBinding.inflate(LayoutInflater.from(parent.context), parent, false),
                 onAvatarLongClick,
                 onImageClick,
                 onFileClick,
-                onMessageLongClick
+                onMessageLongClick,
+                onMessageClick
             )
         }
     }
@@ -71,7 +99,12 @@ class ChatMessageAdapter(
             is ChatRow.Message -> when (row.message.type) {
                 MessageType.SYSTEM -> (holder as SystemVH).bind(row.message)
                 MessageType.DIFF -> (holder as DiffVH).bind(row.message)
-                else -> (holder as MessageVH).bind(row.message)
+                MessageType.TASK_STATUS -> (holder as TaskStatusVH).bind(row.message)
+                else -> (holder as MessageVH).bind(
+                    row.message,
+                    selectedIds.contains(row.message.id),
+                    multiSelectMode
+                )
             }
         }
     }
@@ -87,23 +120,43 @@ class ChatMessageAdapter(
         }
     }
 
+    /** 任务状态卡片行：状态标签 + 执行节点 + 说明（Agent 任务进度） */
+    class TaskStatusVH(private val binding: ItemMessageTaskStatusBinding) : RecyclerView.ViewHolder(binding.root) {
+        fun bind(message: ChatMessage) {
+            binding.tvTaskStatus.text = message.taskStatus ?: "运行中"
+            binding.tvTaskNode.isVisible = !message.taskNode.isNullOrBlank()
+            message.taskNode?.let { binding.tvTaskNode.text = it }
+            binding.tvTaskMessage.isVisible = message.content.isNotBlank()
+            binding.tvTaskMessage.text = message.content
+        }
+    }
+
     class MessageVH(
         private val binding: ItemMessageBinding,
         private val onAvatarLongClick: ((String) -> Unit)?,
         private val onImageClick: ((String) -> Unit)?,
         private val onFileClick: ((ChatMessage) -> Unit)?,
-        private val onMessageLongClick: ((View, ChatMessage) -> Unit)?
+        private val onMessageLongClick: ((View, ChatMessage) -> Unit)?,
+        private val onMessageClick: ((ChatMessage) -> Unit)? = null
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(message: ChatMessage) {
+        fun bind(message: ChatMessage, isSelected: Boolean, multiSelect: Boolean) {
             val mine = message.isMine
             val isImage = message.type == MessageType.IMAGE
             val isFile = message.type == MessageType.FILE
+            val isAgent = message.senderType == "AGENT"
             binding.rowContainer.gravity = if (mine) Gravity.END else Gravity.START
             binding.rowInner.gravity = if (mine) Gravity.END else Gravity.START
             binding.ivAvatar.isVisible = !mine
             binding.tvSenderName.isVisible = !mine
             binding.tvSenderName.text = message.senderName
+            // Agent 消息：头像用 Agent 图标 + 名字旁显示 Agent 标签
+            if (!mine && isAgent) {
+                binding.ivAvatar.setImageResource(R.drawable.ic_nav_agent)
+            } else {
+                binding.ivAvatar.setImageResource(R.drawable.ic_avatar_default)
+            }
+            binding.tvAgentTag.isVisible = !mine && isAgent
 
             // 引用消息：气泡上方显示被引用摘要（摘要缺失时兜底文案，避免空条）
             binding.tvQuoteSummary.isVisible = message.replyToId != null
@@ -148,6 +201,21 @@ class ChatMessageAdapter(
                 onMessageLongClick?.invoke(it, message)
                 true
             }
+            // 点击：多选模式下切换选中；普通模式走原有点击（图片/文件气泡内部已单独绑定）
+            binding.root.setOnClickListener {
+                onMessageClick?.invoke(message)
+            }
+            // 多选模式：显示复选框并反映勾选态；选中行加深背景
+            binding.cbMultiSelect.isVisible = multiSelect
+            binding.cbMultiSelect.isChecked = isSelected
+            val bgRes = when {
+                isSelected -> R.color.bg_chat_selected
+                multiSelect -> R.color.bg_chat_multi_select
+                else -> android.R.color.transparent
+            }
+            binding.root.setBackgroundColor(
+                ContextCompat.getColor(binding.root.context, bgRes)
+            )
         }
 
         /** 图片消息：宽为屏幕宽度的一半，高度按宽高比自适应，完整显示 */
@@ -175,7 +243,10 @@ class ChatMessageAdapter(
         }
     }
 
-    class DiffVH(private val binding: ItemMessageDiffBinding) : RecyclerView.ViewHolder(binding.root) {
+    class DiffVH(
+        private val binding: ItemMessageDiffBinding,
+        private val onLoadDiff: ((String, (List<DiffFile>) -> Unit) -> Unit)?
+    ) : RecyclerView.ViewHolder(binding.root) {
 
         private val pagerAdapter = DiffFilePagerAdapter()
 
@@ -187,9 +258,21 @@ class ChatMessageAdapter(
         }
 
         fun bind(message: ChatMessage) {
-            val files = message.diff ?: emptyList()
-            pagerAdapter.submitList(files)
             binding.tvSenderName.text = message.senderName
+            // 优先用内存中已有的 diff；否则按 diffId 异步拉取（真实接口优先，失败 mock 保底）
+            val diffId = message.diffId
+            val files = message.diff
+            if (!files.isNullOrEmpty()) {
+                render(files)
+            } else if (!diffId.isNullOrBlank() && onLoadDiff != null) {
+                onLoadDiff(diffId) { loaded -> render(loaded) }
+            } else {
+                render(emptyList())
+            }
+        }
+
+        private fun render(files: List<DiffFile>) {
+            pagerAdapter.submitList(files)
             if (files.isNotEmpty()) {
                 binding.viewPagerDiff.setCurrentItem(0, false)
                 updateHeader(0)
@@ -209,6 +292,7 @@ class ChatMessageAdapter(
         private const val TYPE_MESSAGE = 1
         private const val TYPE_DIFF = 2
         private const val TYPE_SYSTEM = 3
+        private const val TYPE_TASK_STATUS = 4
 
         private fun formatFileSize(size: Long?): String {
             if (size == null || size <= 0) return ""

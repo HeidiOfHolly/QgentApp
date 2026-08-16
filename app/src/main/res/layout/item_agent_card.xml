@@ -56,6 +56,18 @@
         android:textSize="9sp"
         tools:text="规划者" />
 
+    <!-- 能力标签：最多显示 2 个，超出省略号 -->
+    <TextView
+        android:id="@+id/tvAgentCaps"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/slate_gray"
+        android:textSize="9sp"
+        tools:text="需求分析 · 任务拆分" />
+
     <TextView
         android:id="@+id/tvAgentStatus"
         android:layout_width="wrap_content"

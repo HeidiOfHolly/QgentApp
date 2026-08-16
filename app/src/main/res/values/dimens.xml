@@ -5,4 +5,8 @@
     <dimen name="space_16">16dp</dimen>
     <dimen name="avatar_size">44dp</dimen>
     <dimen name="top_bar_height">48dp</dimen>
+    <!-- Agent 能力标签（chip） -->
+    <dimen name="chip_padding_h">8dp</dimen>
+    <dimen name="chip_padding_v">3dp</dimen>
+    <dimen name="chip_margin_end">6dp</dimen>
 </resources>

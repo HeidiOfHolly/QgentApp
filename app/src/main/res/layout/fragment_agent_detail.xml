@@ -67,6 +67,7 @@
                 android:padding="24dp">
 
                 <ImageView
+                    android:id="@+id/ivDetailAvatar"
                     android:layout_width="72dp"
                     android:layout_height="72dp"
                     android:background="@drawable/bg_avatar"
@@ -110,16 +111,15 @@
                     android:textSize="14sp"
                     tools:text="统筹调度 Agent 团队" />
 
-                <TextView
-                    android:id="@+id/tvDetailCapabilities"
-                    android:layout_width="wrap_content"
+                <!-- 能力标签组（chips），横向自动换行由父容器宽度撑开 -->
+                <LinearLayout
+                    android:id="@+id/containerDetailCapabilities"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:gravity="center"
-                    android:textColor="@color/slate_gray"
-                    android:textSize="12sp"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_horizontal"
+                    android:orientation="horizontal"
                     android:visibility="gone"
-                    tools:text="任务调度, 工作流编排, 质量门禁"
                     tools:visibility="visible" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>

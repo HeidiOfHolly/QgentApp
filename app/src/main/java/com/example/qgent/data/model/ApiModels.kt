@@ -442,3 +442,89 @@ data class NotificationDto(
     @SerializedName("groupId") val groupId: String?,
     @SerializedName("resourceId") val resourceId: String?
 )
+
+// ── Skill / Memory（§8 / §9） ──
+
+/** 共享 Skill（§8）。status: DRAFT / PENDING_REVIEW / PUBLISHED / REJECTED / ARCHIVED */
+data class SkillDto(
+    val id: String,
+    @SerializedName("projectId") val projectId: String,
+    val name: String,
+    val content: String?,
+    val tags: List<String>?,
+    val visibility: String?,           // PRIVATE / PROJECT_SHARED
+    val status: String,
+    val creator: UserSummaryDto?,
+    val reviewer: UserSummaryDto?,
+    @SerializedName("rejectionReason") val rejectionReason: String?,
+    @SerializedName("reviewedAt") val reviewedAt: String?,
+    @SerializedName("createdAt") val createdAt: String?,
+    @SerializedName("updatedAt") val updatedAt: String?
+)
+
+/** 共享 Memory（§9）。status: DRAFT / PENDING_REVIEW / APPROVED / REJECTED / ARCHIVED */
+data class MemoryDto(
+    val id: String,
+    @SerializedName("projectId") val projectId: String,
+    val title: String,
+    val content: String?,
+    val category: String?,
+    val tags: List<String>?,
+    val status: String,
+    val creator: UserSummaryDto?,
+    val reviewer: UserSummaryDto?,
+    @SerializedName("rejectionReason") val rejectionReason: String?,
+    @SerializedName("reviewedAt") val reviewedAt: String?,
+    @SerializedName("createdAt") val createdAt: String?
+)
+
+/** 用户摘要（Skill/Memory 的创建者/审查者） */
+data class UserSummaryDto(
+    val id: String,
+    val name: String?
+)
+
+/** 创建 Skill 草稿（POST /projects/{projectId}/skills） */
+data class CreateSkillRequest(
+    val name: String,
+    val content: String? = null,
+    val tags: List<String>? = null,
+    val visibility: String? = null
+)
+
+/** 创建 Memory 草稿（POST /projects/{projectId}/memories） */
+data class CreateMemoryRequest(
+    val title: String,
+    val content: String? = null,
+    val category: String? = null,
+    val tags: List<String>? = null
+)
+
+// ── Diff（§12.3，GET /projects/{projectId}/diffs/{diffId}/files） ──
+
+/** Diff 文件项（DIFF 消息卡片内容） */
+data class DiffFileDto(
+    val id: String,
+    val sequence: Long? = null,
+    val path: String,
+    @SerializedName("changeType") val changeType: String? = null,
+    val additions: Int = 0,
+    val deletions: Int = 0,
+    val binary: Boolean? = null,
+    val hunks: List<DiffHunkDto>? = null
+)
+
+/** Diff hunks 块：统一以行文本表示（前端解析为 DiffLine） */
+data class DiffHunkDto(
+    @SerializedName("newStart") val newStart: Int? = null,
+    @SerializedName("oldStart") val oldStart: Int? = null,
+    @SerializedName("lines") val lines: List<DiffHunkLineDto>? = null
+)
+
+/** Diff hunks 单行 */
+data class DiffHunkLineDto(
+    val type: String? = null,       // ADD / DELETE / CONTEXT
+    @SerializedName("oldLineNo") val oldLineNo: Int? = null,
+    @SerializedName("newLineNo") val newLineNo: Int? = null,
+    val text: String
+)

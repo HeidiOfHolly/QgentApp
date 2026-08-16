@@ -37,6 +37,9 @@
 
     <color name="team_item_normal">#8896AE</color>
     <color name="bg_chat_pinned">#ECEEF2</color>
+    <!-- 多选模式：普通行浅底色 / 选中行加深底色 -->
+    <color name="bg_chat_multi_select">#F4F6FA</color>
+    <color name="bg_chat_selected">#DDE7F5</color>
 
     <!-- Diff 代码块 -->
     <color name="diff_add_bg">#E6FFEC</color>

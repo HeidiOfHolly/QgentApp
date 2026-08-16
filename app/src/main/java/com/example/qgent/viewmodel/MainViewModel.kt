@@ -345,9 +345,15 @@ class MainViewModel(
         loadAgentsJob?.cancel()
         loadAgentsJob = viewModelScope.launch {
             val teamId = teamNameToId[teamName] ?: return@launch
-            agentRepo.getAgents(teamId).onSuccess { dtos ->
-                _agents.value = dtos.map { it.toAgent() }
-            }
+            agentRepo.getAgents(teamId)
+                .onSuccess { dtos ->
+                    Log.d("Agents", "loadAgents success: ${dtos.map { it.name }}")
+                    _agents.value = dtos.map { it.toAgent() }
+                }
+                .onFailure { e ->
+                    Log.e("Agents", "loadAgents FAILED: ${e::class.simpleName} ${e.message}")
+                    _agents.value = emptyList()
+                }
         }
     }
 

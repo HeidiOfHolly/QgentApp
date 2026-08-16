@@ -17,5 +17,7 @@ data class MessageEntity(
     val fileSize: Long?,
     val sequence: Long,
     /** 引用消息 id（非空表示本条为 QUOTE） */
-    val replyToId: String?
+    val replyToId: String?,
+    /** 发送者类型：USER / AGENT / SYSTEM */
+    val senderType: String?
 )

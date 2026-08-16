@@ -37,9 +37,11 @@ import com.example.qgent.R
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.local.MessageCache
+import com.example.qgent.data.model.CreateMemoryRequest
 import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 import com.example.qgent.data.model.toChatMessage
+import com.example.qgent.data.model.toDiffFile
 import com.example.qgent.data.model.toGroupMember
 import com.example.qgent.data.repository.AttachmentUploader
 import com.example.qgent.data.repository.ChatRepository
@@ -49,6 +51,7 @@ import com.example.qgent.databinding.BottomSheetMentionMemberBinding
 import com.example.qgent.databinding.DialogImagePreviewBinding
 import com.example.qgent.databinding.FragmentChatDetailBinding
 import com.example.qgent.model.ChatMessage
+import com.example.qgent.model.DiffFile
 import com.example.qgent.model.GroupMember
 import com.example.qgent.model.MemberType
 import com.example.qgent.model.MessageType
@@ -87,6 +90,9 @@ class ChatDetailFragment : Fragment() {
     private val eventStream: ProjectEventStream by lazy {
         (requireActivity().application as QgentApp).container.projectEventStream
     }
+    private val diffRepo: com.example.qgent.data.repository.DiffRepository by lazy {
+        (requireActivity().application as QgentApp).container.diffRepository
+    }
 
     private val messages = mutableListOf<ChatMessage>()
     private lateinit var rows: MutableList<ChatRow>
@@ -96,6 +102,10 @@ class ChatDetailFragment : Fragment() {
 
     /** 当前引用的目标消息（非空时输入框上方显示引用条，发送时带 replyToId） */
     private var quoteTarget: ChatMessage? = null
+
+    /** 多选模式：长按消息选「多选」进入，点击消息切换选中，用于生成 Memory 草稿 */
+    private var multiSelectMode = false
+    private val selectedMessageIds = mutableSetOf<String>()
 
     // 系统相册选图：免存储权限，返回图片 content:// URI
     private val pickImage = registerForActivityResult(
@@ -118,6 +128,11 @@ class ChatDetailFragment : Fragment() {
     private var memberById: Map<String, GroupMember> = emptyMap()
 
     private var groupMembers = emptyList<GroupMember>()
+
+    /** 原始群成员（不含 Agent），供 agents 加载后动态合并 */
+    private var baseGroupMembers = emptyList<GroupMember>()
+    private var baseMemberNamesById: Map<String, String> = emptyMap()
+    private var baseMemberById: Map<String, GroupMember> = emptyMap()
 
     private val mentionWatcher = object : TextWatcher {
         private var lastAtPos = -1
@@ -183,7 +198,9 @@ class ChatDetailFragment : Fragment() {
             onAvatarLongClick = { senderName -> insertMention(senderName) },
             onImageClick = { uri -> showImagePreview(uri) },
             onFileClick = { message -> openFile(message) },
-            onMessageLongClick = { anchor, message -> showMessageLongPressMenu(anchor, message) }
+            onMessageLongClick = { anchor, message -> showMessageLongPressMenu(anchor, message) },
+            onLoadDiff = { diffId, onLoaded -> loadDiff(diffId, onLoaded) },
+            onMessageClick = { message -> onMessageRowClick(message) }
         )
         binding.rvMessages.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMessages.adapter = adapter
@@ -191,7 +208,16 @@ class ChatDetailFragment : Fragment() {
         // 取消引用：关闭引用条，发送不再带 replyToId
         binding.btnCancelQuote.setOnClickListener { clearQuote() }
 
+        // 多选操作条：取消 / 生成 Memory 草稿
+        binding.btnCancelMultiSelect.setOnClickListener { exitMultiSelect() }
+        binding.btnCreateMemoryDraft.setOnClickListener { createMemoryDraftFromSelection() }
+
         loadInitialData()
+
+        // 团队 Agent 异步加载完成后重建成员映射（@ 弹窗始终包含 Agent）
+        mainViewModel.agents.observe(viewLifecycleOwner) { _ ->
+            rebuildMemberMaps()
+        }
     }
 
     private fun sendTextMessage() {
@@ -338,13 +364,100 @@ class ChatDetailFragment : Fragment() {
             when (item.itemId) {
                 R.id.action_quote -> setQuote(message)
                 R.id.action_copy -> copyMessage(message)
-                R.id.action_multi_select ->
-                    Toast.makeText(requireContext(), R.string.multi_select_pending, Toast.LENGTH_SHORT).show()
+                R.id.action_multi_select -> enterMultiSelect()
             }
             true
         }
         popup.show()
     }
+
+    // ── 多选模式：长按「多选」进入，点击消息切换选中，生成 Memory 草稿 ──
+
+    private fun onMessageRowClick(message: ChatMessage) {
+        if (multiSelectMode) {
+            toggleMultiSelect(message.id)
+        }
+        // 非多选模式：气泡内点击已有各自处理（图片/文件），此处不接管
+    }
+
+    /** 进入多选模式：显示多选操作条，首个长按消息默认选中 */
+    private fun enterMultiSelect() {
+        multiSelectMode = true
+        selectedMessageIds.clear()
+        binding.llMultiSelectBar.isVisible = true
+        binding.inputBar.isVisible = false
+        updateMultiSelectBar()
+        adapter.setMultiSelectMode(true)
+        adapter.setSelectedIds(selectedMessageIds)
+    }
+
+    /** 退出多选模式：清空选中、隐藏操作条、恢复输入栏 */
+    private fun exitMultiSelect() {
+        multiSelectMode = false
+        selectedMessageIds.clear()
+        binding.llMultiSelectBar.isVisible = false
+        binding.inputBar.isVisible = true
+        adapter.setMultiSelectMode(false)
+        adapter.setSelectedIds(emptySet())
+    }
+
+    private fun toggleMultiSelect(messageId: String) {
+        if (!selectedMessageIds.add(messageId)) {
+            selectedMessageIds.remove(messageId)
+        }
+        updateMultiSelectBar()
+        adapter.setSelectedIds(selectedMessageIds)
+    }
+
+    private fun updateMultiSelectBar() {
+        binding.tvMultiSelectCount.text = getString(R.string.multi_select_count, selectedMessageIds.size)
+    }
+
+    /** 生成 Memory 草稿：选中消息拼接为标题+内容，调 POST /memories 提交审核 */
+    private fun createMemoryDraftFromSelection() {
+        if (selectedMessageIds.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.memory_draft_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val projectId = mainViewModel.currentProjectId()
+        if (projectId == null) {
+            Toast.makeText(requireContext(), R.string.add_member_missing_project, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val selected = messages.filter { it.id in selectedMessageIds }
+            .filter { it.type != MessageType.SYSTEM }
+        if (selected.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.memory_draft_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        // 标题取第一条消息摘要，内容拼接选中消息（发送者：内容）
+        val title = selected.first().displayContent().take(30)
+        val content = selected.joinToString("\n") { "${it.senderName}：${it.displayContent()}" }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            // 创建草稿（DRAFT）→ 立即提交审核（PENDING_REVIEW，进审核队列）
+            memoryRepo().createMemory(
+                projectId,
+                CreateMemoryRequest(title = title, content = content, category = "聊天记录"),
+                UUID.randomUUID().toString()
+            ).onSuccess { draft ->
+                memoryRepo().submitReview(
+                    projectId, draft.id,
+                    UUID.randomUUID().toString()
+                ).onSuccess {
+                    Toast.makeText(requireContext(), R.string.memory_draft_created, Toast.LENGTH_SHORT).show()
+                    exitMultiSelect()
+                }.onFailure {
+                    Toast.makeText(requireContext(), R.string.memory_draft_failed, Toast.LENGTH_SHORT).show()
+                }
+            }.onFailure {
+                Toast.makeText(requireContext(), R.string.memory_draft_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun memoryRepo(): com.example.qgent.data.repository.MemoryRepository =
+        (requireActivity().application as QgentApp).container.memoryRepository
 
     /** 设置引用目标：显示引用条，发送时带 replyToId */
     private fun setQuote(message: ChatMessage) {
@@ -570,6 +683,20 @@ class ChatDetailFragment : Fragment() {
         return message.copy(replyToSummary = summary)
     }
 
+    /**
+     * 拉取 DIFF 消息的文件内容：真实接口优先，失败由数据层 mock 保底（测试完成后移除）。
+     * 结果通过 [onLoaded] 回传给 Diff 卡片渲染。
+     */
+    private fun loadDiff(diffId: String, onLoaded: (List<DiffFile>) -> Unit) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val files = diffRepo.getDiffFiles(projectId, diffId)
+                .getOrNull().orEmpty()
+                .map { it.toDiffFile() }
+            onLoaded(files)
+        }
+    }
+
     private fun buildRows(list: List<ChatMessage>): List<ChatRow> {
         val result = mutableListOf<ChatRow>()
         var prev: Long? = null
@@ -612,9 +739,11 @@ class ChatDetailFragment : Fragment() {
 
             val membersResult = membersDeferred.await()
             membersResult.onSuccess { dtos ->
-                groupMembers = dtos.map { it.toGroupMember() }
-                memberNamesById = dtos.associate { it.id to it.resolvedName }
-                memberById = dtos.associate { it.id to it.toGroupMember() }
+                // 保存原始群成员；Agent 合并由 rebuildMemberMaps 统一处理（agents 可能异步后加载）
+                baseGroupMembers = dtos.map { it.toGroupMember() }
+                baseMemberNamesById = dtos.associate { it.id to it.resolvedName }
+                baseMemberById = dtos.associate { it.id to it.toGroupMember() }
+                rebuildMemberMaps()
             }
 
             val messagesResult = messagesDeferred.await()
@@ -632,6 +761,19 @@ class ChatDetailFragment : Fragment() {
                 if (messages.isEmpty()) setMessages(emptyList())
             }
         }
+    }
+
+    /**
+     * 重建成员映射：原始群成员 + 团队 Agent（Agent 是团队级 @ 渠道）。
+     * 在群成员加载完成和 agents 变化时调用，保证 @ 弹窗始终有 Agent。
+     */
+    private fun rebuildMemberMaps() {
+        val teamAgents = mainViewModel.agents.value.orEmpty()
+            .filter { it.status.name != "ARCHIVED" }
+            .map { GroupMember(id = it.id, name = it.name, type = MemberType.AGENT) }
+        groupMembers = baseGroupMembers + teamAgents
+        memberNamesById = baseMemberNamesById + teamAgents.associate { it.id to it.name }
+        memberById = baseMemberById + teamAgents.associate { it.id to it }
     }
 
     /** 前台轮询新消息：后端暂无聊天 SSE，用定时 getMessages 兜底实现「别人发消息实时显示」 */

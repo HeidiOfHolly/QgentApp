@@ -8,15 +8,24 @@ import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.repository.SkillRepository
 import com.example.qgent.databinding.FragmentSkillPoolBinding
 import com.example.qgent.model.ResourceStatus
 import com.example.qgent.model.SkillItem
+import com.example.qgent.model.toSkillItem
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
+import java.util.UUID
 
+/**
+ * Skill 池：审核队列（PENDING_REVIEW）+ 共享池（PUBLISHED）。
+ * 真实接口优先，失败由数据层 Fallback 回退 mock 保底（测试完成后移除）。
+ */
 class SkillPoolFragment : Fragment() {
 
     private var _binding: FragmentSkillPoolBinding? = null
@@ -24,15 +33,8 @@ class SkillPoolFragment : Fragment() {
     private val mainViewModel: MainViewModel by activityViewModels {
         (requireActivity().application as QgentApp).container.mainViewModelFactory
     }
-
-    private val mockPending = listOf(
-        SkillItem("s1", "Docker 部署脚本", "自动构建并推送 Docker 镜像到团队私有仓库，支持多阶段构建、缓存优化与环境变量注入，确保构建产物的一致性。", ResourceStatus.PENDING)
-    )
-
-    private val mockApproved = listOf(
-        SkillItem("s2", "TypeScript 检查", "对修改的 .ts/.tsx 文件运行 tsc --noEmit 并报告类型错误", ResourceStatus.APPROVED),
-        SkillItem("s3", "ESLint 格式化", "基于团队 .eslintrc 规则自动修复格式问题", ResourceStatus.APPROVED)
-    )
+    private val skillRepo: SkillRepository
+        get() = (requireActivity().application as QgentApp).container.skillRepository
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -49,26 +51,75 @@ class SkillPoolFragment : Fragment() {
         binding.btnBack.setOnClickListener { findNavController().popBackStack() }
 
         binding.rvReviewList.layoutManager = LinearLayoutManager(requireContext())
-        binding.rvReviewList.adapter = PoolResourceAdapter(mockPending) { name, desc ->
-            onItemClick(name, desc, isPending = true)
-        }
-        binding.tvReviewEmpty.isVisible = mockPending.isEmpty()
+        binding.rvApprovedList.layoutManager = LinearLayoutManager(requireContext())
 
-        binding.tvApprovedCount.text = "共 ${mockApproved.size} 条"
-        binding.rvApprovedList.adapter = PoolResourceAdapter(mockApproved) { name, desc ->
-            onItemClick(name, desc, isPending = false)
+        loadSkills()
+    }
+
+    private fun loadSkills() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            skillRepo.getSkills(projectId).onSuccess { dtos ->
+                val pending = dtos.filter { it.status == "PENDING_REVIEW" }.map { it.toSkillItem() }
+                val approved = dtos.filter { it.status == "PUBLISHED" }.map { it.toSkillItem() }
+                render(pending, approved)
+            }.onFailure {
+                // Fallback 已兜底；若仍失败（无 mock 时）显示空
+                render(emptyList(), emptyList())
+            }
         }
     }
 
-    private fun onItemClick(name: String, desc: String, isPending: Boolean) {
+    private fun render(pending: List<SkillItem>, approved: List<SkillItem>) {
+        binding.rvReviewList.adapter = PoolResourceAdapter(pending) { item ->
+            onItemClick(item, isPending = true)
+        }
+        binding.tvReviewEmpty.isVisible = pending.isEmpty()
+
+        binding.tvApprovedCount.text = "共 ${approved.size} 条"
+        binding.rvApprovedList.adapter = PoolResourceAdapter(approved) { item ->
+            onItemClick(item, isPending = false)
+        }
+    }
+
+    private fun onItemClick(item: SkillItem, isPending: Boolean) {
         if (isPending && !mainViewModel.isProjectAdmin) {
             Toast.makeText(requireContext(), R.string.review_permission_denied, Toast.LENGTH_SHORT).show()
             return
         }
-        ResourceDetailSheet(name, desc, isPending).show(
-            childFragmentManager,
-            ResourceDetailSheet.TAG
-        )
+        val projectId = mainViewModel.currentProjectId() ?: return
+        // 审核操作：通过 / 拒绝（仅审核队列项可操作）
+        if (isPending && mainViewModel.isProjectAdmin) {
+            showReviewAction(projectId, item)
+        } else {
+            ResourceDetailSheet(item.name, item.description, isPending).show(
+                childFragmentManager,
+                ResourceDetailSheet.TAG
+            )
+        }
+    }
+
+    /** 审核弹窗：通过 / 拒绝 / 仅查看 */
+    private fun showReviewAction(projectId: String, item: SkillItem) {
+        val options = arrayOf("通过", "拒绝")
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle(item.name)
+            .setItems(options) { _, which ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val key = UUID.randomUUID().toString()
+                    when (which) {
+                        0 -> skillRepo.approve(projectId, item.id, key)
+                        else -> skillRepo.reject(projectId, item.id, key)
+                    }.onSuccess {
+                        Toast.makeText(requireContext(), "操作成功", Toast.LENGTH_SHORT).show()
+                        loadSkills()
+                    }.onFailure {
+                        Toast.makeText(requireContext(), "操作失败：${it.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     override fun onDestroyView() {

@@ -13,3 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
+# 内部开发记忆文档（不进版本库）
+/docs

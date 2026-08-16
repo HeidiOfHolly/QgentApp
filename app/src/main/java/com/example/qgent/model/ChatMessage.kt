@@ -15,7 +15,14 @@ data class ChatMessage(
     val sequence: Long = 0,
     /** 引用消息：被引用消息 id + 展示摘要（非空表示本条为 QUOTE） */
     val replyToId: String? = null,
-    val replyToSummary: String? = null
+    val replyToSummary: String? = null,
+    /** 发送者类型：USER / AGENT / SYSTEM（文档 §7；Agent 消息用于视觉区分） */
+    val senderType: String? = null,
+    /** TASK_STATUS 卡片：状态 + 执行节点（文档 §7 content 含 taskId/status/node/message） */
+    val taskStatus: String? = null,
+    val taskNode: String? = null,
+    /** DIFF 卡片：content 含 diffId，展示时用 DiffRepository 拉取文件内容 */
+    val diffId: String? = null
 ) {
     fun displayContent(): String = when (type) {
         MessageType.TEXT, MessageType.CODE -> content

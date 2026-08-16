@@ -12,7 +12,9 @@ data class GroupMemberPick(
     val userId: String,
     val name: String,
     var role: String,               // PROJECT_MEMBER / PROJECT_ADMIN
-    var checked: Boolean = false
+    var checked: Boolean = false,
+    /** 是否为团队 Agent（Agent 是团队级，群内作为 @ 渠道展示，见 docs/product-notes.md） */
+    val isAgent: Boolean = false
 )
 
 /**
@@ -73,12 +75,14 @@ class GroupMemberPickAdapter(
         fun bind(member: GroupMemberPick) {
             binding.tvMemberName.text = member.name
             binding.cbChecked.isChecked = member.checked
-            // 身份标签：添加成员场景显示并可点击切换；创建群场景隐藏
+            // 身份标签：Agent 显示「Agent」；添加成员场景显示可点击的身份；创建群场景仅 Agent/管理员显示
             val roleClickable = onRoleClick != null
-            binding.tvMemberRole.isVisible = roleClickable || member.role == "PROJECT_ADMIN"
-            binding.tvMemberRole.text = binding.root.context.getString(
-                if (member.role == "PROJECT_ADMIN") R.string.role_admin_short else R.string.role_member
-            )
+            binding.tvMemberRole.isVisible = member.isAgent || roleClickable || member.role == "PROJECT_ADMIN"
+            binding.tvMemberRole.text = when {
+                member.isAgent -> "Agent"
+                member.role == "PROJECT_ADMIN" -> binding.root.context.getString(R.string.role_admin_short)
+                else -> binding.root.context.getString(R.string.role_member)
+            }
             binding.tvMemberRole.setOnClickListener {
                 onRoleClick?.invoke(member)
             }

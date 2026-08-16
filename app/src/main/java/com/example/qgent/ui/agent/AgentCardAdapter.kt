@@ -3,6 +3,7 @@ package com.example.qgent.ui.agent
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.R
 import com.example.qgent.databinding.ItemAgentCardBinding
@@ -35,6 +36,9 @@ class AgentCardAdapter(
         fun bind(agent: Agent) {
             binding.tvAgentName.text = agent.name
             binding.tvAgentRole.text = agent.role.displayName()
+            // 能力标签：最多 2 个 + "…"，无能力时隐藏
+            binding.tvAgentCaps.text = agent.capabilities.take(2).joinToString(" · ")
+            binding.tvAgentCaps.isVisible = agent.capabilities.isNotEmpty()
             binding.tvAgentStatus.text = when (agent.status) {
                 AgentStatus.ACTIVE -> "闲置"
                 AgentStatus.RUNNING -> "运行中"

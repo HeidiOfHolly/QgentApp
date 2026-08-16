@@ -10,8 +10,11 @@ import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.CreateAttachmentRequest
 import com.example.qgent.data.model.CreateAgentRequest
 import com.example.qgent.data.model.CreateGroupRequest
+import com.example.qgent.data.model.CreateMemoryRequest
 import com.example.qgent.data.model.CreateProjectRequest
+import com.example.qgent.data.model.CreateSkillRequest
 import com.example.qgent.data.model.CreateTeamRequest
+import com.example.qgent.data.model.DiffFileDto
 import com.example.qgent.data.model.GitHubInstallationDto
 import com.example.qgent.data.model.GitHubInstallationUrlDto
 import com.example.qgent.data.model.GitHubRepositoryDto
@@ -21,6 +24,7 @@ import com.example.qgent.data.model.InviteTeamMemberRequest
 import com.example.qgent.data.model.AuthSessionDto
 import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.model.LoginRequest
+import com.example.qgent.data.model.MemoryDto
 import com.example.qgent.data.model.NotificationDto
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.ProjectMemberDto
@@ -29,6 +33,7 @@ import com.example.qgent.data.model.ReceivedInvitationDto
 import com.example.qgent.data.model.RefreshRequest
 import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.SendMessageRequest
+import com.example.qgent.data.model.SkillDto
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
@@ -395,4 +400,122 @@ interface QgApiService {
         @Path("projectRepositoryId") projectRepositoryId: String,
         @Header("Idempotency-Key") idempotencyKey: String
     ): Response<Unit>
+
+    // ── 共享 Skill（§8） ──
+
+    @GET("projects/{projectId}/skills")
+    suspend fun getSkills(
+        @Path("projectId") projectId: String,
+        @Query("status") status: String? = null,
+        @Query("tag") tag: String? = null
+    ): Response<ApiResponse<List<SkillDto>>>
+
+    @POST("projects/{projectId}/skills")
+    suspend fun createSkill(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CreateSkillRequest
+    ): Response<ApiResponse<SkillDto>>
+
+    @GET("projects/{projectId}/skills/{skillId}")
+    suspend fun getSkill(
+        @Path("projectId") projectId: String,
+        @Path("skillId") skillId: String
+    ): Response<ApiResponse<SkillDto>>
+
+    @POST("projects/{projectId}/skills/{skillId}/submit-review")
+    suspend fun submitSkillReview(
+        @Path("projectId") projectId: String,
+        @Path("skillId") skillId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<SkillDto>>
+
+    @POST("projects/{projectId}/skills/{skillId}/approve")
+    suspend fun approveSkill(
+        @Path("projectId") projectId: String,
+        @Path("skillId") skillId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<SkillDto>>
+
+    @POST("projects/{projectId}/skills/{skillId}/reject")
+    suspend fun rejectSkill(
+        @Path("projectId") projectId: String,
+        @Path("skillId") skillId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<SkillDto>>
+
+    @POST("projects/{projectId}/skills/{skillId}/archive")
+    suspend fun archiveSkill(
+        @Path("projectId") projectId: String,
+        @Path("skillId") skillId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<SkillDto>>
+
+    // ── 共享 Memory（§9） ──
+
+    @GET("projects/{projectId}/memories")
+    suspend fun getMemories(
+        @Path("projectId") projectId: String,
+        @Query("status") status: String? = null,
+        @Query("tag") tag: String? = null
+    ): Response<ApiResponse<List<MemoryDto>>>
+
+    @POST("projects/{projectId}/memories")
+    suspend fun createMemory(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CreateMemoryRequest
+    ): Response<ApiResponse<MemoryDto>>
+
+    @POST("projects/{projectId}/memories/drafts")
+    suspend fun createMemoryAiDraft(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CreateMemoryRequest
+    ): Response<ApiResponse<MemoryDto>>
+
+    @GET("projects/{projectId}/memories/{memoryId}")
+    suspend fun getMemory(
+        @Path("projectId") projectId: String,
+        @Path("memoryId") memoryId: String
+    ): Response<ApiResponse<MemoryDto>>
+
+    @POST("projects/{projectId}/memories/{memoryId}/submit-review")
+    suspend fun submitMemoryReview(
+        @Path("projectId") projectId: String,
+        @Path("memoryId") memoryId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<MemoryDto>>
+
+    @POST("projects/{projectId}/memories/{memoryId}/approve")
+    suspend fun approveMemory(
+        @Path("projectId") projectId: String,
+        @Path("memoryId") memoryId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<MemoryDto>>
+
+    @POST("projects/{projectId}/memories/{memoryId}/reject")
+    suspend fun rejectMemory(
+        @Path("projectId") projectId: String,
+        @Path("memoryId") memoryId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<MemoryDto>>
+
+    @POST("projects/{projectId}/memories/{memoryId}/archive")
+    suspend fun archiveMemory(
+        @Path("projectId") projectId: String,
+        @Path("memoryId") memoryId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<MemoryDto>>
+
+    // ── Diff（§12.3） ──
+
+    /** Diff 文件列表（DIFF 消息卡片内容） */
+    @GET("projects/{projectId}/diffs/{diffId}/files")
+    suspend fun getDiffFiles(
+        @Path("projectId") projectId: String,
+        @Path("diffId") diffId: String,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 20
+    ): Response<ApiResponse<List<DiffFileDto>>>
 }

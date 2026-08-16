@@ -5,6 +5,9 @@ import com.example.qgent.model.AgentRole
 import com.example.qgent.model.AgentStatus
 import com.example.qgent.model.AgentVisibility
 import com.example.qgent.model.ChatMessage
+import com.example.qgent.model.DiffFile
+import com.example.qgent.model.DiffLine
+import com.example.qgent.model.DiffLineType
 import com.example.qgent.model.GroupMember
 import com.example.qgent.model.MemberType
 import com.example.qgent.model.MessageType
@@ -14,7 +17,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-/** AgentDto → UI Agent。API 无 description 字段，置空。 */
+/** AgentDto → UI Agent。API 无 description 字段，用能力标签拼接兜底描述。 */
 fun AgentDto.toAgent(): Agent = Agent(
     id = id,
     name = name,
@@ -22,7 +25,9 @@ fun AgentDto.toAgent(): Agent = Agent(
     role = runCatching { AgentRole.valueOf(role) }.getOrDefault(AgentRole.GENERAL),
     capabilities = capabilities ?: emptyList(),
     status = if (status == "ARCHIVED") AgentStatus.ARCHIVED else AgentStatus.ACTIVE,
-    visibility = if (visibility == "PRIVATE") AgentVisibility.PRIVATE else AgentVisibility.TEAM_SHARED
+    visibility = if (visibility == "PRIVATE") AgentVisibility.PRIVATE else AgentVisibility.TEAM_SHARED,
+    avatar = avatar,
+    createdBy = createdBy
 )
 
 /** GroupMemberDto → UI GroupMember。memberType=AGENT 映射为 AGENT，其余按 HUMAN */
@@ -52,7 +57,11 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
         fileName = content?.name,
         fileSize = content?.size,
         sequence = sequence,
-        replyToId = replyToId
+        replyToId = replyToId,
+        senderType = senderType,
+        taskStatus = if (parsedType == MessageType.TASK_STATUS) content?.status else null,
+        taskNode = if (parsedType == MessageType.TASK_STATUS) content?.node else null,
+        diffId = if (parsedType == MessageType.DIFF) content?.diffId else null
     )
 }
 
@@ -66,6 +75,23 @@ private fun GroupMessageDto.taskStatusSummary(): String {
         c.message?.let { append("\n").append(it) }
     }
 }
+
+/** DiffFileDto → UI DiffFile（hunks 行扁平化为 DiffLine） */
+fun DiffFileDto.toDiffFile(): DiffFile = DiffFile(
+    fileName = path,
+    additions = additions,
+    deletions = deletions,
+    lines = hunks.orEmpty().flatMap { hunk ->
+        hunk.lines.orEmpty().map { line ->
+            DiffLine(
+                type = runCatching { DiffLineType.valueOf(line.type ?: "CONTEXT") }.getOrDefault(DiffLineType.CONTEXT),
+                oldLineNo = line.oldLineNo,
+                newLineNo = line.newLineNo,
+                text = line.text
+            )
+        }
+    }
+)
 
 /** 群列表摘要：图片/文件消息显示 [图片]/[文件]，其余显示 text；senderName 为空（如 SYSTEM 消息）时只显示正文。 */
 fun GroupLatestMessageDto?.toSummary(): String {
