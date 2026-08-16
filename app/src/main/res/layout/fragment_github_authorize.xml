@@ -47,6 +47,7 @@
         android:background="@color/divider" />
 
     <ScrollView
+        android:id="@+id/scrollView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
@@ -110,4 +111,13 @@
                 android:textSize="12sp" />
         </LinearLayout>
     </ScrollView>
+
+    <!-- 承载 GitHub App 安装流程的 WebView：可拦截后端回跳并解析 conflict/message，
+         初始隐藏，点击「前往 GitHub 授权」后显示 -->
+    <WebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:visibility="gone" />
 </LinearLayout>

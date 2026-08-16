@@ -1,6 +1,7 @@
 package com.example.qgent.data.repository
 
 import com.example.qgent.data.model.InviteTeamMemberRequest
+import com.example.qgent.data.model.NotificationDto
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.ProjectMemberDto
 import com.example.qgent.data.model.TeamDto
@@ -22,4 +23,7 @@ interface UserRepository {
     suspend fun addProjectMember(projectId: String, userId: String, idempotencyKey: String): Result<ProjectMemberDto>
     suspend fun getProjectMembers(projectId: String): Result<List<ProjectMemberDto>>
     suspend fun createTeam(name: String, description: String? = null, idempotencyKey: String): Result<TeamDto>
+    suspend fun getNotifications(): Result<List<NotificationDto>>
+    suspend fun markNotificationRead(notificationId: String, idempotencyKey: String): Result<Unit>
+    suspend fun markAllNotificationsRead(idempotencyKey: String): Result<Unit>
 }

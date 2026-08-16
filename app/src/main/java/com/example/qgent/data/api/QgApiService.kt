@@ -21,6 +21,7 @@ import com.example.qgent.data.model.InviteTeamMemberRequest
 import com.example.qgent.data.model.AuthSessionDto
 import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.model.LoginRequest
+import com.example.qgent.data.model.NotificationDto
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.ProjectMemberDto
 import com.example.qgent.data.model.ProjectRepositoryDto
@@ -222,6 +223,22 @@ interface QgApiService {
         @Body body: SendMessageRequest
     ): Response<ApiResponse<GroupMessageDto>>
 
+    // ── 通知中心（§7.1）──
+
+    @GET("notifications")
+    suspend fun getNotifications(): Response<ApiResponse<List<NotificationDto>>>
+
+    @POST("notifications/{id}/read")
+    suspend fun markNotificationRead(
+        @Path("id") id: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<Unit>
+
+    @POST("notifications/read-all")
+    suspend fun markAllNotificationsRead(
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<Unit>
+
     // ── 附件（文档 §7：对象存储直传凭证）──
 
     @POST("projects/{projectId}/attachments")
@@ -325,7 +342,9 @@ interface QgApiService {
 
     @GET("teams/{teamId}/integrations/github/repositories")
     suspend fun getGithubRepositories(
-        @Path("teamId") teamId: String
+        @Path("teamId") teamId: String,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 100
     ): Response<ApiResponse<List<GitHubRepositoryDto>>>
 
     @GET("projects/{projectId}/repositories")

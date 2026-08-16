@@ -102,6 +102,18 @@
     <string name="github_authorize_title_team">GitHub 授权 · %1$s</string>
     <string name="github_authorize_missing_team">请先在 GitHub 页选择一个团队</string>
     <string name="github_install_success">GitHub 安装成功</string>
+    <string name="github_install_conflict">GitHub 安装未完成：该账号已绑定到其他团队，如需更换请先到原团队解绑</string>
+    <string name="github_authorize_warning_title">GitHub 账号绑定提醒</string>
+    <string name="github_authorize_warning_message">一个 GitHub 账号只能授权给一个团队。若该账号已绑定其他团队，本次授权将进入该账号的原团队安装，在 GitHub 页面增删的仓库会作用于原团队，且无法被拦截。建议使用未绑定过 Qgents 的账号。</string>
+    <string name="github_authorize_continue">继续授权</string>
+    <string name="select_team_title">选择团队</string>
+    <string name="select_team_subtitle">请选择要新建项目的团队（仅显示你创建的团队）</string>
+    <string name="select_team_next">下一步</string>
+    <string name="select_team_empty">暂无我创建的团队，请先在团队管理中创建团队</string>
+    <string name="select_team_required">请先选择一个团队</string>
+    <string name="read_all">全部已读</string>
+    <string name="message_list_empty">暂无通知</string>
+    <string name="load_failed">加载失败，请稍后重试</string>
     <string name="team_joined">我加入的团队</string>
     <string name="team_created">我创建的团队</string>
     <string name="team_member_count">%1$d 名成员</string>
@@ -110,6 +122,7 @@
     <string name="github_repo_empty">暂无可用仓库，请先在 GitHub 页授权</string>
     <string name="new_project_placeholder">新建项目（待接入后端）</string>
     <string name="error_team_create_failed">创建团队失败，请稍后重试</string>
+    <string name="team_create_success">团队创建成功</string>
     <string name="settings">设置</string>
     <string name="notification">通知</string>
     <string name="message_list">消息列表</string>
@@ -166,6 +179,7 @@
     <string name="add_member_empty">暂无团队成员可添加</string>
     <string name="add_member_failed">添加失败，请稍后重试</string>
     <string name="add_member_success">已添加 %1$d 位成员</string>
+    <string name="new_project_no_permission">无权限创建项目：仅团队创建者可新建项目</string>
 
     <string name="create_group_subtitle">输入成员邮箱发送邀请链接，对方同意后加入群聊</string>
     <string name="email_hint">邮箱</string>

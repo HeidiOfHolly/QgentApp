@@ -19,9 +19,10 @@ import com.example.qgent.data.model.TeamDto
 import com.example.qgent.databinding.DialogJoinTeamBinding
 import com.example.qgent.databinding.DialogNewTewmBinding
 import com.example.qgent.databinding.FragmentTeamManageBinding
+import com.example.qgent.databinding.ItemTeamManageBinding
 import com.example.qgent.ui.personal.bindCollapsibleSection
+import com.example.qgent.ui.personal.fillLinearLayout
 import com.example.qgent.ui.personal.newInputDialog
-import com.example.qgent.ui.personal.setupRecyclerList
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -34,9 +35,6 @@ class TeamManageFragment : Fragment() {
     private val mainViewModel: MainViewModel by activityViewModels {
         (requireActivity().application as QgentApp).container.mainViewModelFactory
     }
-
-    private val joinedAdapter = TeamManageAdapter { onJoinTeamClick(it) }
-    private val createdAdapter = TeamManageAdapter { onCreateTeamClick(it) }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -53,9 +51,6 @@ class TeamManageFragment : Fragment() {
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
         binding.btnTeamMenu.setOnClickListener { showTeamMenu() }
 
-        setupRecyclerList(binding.rvJoined, joinedAdapter)
-        setupRecyclerList(binding.rvCreated, createdAdapter)
-
         // 两个三角下拉分组：点击头部收起 / 展开
         bindCollapsibleSection(binding.headerJoined, binding.ivArrowJoined, binding.rvJoined)
         bindCollapsibleSection(binding.headerCreated, binding.ivArrowCreated, binding.rvCreated)
@@ -64,19 +59,24 @@ class TeamManageFragment : Fragment() {
         mainViewModel.teamDtos.observe(viewLifecycleOwner) { teams ->
             val created = teams.filter { it.role == "TEAM_OWNER" }
             val joined = teams.filter { it.role != "TEAM_OWNER" }
-            createdAdapter.submitList(created)
-            joinedAdapter.submitList(joined)
+            fillLinearLayout(binding.rvJoined, joined, R.layout.item_team_manage) { view, team ->
+                bindTeamItem(view, team, isOwner = false)
+            }
+            fillLinearLayout(binding.rvCreated, created, R.layout.item_team_manage) { view, team ->
+                bindTeamItem(view, team, isOwner = true)
+            }
         }
     }
 
-    private fun onJoinTeamClick(team: TeamDto) {
-        mainViewModel.setCurrentTeam(team.name)
-        navigateToTeamDetail(team, isOwner = false)
-    }
-
-    /** 我创建的团队 → 进入团队详情页管理成员 / 项目 */
-    private fun onCreateTeamClick(team: TeamDto) {
-        navigateToTeamDetail(team, isOwner = true)
+    /** 填充单个团队列表项：团队名 + 成员数 + 点击进详情 */
+    private fun bindTeamItem(view: View, team: TeamDto, isOwner: Boolean) {
+        val item = ItemTeamManageBinding.bind(view)
+        item.tvTeamName.text = team.name
+        item.tvMemberCount.text = getString(R.string.team_member_count, team.memberCount)
+        item.root.setOnClickListener {
+            mainViewModel.setCurrentTeam(team.name)
+            navigateToTeamDetail(team, isOwner)
+        }
     }
 
     /** isOwner：我创建的团队 → 详情页底部显示「解散团队」；我加入的 → 显示「退出团队」 */
@@ -149,7 +149,7 @@ class TeamManageFragment : Fragment() {
         dialog.show()
     }
 
-    /** 创建团队：弹出输入团队名称 / 简介的弹窗（创建 API 待后端就绪后接入） */
+    /** 创建团队：输入团队名称 / 简介后调创建接口，成功后刷新团队列表 */
     private fun showCreateTeamDialog() {
         val dialogBinding = DialogNewTewmBinding.inflate(layoutInflater)
         val dialog = newInputDialog(dialogBinding.root)
@@ -159,13 +159,30 @@ class TeamManageFragment : Fragment() {
         }
 
         dialogBinding.bnNewTeam.setOnClickListener {
-            if (dialogBinding.etName.text.toString().trim().isEmpty()) {
+            val name = dialogBinding.etName.text.toString().trim()
+            if (name.isEmpty()) {
                 dialogBinding.nameLayout.error = getString(R.string.error_team_name_required)
                 return@setOnClickListener
             }
-            dialog.dismiss()
-            // 创建团队 API 待后端就绪后接入；先跳转 GitHub 页配置仓库
-            findNavController().navigate(R.id.githubFragment)
+            val description = dialogBinding.etInformation.text.toString().trim().ifEmpty { null }
+            dialogBinding.bnNewTeam.isEnabled = false
+            val userRepository = (requireActivity().application as QgentApp).container.userRepository
+            viewLifecycleOwner.lifecycleScope.launch {
+                userRepository.createTeam(name, description, UUID.randomUUID().toString())
+                    .onSuccess {
+                        dialog.dismiss()
+                        Toast.makeText(requireContext(), R.string.team_create_success, Toast.LENGTH_SHORT).show()
+                        mainViewModel.refreshTeams()
+                    }
+                    .onFailure { e ->
+                        dialogBinding.bnNewTeam.isEnabled = true
+                        Toast.makeText(
+                            requireContext(),
+                            e.message ?: getString(R.string.error_team_create_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+            }
         }
         dialog.show()
     }

@@ -23,14 +23,16 @@ import com.example.qgent.R
 import com.example.qgent.data.model.InviteTeamMemberRequest
 import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
+import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.databinding.DialogInviteHistoryBinding
 import com.example.qgent.databinding.DialogInviteMemberBinding
 import com.example.qgent.databinding.FragmentTeamDetailBinding
-import com.example.qgent.ui.github.GithubViewModel
-import com.example.qgent.ui.tasks.TeamProjectAdapter
+import com.example.qgent.databinding.ItemChatMemberBinding
+import com.example.qgent.databinding.ItemProjectBinding
+import com.example.qgent.databinding.ItemRepositoryBinding
 import com.example.qgent.ui.personal.bindCollapsibleSection
-import com.example.qgent.ui.personal.setupRecyclerList
+import com.example.qgent.ui.personal.fillLinearLayout
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -46,16 +48,12 @@ class TeamDetailFragment : Fragment() {
     private val mainViewModel: MainViewModel by activityViewModels {
         (requireActivity().application as QgentApp).container.mainViewModelFactory
     }
-    private val githubViewModel: GithubViewModel by activityViewModels {
-        (requireActivity().application as QgentApp).container.githubViewModelFactory
-    }
 
     private val userRepository: UserRepository
         get() = (requireActivity().application as QgentApp).container.userRepository
+    private val githubRepository: GitHubRepository
+        get() = (requireActivity().application as QgentApp).container.githubRepository
 
-    private val projectAdapter = TeamProjectAdapter()
-    private val repositoryAdapter = TeamRepositoryAdapter()
-    private val memberAdapter = TeamMemberAdapter()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -77,7 +75,13 @@ class TeamDetailFragment : Fragment() {
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
         binding.tvTeamName.text = teamName
 
-        // 右上角邀请记录：弹窗查看该团队近 7 天邀请，可撤销待接受邀请
+        // 仅我创建的团队（Team Owner）可使用邀请/仓库/新建项目管理；普通成员隐藏对应入口
+        binding.btnInviteHistory.isVisible = isOwner
+        binding.btnAddMember.isVisible = isOwner
+        binding.btnAddProject.isVisible = isOwner
+        binding.btnRepository.isVisible = isOwner
+
+        // 右上角邀请记录：弹窗查看
         binding.btnInviteHistory.setOnClickListener {
             if (teamId.isNotEmpty()) showInviteHistoryDialog(teamId)
         }
@@ -92,33 +96,52 @@ class TeamDetailFragment : Fragment() {
             if (teamId.isNotEmpty()) showInviteMemberDialog(teamId)
         }
         binding.btnAddProject.setOnClickListener { openNewProject(teamId) }
-        binding.btnRepository.setOnClickListener { showTodoToast() }
-
-        setupRecyclerList(binding.rvProjects, projectAdapter)
-        setupRecyclerList(binding.rvRepository, repositoryAdapter)
-        setupRecyclerList(binding.rvMembers, memberAdapter)
-
-        // 仅我创建的团队可移除成员；创建者行由适配器隐藏删除按钮
-        memberAdapter.showDelete = isOwner
-        memberAdapter.onDeleteMember = { member -> confirmRemoveMember(teamId, member) }
+        binding.btnRepository.setOnClickListener { openGitHubAuthorize() }
 
         // 项目列表来自 MainViewModel（真实数据流）
-        mainViewModel.projects.observe(viewLifecycleOwner) { projectAdapter.submitList(it) }
-
-        // 仓库列表来自 GitHub 授权仓库（fullName）；成员列表暂无数据源
-        githubViewModel.uiState.observe(viewLifecycleOwner) { state ->
-            repositoryAdapter.submitList(state.repositories.map { it.fullName })
-        }
-        if (teamId.isNotEmpty()) {
-            githubViewModel.loadRepositories(teamId)
-            viewLifecycleOwner.lifecycleScope.launch {
-                userRepository.getTeamMembers(teamId).onSuccess { memberAdapter.submitList(it) }
+        mainViewModel.projects.observe(viewLifecycleOwner) { projects ->
+            fillLinearLayout(binding.rvProjects, projects, R.layout.item_project) { view, name ->
+                ItemProjectBinding.bind(view).tvProjectName.text = name
             }
+        }
+
+        if (teamId.isNotEmpty()) {
+            // 仓库列表 = 团队授权仓库（与 GitHub 页计数口径一致）
+            loadAuthorizedRepositories(teamId)
+            loadMembers(teamId, isOwner)
         }
 
         binding.btnDissolveTeam.text =
             getString(if (isOwner) R.string.dissolve_team else R.string.exit_team)
         binding.btnDissolveTeam.setOnClickListener { confirmLeaveOrDissolve(isOwner) }
+    }
+
+    /** 加载并填充团队成员列表；isOwner 控制是否显示删除按钮 */
+    private fun loadMembers(teamId: String, isOwner: Boolean) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            userRepository.getTeamMembers(teamId).onSuccess { members ->
+                fillLinearLayout(binding.rvMembers, members, R.layout.item_chat_member) { view, member ->
+                    val item = ItemChatMemberBinding.bind(view)
+                    item.tvMemberName.text = member.displayName
+                    item.tvAgentTag.isVisible = member.role == "TEAM_OWNER"
+                    item.tvAgentTag.text = "创建者"
+                    // 仅我创建的团队可移除成员；创建者行不显示删除按钮
+                    item.ivDeleteMember.isVisible = isOwner && member.role != "TEAM_OWNER"
+                    item.ivDeleteMember.setOnClickListener { confirmRemoveMember(teamId, member, isOwner) }
+                }
+            }
+        }
+    }
+
+    /** 加载团队授权仓库（AUTHORIZED），与 GitHub 页计数口径一致 */
+    private fun loadAuthorizedRepositories(teamId: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val repos = githubRepository.getGithubRepositories(teamId).getOrNull().orEmpty()
+            val names = repos.filter { it.authorizationStatus == "AUTHORIZED" }.map { it.fullName }
+            fillLinearLayout(binding.rvRepository, names, R.layout.item_repository) { view, name ->
+                ItemRepositoryBinding.bind(view).tvRepositoryName.text = name
+            }
+        }
     }
 
     /** 底部操作：我创建的团队 → 解散；我加入的团队 → 退出。API 待后端就绪后接入 */
@@ -254,7 +277,7 @@ class TeamDetailFragment : Fragment() {
     }
 
     /** 确认移除团队成员：调 DELETE 接口后刷新成员列表 */
-    private fun confirmRemoveMember(teamId: String, member: TeamMemberDto) {
+    private fun confirmRemoveMember(teamId: String, member: TeamMemberDto, isOwner: Boolean) {
         if (teamId.isEmpty()) return
         AlertDialog.Builder(requireContext())
             .setTitle(R.string.remove_member_title)
@@ -265,7 +288,7 @@ class TeamDetailFragment : Fragment() {
                     userRepository.removeTeamMember(teamId, member.userId, UUID.randomUUID().toString())
                         .onSuccess {
                             Toast.makeText(requireContext(), R.string.remove_member_success, Toast.LENGTH_SHORT).show()
-                            userRepository.getTeamMembers(teamId).onSuccess { memberAdapter.submitList(it) }
+                            loadMembers(teamId, isOwner)
                         }
                         .onFailure {
                             Toast.makeText(requireContext(), R.string.remove_member_failed, Toast.LENGTH_SHORT).show()
@@ -275,17 +298,27 @@ class TeamDetailFragment : Fragment() {
             .show()
     }
 
-    /** 新建项目：与抽屉一致，跳转新建项目页并传入当前团队 id */
+    /** 新增仓库：跳转 GitHub 授权页，传入当前团队 id / 名称 */
+    private fun openGitHubAuthorize() {
+        val teamId = arguments?.getString(ARG_TEAM_ID).orEmpty()
+        val teamName = arguments?.getString(ARG_TEAM_NAME).orEmpty()
+        findNavController().navigate(
+            R.id.githubAuthorizeFragment,
+            bundleOf("teamId" to teamId, "teamName" to teamName)
+        )
+    }
+
+    /** 新建项目：与抽屉一致，跳转新建项目页并传入当前团队 id（无创建权限时拦截提示） */
     private fun openNewProject(teamId: String) {
         if (teamId.isEmpty()) {
             Toast.makeText(requireContext(), R.string.new_project_missing_team, Toast.LENGTH_SHORT).show()
             return
         }
+        if (!mainViewModel.canCreateProject(arguments?.getString(ARG_TEAM_NAME).orEmpty())) {
+            Toast.makeText(requireContext(), R.string.new_project_no_permission, Toast.LENGTH_SHORT).show()
+            return
+        }
         findNavController().navigate(R.id.newProjectFragment, bundleOf("teamId" to teamId))
-    }
-
-    private fun showTodoToast() {
-        Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroyView() {

@@ -2,6 +2,7 @@ package com.example.qgent.data.repository
 
 import com.example.qgent.data.datasource.MockDataSource
 import com.example.qgent.data.model.InviteTeamMemberRequest
+import com.example.qgent.data.model.NotificationDto
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.ProjectMemberDto
 import com.example.qgent.data.model.TeamDto
@@ -105,4 +106,27 @@ class MockUserRepository : UserRepository {
                 createdAt = "2026-08-14"
             )
         )
+
+    override suspend fun getNotifications(): Result<List<NotificationDto>> =
+        Result.success(
+            listOf(
+                NotificationDto(
+                    id = "notif-1",
+                    kind = "INVITED",
+                    title = "你被邀请加入团队 团队A",
+                    description = null,
+                    isRead = false,
+                    createdAt = "2026-08-15T02:00:00Z",
+                    projectId = null,
+                    groupId = null,
+                    resourceId = null
+                )
+            )
+        )
+
+    override suspend fun markNotificationRead(notificationId: String, idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
+
+    override suspend fun markAllNotificationsRead(idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
 }

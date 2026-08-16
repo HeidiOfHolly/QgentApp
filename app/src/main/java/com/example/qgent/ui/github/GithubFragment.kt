@@ -1,10 +1,14 @@
 package com.example.qgent.ui.github
 
+import android.app.Dialog
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
+import android.widget.Toast
 import androidx.core.os.bundleOf
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
@@ -14,7 +18,10 @@ import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.model.TeamDto
+import com.example.qgent.databinding.DialogSelectTeamBinding
 import com.example.qgent.databinding.FragmentGithubBinding
+import com.example.qgent.databinding.ItemSelectTeamBinding
+import com.example.qgent.ui.personal.fillLinearLayout
 import com.example.qgent.viewmodel.MainViewModel
 
 /** GitHub 页：网格展示团队仓库概况，列表项使用 item_team_github */
@@ -60,6 +67,9 @@ class GithubFragment : Fragment() {
         binding.rvGithubTeams.layoutManager = GridLayoutManager(requireContext(), 2)
         binding.rvGithubTeams.adapter = adapter
 
+        // 右上角加号：选择我创建的团队后进入新建项目页
+        binding.tvAddTeam.setOnClickListener { showSelectTeamDialog() }
+
         mainViewModel.teamDtos.observe(viewLifecycleOwner) { teams ->
             currentTeams = teams
             adapter.submitList(teams)
@@ -69,6 +79,58 @@ class GithubFragment : Fragment() {
         githubViewModel.uiState.observe(viewLifecycleOwner) { state ->
             adapter.updateRepoCounts(state.repoCounts)
         }
+    }
+
+    /** 右上角加号：从「我创建的团队」单选一个，下一步进入新建项目页 */
+    private fun showSelectTeamDialog() {
+        val dialogBinding = DialogSelectTeamBinding.inflate(layoutInflater)
+        val dialog = Dialog(requireContext()).apply {
+            setContentView(dialogBinding.root)
+            window?.setBackgroundDrawableResource(R.drawable.bg_card)
+            window?.setLayout(
+                (resources.displayMetrics.widthPixels * 0.85f).toInt(),
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        // 仅展示我创建的团队（TEAM_OWNER），天然满足新建项目权限
+        val createdTeams = mainViewModel.teamDtos.value.orEmpty()
+            .filter { it.role == "TEAM_OWNER" }
+        if (createdTeams.isEmpty()) {
+            dialogBinding.tvEmpty.isVisible = true
+        }
+        var selectedTeam: TeamDto? = null
+
+        fillLinearLayout(dialogBinding.teamList, createdTeams, R.layout.item_select_team) { view, team ->
+            val item = ItemSelectTeamBinding.bind(view)
+            item.tvTeamName.text = team.name
+            item.tvMemberCount.text = getString(R.string.team_member_count, team.memberCount)
+            view.setOnClickListener {
+                // 清除上一次选中高亮
+                for (i in 0 until dialogBinding.teamList.childCount) {
+                    dialogBinding.teamList.getChildAt(i).setBackgroundResource(
+                        android.R.color.transparent
+                    )
+                }
+                view.setBackgroundResource(R.drawable.bg_team_selected_navy)
+                selectedTeam = team
+            }
+        }
+
+        dialogBinding.btnNext.setOnClickListener {
+            val team = selectedTeam
+            if (team == null) {
+                Toast.makeText(requireContext(), R.string.select_team_required, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            dialog.dismiss()
+            findNavController().navigate(
+                R.id.newProjectFragment,
+                bundleOf("teamId" to team.id)
+            )
+        }
+
+        dialog.show()
     }
 
     override fun onResume() {

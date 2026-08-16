@@ -122,6 +122,10 @@ class MainViewModel(
     /** 加入团队后刷新团队列表（复用 init 的加载逻辑） */
     fun refreshTeams() = loadTeams()
 
+    /** 当前团队是否可新建项目：仅 TEAM_OWNER（文档 §5.2）；角色未知时放行交给后端判定 */
+    fun canCreateProject(teamName: String): Boolean =
+        _teamDtos.value.firstOrNull { it.name == teamName }?.role?.let { it == "TEAM_OWNER" } ?: true
+
     fun setCurrentTeam(team: String, onProjectsLoaded: ((Boolean) -> Unit)? = null, force: Boolean = false) {
         // 同团队重复选择默认跳过（避免冗余请求）；force=true 用于项目列表已被清空的场景（如 GitHub 页）强制重载
         if (!force && _currentTeam.value == team) return

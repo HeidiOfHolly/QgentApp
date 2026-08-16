@@ -2,8 +2,11 @@ package com.example.qgent.ui.personal
 
 import android.animation.ObjectAnimator
 import android.app.Dialog
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.LinearLayout
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -14,6 +17,9 @@ fun bindCollapsibleSection(header: View, arrow: View, content: View) {
     header.setOnClickListener {
         val expanded = content.isVisible
         content.isVisible = !expanded
+        // 展开时强制内容区重新布局：收起状态下 RecyclerView 测量高度不准确（不可见时测为 0），
+        // 直接 toggle 可见性不会触发重新测量，导致列表只渲染部分项
+        if (!expanded) content.requestLayout()
         ObjectAnimator.ofFloat(arrow, View.ROTATION, if (expanded) 90f else 180f)
             .setDuration(180)
             .start()
@@ -39,4 +45,23 @@ fun newInputDialog(root: View): Dialog {
         WindowManager.LayoutParams.WRAP_CONTENT
     )
     return dialog
+}
+
+/**
+ * 用 LinearLayout 填充列表（ScrollView 内用 LinearLayout 替代 RecyclerView，
+ * 避免嵌套滚动时子列表内容无法完整展示）。每次调用重建全部 item。
+ */
+fun <T> fillLinearLayout(
+    container: LinearLayout,
+    items: List<T>,
+    itemLayoutRes: Int,
+    bind: (View, T) -> Unit
+) {
+    container.removeAllViews()
+    val inflater = LayoutInflater.from(container.context)
+    items.forEach { item ->
+        val view = inflater.inflate(itemLayoutRes, container, false)
+        bind(view, item)
+        container.addView(view)
+    }
 }
