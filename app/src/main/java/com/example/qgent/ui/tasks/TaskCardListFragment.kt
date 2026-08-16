@@ -1,0 +1,190 @@
+package com.example.qgent.ui.tasks
+
+import android.app.AlertDialog
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Toast
+import androidx.core.view.isVisible
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.qgent.QgentApp
+import com.example.qgent.R
+import com.example.qgent.data.repository.ChatRepository
+import com.example.qgent.data.repository.GitHubRepository
+import com.example.qgent.databinding.FragmentTaskCardListBinding
+import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
+
+/** 任务卡片列表页：展示当前项目的任务（§16），顶部横向筛选（需求群/状态/发起人/仓库） */
+class TaskCardListFragment : Fragment() {
+
+    private var _binding: FragmentTaskCardListBinding? = null
+    private val binding get() = _binding!!
+
+    private val mainViewModel: MainViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.mainViewModelFactory
+    }
+    private val taskListViewModel: TaskListViewModel by activityViewModels {
+        (requireActivity().application as QgentApp).container.taskListViewModelFactory
+    }
+    private val chatRepository: ChatRepository
+        get() = (requireActivity().application as QgentApp).container.chatRepository
+    private val githubRepository: GitHubRepository
+        get() = (requireActivity().application as QgentApp).container.githubRepository
+
+    private val taskAdapter = TaskCardAdapter { task ->
+        findNavController().navigate(
+            R.id.action_taskCardList_to_taskDetail,
+            Bundle().apply {
+                putString(TaskDetailFragment.ARG_TASK_ID, task.id)
+                putString(TaskDetailFragment.ARG_PROJECT_ID, task.projectId)
+            }
+        )
+    }
+    private val filterAdapter = FilterChipAdapter { type -> showFilterOptions(type) }
+
+    // 候选值缓存
+    private var groupOptions: Map<String, String> = emptyMap()       // id -> 群名
+    private var repoOptions: Map<String, String> = emptyMap()        // id -> 仓库名
+    private var creatorOptions: List<Pair<String, String>> = emptyList() // id -> 显示名
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        _binding = FragmentTaskCardListBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        binding.ivBack.setOnClickListener { findNavController().navigateUp() }
+
+        binding.rvFilters.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.rvFilters.adapter = filterAdapter
+
+        binding.rvTaskList.layoutManager = LinearLayoutManager(requireContext())
+        binding.rvTaskList.adapter = taskAdapter
+
+        taskListViewModel.uiState.observe(viewLifecycleOwner) { state ->
+            taskAdapter.submitList(state.tasks)
+            binding.tvEmpty.isVisible = state.tasks.isEmpty() && !state.loading
+            // 刷新筛选行选中值；从当前任务列表提取发起人候选
+            refreshFilterRow(state)
+            state.error?.let {
+                Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
+                taskListViewModel.consumeError()
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val projectId = mainViewModel.currentProjectId() ?: return
+        loadCandidates(projectId)
+        taskListViewModel.loadTasks(projectId)
+    }
+
+    /** 加载需求群 / 仓库候选（发起人候选在刷新筛选行时从任务列表提取） */
+    private fun loadCandidates(projectId: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            chatRepository.getGroups(projectId).onSuccess { groups ->
+                groupOptions = groups.associate { it.id to it.title }
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            githubRepository.getProjectRepositories(projectId).onSuccess { repos ->
+                repoOptions = repos.associate { it.id to it.displayName }
+            }
+        }
+    }
+
+    private fun refreshFilterRow(state: TaskListViewModel.TaskListUiState) {
+        val f = state.filter
+        // 发起人候选：从当前任务列表提取去重
+        creatorOptions = state.tasks
+            .mapNotNull { it.createdByUser }
+            .distinctBy { it.id }
+            .map { it.id to (it.displayName) }
+        filterAdapter.submitList(
+            listOf(
+                FilterChip(TaskFilterType.GROUP, "需求群", f.groupId?.let { groupOptions[it] }),
+                FilterChip(TaskFilterType.STATUS, "状态", f.status?.let { statusLabel(it) }),
+                FilterChip(TaskFilterType.CREATED_BY, "发起人", f.createdBy?.let { creatorLabel(it) }),
+                FilterChip(TaskFilterType.REPOSITORY, "仓库", f.repositoryId?.let { repoOptions[it] })
+            )
+        )
+    }
+
+    private fun statusLabel(status: String): String =
+        TaskListViewModel.STATUS_OPTIONS.firstOrNull { it.first == status }?.second ?: status
+
+    private fun creatorLabel(id: String): String =
+        creatorOptions.firstOrNull { it.first == id }?.second ?: id
+
+    /** 点击筛选项：弹出下拉三角列表（候选值单选），选中后应用筛选 */
+    private fun showFilterOptions(type: TaskFilterType) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val current = taskListViewModel.uiState.value?.filter
+        when (type) {
+            TaskFilterType.GROUP -> showChoiceDialog(
+                "按需求群筛选",
+                groupOptions.entries.map { it.value to it.key },
+                current?.groupId
+            ) { id -> applyFilter(projectId, current?.copy(groupId = id)) }
+
+            TaskFilterType.STATUS -> showChoiceDialog(
+                "按状态筛选",
+                TaskListViewModel.STATUS_OPTIONS.map { it.second to it.first },
+                current?.status
+            ) { status -> applyFilter(projectId, current?.copy(status = status)) }
+
+            TaskFilterType.CREATED_BY -> showChoiceDialog(
+                "按发起人筛选",
+                creatorOptions.map { it.second to it.first },
+                current?.createdBy
+            ) { id -> applyFilter(projectId, current?.copy(createdBy = id)) }
+
+            TaskFilterType.REPOSITORY -> showChoiceDialog(
+                "按仓库筛选",
+                repoOptions.entries.map { it.value to it.key },
+                current?.repositoryId
+            ) { id -> applyFilter(projectId, current?.copy(repositoryId = id)) }
+        }
+    }
+
+    private fun showChoiceDialog(
+        title: String,
+        options: List<Pair<String, String>>,   // 显示文本 -> 值
+        selected: String?,
+        onSelect: (String) -> Unit
+    ) {
+        if (options.isEmpty()) {
+            Toast.makeText(requireContext(), "暂无可选项", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val labels = options.map { it.first }.toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setItems(labels) { _, which ->
+                onSelect(options[which].second)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun applyFilter(projectId: String, filter: TaskListViewModel.TaskFilter?) {
+        taskListViewModel.applyFilter(projectId, filter ?: TaskListViewModel.TaskFilter())
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+}

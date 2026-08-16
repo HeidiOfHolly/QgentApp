@@ -15,6 +15,7 @@ import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.navOptions
 import androidx.navigation.ui.setupWithNavController
+import com.google.android.material.badge.BadgeDrawable
 import com.example.qgent.data.SessionStore
 import com.example.qgent.databinding.ActivityMainBinding
 import com.example.qgent.ui.auth.LoginActivity
@@ -72,6 +73,18 @@ class MainActivity : AppCompatActivity() {
             navController = (supportFragmentManager
                 .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
             binding.bottomNav.setupWithNavController(navController)
+
+            // 未读任务类通知 → 底部任务 tab 图标右上角红点
+            mainViewModel.unreadTaskNotifications.observe(this) { hasUnread ->
+                if (hasUnread) {
+                    binding.bottomNav.getOrCreateBadge(R.id.tasksFragment).apply {
+                        isVisible = true
+                        badgeGravity = BadgeDrawable.TOP_END
+                    }
+                } else {
+                    binding.bottomNav.removeBadge(R.id.tasksFragment)
+                }
+            }
 
             // 非三 Tab 页面（如群聊详情）隐藏底部导航栏
             navController.addOnDestinationChangedListener { _, destination, _ ->

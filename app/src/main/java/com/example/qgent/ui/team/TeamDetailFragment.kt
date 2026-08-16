@@ -18,7 +18,6 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.GitHubRepositoryDto
@@ -32,6 +31,7 @@ import com.example.qgent.databinding.DialogInviteHistoryBinding
 import com.example.qgent.databinding.DialogInviteMemberBinding
 import com.example.qgent.databinding.FragmentTeamDetailBinding
 import com.example.qgent.databinding.ItemChatMemberBinding
+import com.example.qgent.databinding.ItemInviteHistoryBinding
 import com.example.qgent.databinding.ItemProjectBinding
 import com.example.qgent.databinding.ItemRepositoryBinding
 import com.example.qgent.ui.personal.bindCollapsibleSection
@@ -282,40 +282,69 @@ class TeamDetailFragment : Fragment() {
             window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             window?.setLayout(
                 (resources.displayMetrics.widthPixels * 0.9f).toInt(),
-                WindowManager.LayoutParams.WRAP_CONTENT
+                (resources.displayMetrics.heightPixels * 0.8f).toInt()
             )
         }
         dialogBinding.btnClose.setOnClickListener { dialog.dismiss() }
 
-        lateinit var inviteAdapter: InviteHistoryAdapter
-        inviteAdapter = InviteHistoryAdapter { invitation ->
-            confirmRevokeInvitation(teamId, invitation) {
-                loadInvitationsInto(dialogBinding, inviteAdapter, teamId)
-            }
-        }
-        dialogBinding.rvInvitations.layoutManager = LinearLayoutManager(requireContext())
-        dialogBinding.rvInvitations.adapter = inviteAdapter
+        // 两个三角下拉分组：待接收 / 已处理，点击头部收起 / 展开
+        bindCollapsibleSection(dialogBinding.headerPending, dialogBinding.ivArrowPending, dialogBinding.rvPending)
+        bindCollapsibleSection(dialogBinding.headerProcessed, dialogBinding.ivArrowProcessed, dialogBinding.rvProcessed)
 
-        loadInvitationsInto(dialogBinding, inviteAdapter, teamId)
+        loadInvitationsInto(dialogBinding, teamId)
         dialog.show()
     }
 
-    /** 加载邀请记录并填充弹窗列表（空时显示空态） */
+    /** 加载邀请记录并按状态分组填充：PENDING → 待接收组，其余（已接受/已撤销/已过期）→ 已处理组 */
     private fun loadInvitationsInto(
         dialogBinding: DialogInviteHistoryBinding,
-        adapter: InviteHistoryAdapter,
         teamId: String
     ) {
         viewLifecycleOwner.lifecycleScope.launch {
             userRepository.getTeamInvitations(teamId)
                 .onSuccess { list ->
-                    adapter.submitList(list)
+                    val pending = list.filter { it.status == "PENDING" }
+                    val processed = list.filter { it.status != "PENDING" }
+                    fillLinearLayout(dialogBinding.rvPending, pending, R.layout.item_invite_history) { view, invitation ->
+                        bindInviteItem(view, teamId, invitation) {
+                            loadInvitationsInto(dialogBinding, teamId)
+                        }
+                    }
+                    fillLinearLayout(dialogBinding.rvProcessed, processed, R.layout.item_invite_history) { view, invitation ->
+                        bindInviteItem(view, teamId, invitation) {
+                            loadInvitationsInto(dialogBinding, teamId)
+                        }
+                    }
                     dialogBinding.tvEmpty.isVisible = list.isEmpty()
                 }
                 .onFailure {
-                    adapter.submitList(emptyList())
+                    dialogBinding.rvPending.removeAllViews()
+                    dialogBinding.rvProcessed.removeAllViews()
                     dialogBinding.tvEmpty.isVisible = true
                 }
+        }
+    }
+
+    /** 填充单个邀请记录项：邮箱 + 状态；仅待接收显示撤销按钮，撤销成功回调 onRevoked 刷新弹窗 */
+    private fun bindInviteItem(
+        view: View,
+        teamId: String,
+        invitation: TeamInvitationDto,
+        onRevoked: () -> Unit
+    ) {
+        val item = ItemInviteHistoryBinding.bind(view)
+        item.tvEmail.text = invitation.email
+        item.tvStatus.text = when (invitation.status) {
+            "PENDING" -> getString(R.string.invite_status_pending)
+            "ACCEPTED" -> getString(R.string.invite_status_accepted)
+            "REVOKED" -> getString(R.string.invite_status_revoked)
+            "EXPIRED" -> getString(R.string.invite_status_expired)
+            else -> invitation.status
+        }
+        // 仅 PENDING（待接收）可撤销
+        item.btnRevoke.isVisible = invitation.status == "PENDING"
+        item.btnRevoke.setOnClickListener {
+            confirmRevokeInvitation(teamId, invitation, onRevoked)
         }
     }
 

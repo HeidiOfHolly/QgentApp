@@ -121,9 +121,15 @@ class MainViewModel(
     private val _unreadInvitations = MutableStateFlow(false)
     val unreadInvitations: LiveData<Boolean> = _unreadInvitations.asLiveData()
 
+    // ── 未读的任务类通知（非 INVITED 且未读），任务页铃铛 / 底部任务 tab 红点 ──
+
+    private val _unreadTaskNotifications = MutableStateFlow(false)
+    val unreadTaskNotifications: LiveData<Boolean> = _unreadTaskNotifications.asLiveData()
+
     init {
         loadTeams()
         refreshUnreadInvitations()
+        refreshUnreadTaskNotifications()
     }
 
     /** 拉取通知列表，统计未读的团队邀请（INVITED）；失败时保持现状不打扰用户 */
@@ -131,6 +137,15 @@ class MainViewModel(
         viewModelScope.launch {
             userRepo.getNotifications().onSuccess { list ->
                 _unreadInvitations.value = list.any { it.kind == "INVITED" && !it.isRead }
+            }
+        }
+    }
+
+    /** 拉取通知列表，统计未读的任务类通知（除 INVITED 外）；失败时保持现状不打扰用户 */
+    fun refreshUnreadTaskNotifications() {
+        viewModelScope.launch {
+            userRepo.getNotifications().onSuccess { list ->
+                _unreadTaskNotifications.value = list.any { it.kind != "INVITED" && !it.isRead }
             }
         }
     }

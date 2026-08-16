@@ -38,8 +38,8 @@ import java.util.UUID
  */
 abstract class BaseMessageListFragment : Fragment() {
 
-    /** 通知过滤规则，默认展示全部；子类覆盖以限定子集 */
-    protected open val notificationsFilter: (NotificationDto) -> Boolean = { true }
+    /** 通知过滤规则，默认展示全部；子类可在加载前修改以限定子集 */
+    protected var notificationsFilter: (NotificationDto) -> Boolean = { true }
 
     private var _binding: FragmentMessageListBinding? = null
     protected val binding get() = _binding!!
@@ -94,8 +94,9 @@ abstract class BaseMessageListFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             userRepository.markNotificationRead(notification.id, UUID.randomUUID().toString())
         }
-        // 同步刷新未读邀请红点（可能标记的正是最后一条 INVITED）
+        // 同步刷新未读红点（可能标记的正是最后一条未读通知）
         mainViewModel.refreshUnreadInvitations()
+        mainViewModel.refreshUnreadTaskNotifications()
     }
 
     private fun markAllRead() {
@@ -106,6 +107,7 @@ abstract class BaseMessageListFragment : Fragment() {
             userRepository.markAllNotificationsRead(UUID.randomUUID().toString())
         }
         mainViewModel.refreshUnreadInvitations()
+        mainViewModel.refreshUnreadTaskNotifications()
     }
 
     /** 通知点击：团队邀请 → 待处理则弹窗选择是否接受；其余 → 群聊属于当前项目时进入群聊 */
@@ -179,6 +181,11 @@ abstract class BaseMessageListFragment : Fragment() {
                     Toast.makeText(requireContext(), e.message ?: getString(R.string.invitation_accept_failed), Toast.LENGTH_SHORT).show()
                 }
         }
+    }
+
+    /** 重新加载通知列表（子类切换过滤条件/上下文后调用） */
+    protected fun reloadNotifications() {
+        loadNotifications()
     }
 
     private fun updateEmptyState() {
