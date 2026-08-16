@@ -22,12 +22,30 @@
 
     <TextView
         android:id="@+id/tvRepositoryName"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginStart="10dp"
+        android:layout_weight="1"
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="?android:attr/textColorPrimary"
         android:textSize="20sp"
         tools:text="仓库名称" />
+
+    <!-- 状态标签：授权已撤销时显示（红色），正常授权时隐藏 -->
+    <TextView
+        android:id="@+id/tvRepositoryStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_status_review"
+        android:gravity="center"
+        android:paddingStart="6dp"
+        android:paddingTop="2dp"
+        android:paddingEnd="6dp"
+        android:paddingBottom="2dp"
+        android:text="@string/repo_status_revoked"
+        android:textColor="@color/exit_red"
+        android:textSize="11sp"
+        android:visibility="gone"
+        tools:visibility="visible" />
 </LinearLayout>

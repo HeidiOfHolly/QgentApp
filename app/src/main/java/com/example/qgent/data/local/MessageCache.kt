@@ -22,7 +22,8 @@ class MessageCache(private val dao: MessageDao) {
         isMine = isMine,
         fileName = fileName,
         fileSize = fileSize,
-        sequence = sequence
+        sequence = sequence,
+        replyToId = replyToId
     )
 
     private fun ChatMessage.toEntity(groupId: String): MessageEntity = MessageEntity(
@@ -35,6 +36,7 @@ class MessageCache(private val dao: MessageDao) {
         isMine = isMine,
         fileName = fileName,
         fileSize = fileSize,
-        sequence = sequence
+        sequence = sequence,
+        replyToId = replyToId
     )
 }

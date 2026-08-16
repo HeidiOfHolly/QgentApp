@@ -28,9 +28,12 @@ import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.repository.ChatRepository
+import com.example.qgent.data.repository.UserRepository
+import com.example.qgent.databinding.BottomSheetCreateGroupBinding
 import com.example.qgent.databinding.DialogSearchMessagesBinding
 import com.example.qgent.databinding.FragmentChatSettingsBinding
 import com.example.qgent.viewmodel.MainViewModel
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -45,6 +48,8 @@ class ChatSettingsFragment : Fragment() {
     private val chatRepo: ChatRepository by lazy {
         (requireActivity().application as QgentApp).container.chatRepository
     }
+    private val userRepository: UserRepository
+        get() = (requireActivity().application as QgentApp).container.userRepository
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -62,11 +67,99 @@ class ChatSettingsFragment : Fragment() {
 
         loadGroupData()
 
+        // 添加成员：从团队成员中拉人进当前项目（与群列表页一致，含身份选择）
+        binding.btnAddMember.setOnClickListener { showAddMemberDialog() }
+
         // 查看聊天记录：弹出搜索弹窗，按关键词过滤消息
         binding.btnViewHistory.setOnClickListener { showSearchDialog() }
 
         // 退出群聊：先弹确认，确认后调接口
         binding.btnExitGroup.setOnClickListener { confirmExitGroup() }
+    }
+
+    /**
+     * 添加成员：列出团队中尚未加入当前项目的成员，勾选后可设置身份（项目成员/项目管理员），
+     * POST 加入后选管理员的再 PATCH 升级（§5.2）。与群列表页「添加成员」共用交互。
+     */
+    private fun showAddMemberDialog() {
+        val projectId = mainViewModel.currentProjectId() ?: run {
+            Toast.makeText(requireContext(), R.string.add_member_missing_project, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val teamId = mainViewModel.currentTeamId() ?: run {
+            Toast.makeText(requireContext(), R.string.new_project_missing_team, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val dialog = BottomSheetDialog(requireContext())
+        val sheetBinding = BottomSheetCreateGroupBinding.inflate(layoutInflater)
+        dialog.setContentView(sheetBinding.root)
+        sheetBinding.tvSheetTitle.text = getString(R.string.action_add_member)
+        sheetBinding.tvSheetSubtitle.text = getString(R.string.add_member_subtitle)
+        sheetBinding.etGroupDescription.visibility = View.GONE
+        sheetBinding.btnSelectAll.visibility = View.GONE
+        sheetBinding.etGroupName.hint = getString(R.string.add_member_select_hint)
+
+        lateinit var pickAdapter: GroupMemberPickAdapter
+        pickAdapter = GroupMemberPickAdapter(
+            onItemClick = { pickAdapter.toggle(it) },
+            onRoleClick = { pickAdapter.toggleRole(it) }
+        )
+        sheetBinding.rvGroupMembers.layoutManager = LinearLayoutManager(requireContext())
+        sheetBinding.rvGroupMembers.adapter = pickAdapter
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val teamMembers = userRepository.getTeamMembers(teamId).getOrElse {
+                Toast.makeText(requireContext(), R.string.add_member_failed, Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+                return@launch
+            }
+            val existingIds = userRepository.getProjectMembers(projectId)
+                .getOrNull()?.map { it.userId }?.toSet().orEmpty()
+            val candidates = teamMembers.filter { it.userId !in existingIds }
+            if (candidates.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.add_member_empty, Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+                return@launch
+            }
+            pickAdapter.submitList(
+                candidates.map { GroupMemberPick(it.userId, it.displayName, "PROJECT_MEMBER") }
+            )
+        }
+
+        sheetBinding.btnSend.setOnClickListener {
+            val selected = pickAdapter.checkedIds()
+            if (selected.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.add_member_empty, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val roles = pickAdapter.roleById()
+            dialog.dismiss()
+            addMembers(projectId, selected, roles)
+        }
+        sheetBinding.btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
+    }
+
+    /** 逐个将选中成员加入项目：POST 加入后按所选身份决定是否 PATCH 升级，汇总成功数量提示 */
+    private fun addMembers(projectId: String, userIds: List<String>, roles: Map<String, String>) {
+        if (userIds.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            var added = 0
+            userIds.forEach { userId ->
+                userRepository.addProjectMember(projectId, userId, UUID.randomUUID().toString())
+                    .onSuccess {
+                        added++
+                        if (roles[userId] == "PROJECT_ADMIN") {
+                            userRepository.updateProjectMemberRole(projectId, userId, "PROJECT_ADMIN", UUID.randomUUID().toString())
+                        }
+                    }
+            }
+            if (added == 0) {
+                Toast.makeText(requireContext(), R.string.add_member_failed, Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(requireContext(), getString(R.string.add_member_success, added), Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun loadGroupData() {
@@ -96,8 +189,8 @@ class ChatSettingsFragment : Fragment() {
             val row = layoutInflater.inflate(R.layout.item_chat_member, binding.containerMembers, false)
             val name = member.resolvedName
             row.findViewById<TextView>(R.id.tvMemberName)?.text = name
-            // 后端群成员 DTO 无 type 字段，Agent 标签用昵称启发式判断
-            row.findViewById<TextView>(R.id.tvAgentTag)?.isVisible = name.startsWith("Agent", ignoreCase = true)
+            // 群成员 DTO 含 memberType（USER/AGENT），Agent 显示标签（文档 §7）
+            row.findViewById<TextView>(R.id.tvAgentTag)?.isVisible = member.isAgent
             // 头像：avatar 为空显示默认占位，否则 Glide 带鉴权头加载
             val ivAvatar = row.findViewById<ImageView>(R.id.ivMemberAvatar)
             if (member.avatar.isNullOrBlank()) {

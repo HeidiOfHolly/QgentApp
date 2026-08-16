@@ -18,13 +18,17 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
- * 项目级 SSE 事件流客户端（文档 §12.1）。
+ * SSE 事件流客户端（文档 §12.1 + 团队/通知级补充）。
  *
- * 建立 `GET /projects/{projectId}/events` 长连接（Content-Type: text/event-stream），
+ * 支持三种流，同一时刻只保持一条连接（调用 [startXxx] 切换时自动断开旧连接）：
+ * - 项目级：`GET /projects/{projectId}/events`（任务/Diff/消息/群/Memory）
+ * - 团队级：`GET /teams/{teamId}/events`（成员/项目动态）
+ * - 通知级：`GET /notifications/events`（当前用户通知）
+ *
  * 复用 [httpClient]（已带 AuthInterceptor + TokenAuthenticator，鉴权与自动刷新由调用方注入的 client 承担）。
  *
  * 契约要点（文档 §12.1）：
- * - 事件 `id` 即项目内单调递增 `sequenceNo`，通过 `Last-Event-ID` 请求头断线续传；
+ * - 事件 `id` 即流内单调递增 `sequenceNo`，通过 `Last-Event-ID` 请求头断线续传；
  * - 服务端每 15 秒发送心跳（注释行或空行），客户端以 readTimeout 兜底检测死连接；
  * - 续传点过期返回 `409 EVENT_CURSOR_EXPIRED` → 清空游标、丢弃游标重连；
  * - 事件仅用于刷新界面：上层收到事件后必须重新拉取对应查询接口，不把 payload 当完整 DTO。
@@ -54,42 +58,53 @@ class ProjectEventStream(
     private val _events = MutableSharedFlow<SseEvent>(extraBufferCapacity = 32)
     val events: SharedFlow<SseEvent> = _events
 
-    /** 当前连接的 projectId；换项目时自动断开旧连接 */
+    /** 当前连接的流标识；切换流时自动断开旧连接 */
     @Volatile
-    private var currentProjectId: String? = null
+    private var currentStreamKey: String? = null
 
-    /**
-     * 建立（或保持）项目事件流连接。幂等：同 projectId 重复调用不重启。
-     * 不同 projectId 调用会先断开旧连接再连新的。
-     */
-    fun start(projectId: String) {
-        if (currentProjectId == projectId && connectJob?.isActive == true) return
-        stop()
-        currentProjectId = projectId
-        lastEventId = null // 切项目时从最新开始（项目内游标不可跨项目复用）
-        connectJob = scope.launch { connectLoop(projectId) }
+    /** 建立（或保持）项目级事件流连接。幂等：同 projectId 重复调用不重启。 */
+    fun startProject(projectId: String) = start("project:$projectId") {
+        "/projects/$projectId/events"
     }
 
-    /** 断开连接并停止重连。重新 [start] 可从最新事件开始（游标同时清空）。 */
+    /** 建立（或保持）团队级事件流连接。 */
+    fun startTeam(teamId: String) = start("team:$teamId") {
+        "/teams/$teamId/events"
+    }
+
+    /** 建立（或保持）通知级事件流连接（当前用户）。 */
+    fun startNotifications() = start("notifications") {
+        "/notifications/events"
+    }
+
+    /** 断开连接并停止重连。重新 [startXxx] 可从最新事件开始（游标同时清空）。 */
     fun stop() {
-        currentProjectId = null
+        currentStreamKey = null
         connectJob?.cancel()
         connectJob = null
     }
 
-    private suspend fun connectLoop(projectId: String) {
+    private fun start(streamKey: String, pathBuilder: () -> String) {
+        if (currentStreamKey == streamKey && connectJob?.isActive == true) return
+        stop()
+        currentStreamKey = streamKey
+        lastEventId = null // 切流时从最新开始（sequenceNo 不可跨流复用）
+        connectJob = scope.launch { connectLoop(streamKey, pathBuilder) }
+    }
+
+    private suspend fun connectLoop(streamKey: String, pathBuilder: () -> String) {
         var backoffMs = INITIAL_BACKOFF_MS
-        while (scope.isActive && currentProjectId == projectId) {
+        while (scope.isActive && currentStreamKey == streamKey) {
             val outcome = try {
-                connectAndRead(projectId)
+                connectAndRead(streamKey, pathBuilder)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "sse error: ${e::class.simpleName}: ${e.message}")
                 Outcome.ERROR
             }
-            // 连接被 stop() 取消或换项目后退出
-            if (currentProjectId != projectId) return
+            // 连接被 stop() 取消或切换流后退出
+            if (currentStreamKey != streamKey) return
 
             when (outcome) {
                 Outcome.UNAUTHORIZED -> {
@@ -107,71 +122,72 @@ class ProjectEventStream(
     }
 
     /** 建立一次连接并阻塞读取事件流，直到断开/出错；返回重连策略依据 */
-    private suspend fun connectAndRead(projectId: String): Outcome = withContext(Dispatchers.IO) {
-        val url = baseUrl.trimEnd('/') + "/projects/$projectId/events"
-        val builder = Request.Builder()
-            .url(url)
-            .header("Accept", "text/event-stream")
-        lastEventId?.let { builder.header("Last-Event-ID", it) }
+    private suspend fun connectAndRead(streamKey: String, pathBuilder: () -> String): Outcome =
+        withContext(Dispatchers.IO) {
+            val url = baseUrl.trimEnd('/') + pathBuilder()
+            val builder = Request.Builder()
+                .url(url)
+                .header("Accept", "text/event-stream")
+            lastEventId?.let { builder.header("Last-Event-ID", it) }
 
-        try {
-            sseClient.newCall(builder.build()).execute().use { response ->
-                when {
-                    response.code == 409 -> {
-                        // EVENT_CURSOR_EXPIRED：续传点已过期（事件保留 24h），清游标从最新重连
-                        Log.w(TAG, "sse 409 cursor expired, reset cursor")
-                        lastEventId = null
-                        Outcome.CURSOR_EXPIRED
-                    }
-                    response.code == 401 -> {
-                        // TokenAuthenticator 已尝试刷新；仍 401 → 停止（避免无限重试）
-                        Outcome.UNAUTHORIZED
-                    }
-                    !response.isSuccessful -> {
-                        Log.w(TAG, "sse HTTP ${response.code}")
-                        Outcome.ERROR
-                    }
-                    else -> {
-                        val body = response.body ?: return@use Outcome.ERROR
-                        val source = body.source()
-                        var eventName: String? = null
-                        var id: String? = null
-                        val dataLines = StringBuilder()
-                        while (scope.isActive) {
-                            val line = source.readUtf8Line() ?: break // EOF：服务端断开
-                            when {
-                                line.startsWith("id:") -> id = line.removePrefix("id:").trim()
-                                line.startsWith("event:") -> eventName = line.removePrefix("event:").trim()
-                                line.startsWith("data:") -> {
-                                    if (dataLines.isNotEmpty()) dataLines.append('\n')
-                                    dataLines.append(line.removePrefix("data:").trimStart())
-                                }
-                                line.startsWith(":") -> Unit // 心跳注释行，忽略
-                                line.isEmpty() -> {
-                                    // 事件边界：分发
-                                    val name = eventName
-                                    if (name != null) {
-                                        SseEventType.fromWire(name)?.let { type ->
-                                            if (id != null) lastEventId = id
-                                            _events.tryEmit(SseEvent(id, type, dataLines.toString()))
-                                        } ?: Log.d(TAG, "unknown sse event: $name")
-                                    }
-                                    eventName = null
-                                    id = null
-                                    dataLines.setLength(0)
-                                }
-                                else -> Unit // 忽略未知字段行
-                            }
+            try {
+                sseClient.newCall(builder.build()).execute().use { response ->
+                    when {
+                        response.code == 409 -> {
+                            // EVENT_CURSOR_EXPIRED：续传点已过期（事件保留 24h），清游标从最新重连
+                            Log.w(TAG, "sse 409 cursor expired, reset cursor")
+                            lastEventId = null
+                            Outcome.CURSOR_EXPIRED
                         }
-                        Outcome.EOF
+                        response.code == 401 -> {
+                            // TokenAuthenticator 已尝试刷新；仍 401 → 停止（避免无限重试）
+                            Outcome.UNAUTHORIZED
+                        }
+                        !response.isSuccessful -> {
+                            Log.w(TAG, "sse HTTP ${response.code}")
+                            Outcome.ERROR
+                        }
+                        else -> {
+                            val body = response.body ?: return@use Outcome.ERROR
+                            val source = body.source()
+                            var eventName: String? = null
+                            var id: String? = null
+                            val dataLines = StringBuilder()
+                            while (scope.isActive) {
+                                val line = source.readUtf8Line() ?: break // EOF：服务端断开
+                                when {
+                                    line.startsWith("id:") -> id = line.removePrefix("id:").trim()
+                                    line.startsWith("event:") -> eventName = line.removePrefix("event:").trim()
+                                    line.startsWith("data:") -> {
+                                        if (dataLines.isNotEmpty()) dataLines.append('\n')
+                                        dataLines.append(line.removePrefix("data:").trimStart())
+                                    }
+                                    line.startsWith(":") -> Unit // 心跳注释行，忽略
+                                    line.isEmpty() -> {
+                                        // 事件边界：分发
+                                        val name = eventName
+                                        if (name != null) {
+                                            SseEventType.fromWire(name)?.let { type ->
+                                                if (id != null) lastEventId = id
+                                                _events.tryEmit(SseEvent(id, type, dataLines.toString()))
+                                            } ?: Log.d(TAG, "unknown sse event: $name")
+                                        }
+                                        eventName = null
+                                        id = null
+                                        dataLines.setLength(0)
+                                    }
+                                    else -> Unit // 忽略未知字段行
+                                }
+                            }
+                            Outcome.EOF
+                        }
                     }
                 }
+            } catch (e: IOException) {
+                Log.w(TAG, "sse io: ${e.message}")
+                Outcome.ERROR
             }
-        } catch (e: IOException) {
-            Log.w(TAG, "sse io: ${e.message}")
-            Outcome.ERROR
         }
-    }
 
     private enum class Outcome { EOF, ERROR, CURSOR_EXPIRED, UNAUTHORIZED }
 

@@ -15,5 +15,7 @@ data class MessageEntity(
     val isMine: Boolean,
     val fileName: String?,
     val fileSize: Long?,
-    val sequence: Long
+    val sequence: Long,
+    /** 引用消息 id（非空表示本条为 QUOTE） */
+    val replyToId: String?
 )

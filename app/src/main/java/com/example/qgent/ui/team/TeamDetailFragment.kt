@@ -116,11 +116,13 @@ class TeamDetailFragment : Fragment() {
         binding.btnDissolveTeam.setOnClickListener { confirmLeaveOrDissolve(isOwner) }
     }
 
-    /** 加载并填充团队成员列表；isOwner 控制是否显示删除按钮 */
+    /** 加载并填充团队成员列表；isOwner 控制是否显示删除按钮。
+     *  排序：创建者（TEAM_OWNER）置顶，其余保持后端返回顺序（产品约定，见 docs/product-notes.md）。 */
     private fun loadMembers(teamId: String, isOwner: Boolean) {
         viewLifecycleOwner.lifecycleScope.launch {
             userRepository.getTeamMembers(teamId).onSuccess { members ->
-                fillLinearLayout(binding.rvMembers, members, R.layout.item_chat_member) { view, member ->
+                val sorted = members.sortedByDescending { it.role == "TEAM_OWNER" }
+                fillLinearLayout(binding.rvMembers, sorted, R.layout.item_chat_member) { view, member ->
                     val item = ItemChatMemberBinding.bind(view)
                     item.tvMemberName.text = member.displayName
                     item.tvAgentTag.isVisible = member.role == "TEAM_OWNER"
@@ -133,13 +135,39 @@ class TeamDetailFragment : Fragment() {
         }
     }
 
-    /** 加载团队授权仓库（AUTHORIZED），与 GitHub 页计数口径一致 */
+    /**
+     * 加载团队授权仓库（AUTHORIZED），与 GitHub 页计数口径一致；
+     * 同时检测「已被项目绑定但授权已撤销」的仓库（REVOKED），以标红标签展示，
+     * 提示用户该仓库是死绑定（网页端撤销授权后项目绑定仍在，后续开发链路会引用）。
+     */
     private fun loadAuthorizedRepositories(teamId: String) {
         viewLifecycleOwner.lifecycleScope.launch {
             val repos = githubRepository.getGithubRepositories(teamId).getOrNull().orEmpty()
-            val names = repos.filter { it.authorizationStatus == "AUTHORIZED" }.map { it.fullName }
-            fillLinearLayout(binding.rvRepository, names, R.layout.item_repository) { view, name ->
-                ItemRepositoryBinding.bind(view).tvRepositoryName.text = name
+            val authorizedNames = repos.filter { it.authorizationStatus == "AUTHORIZED" }.map { it.fullName }
+
+            // 死绑定检测：遍历团队所有项目，收集授权已撤销的绑定仓库
+            val revoked = mutableListOf<String>()
+            userRepository.getProjects(teamId).getOrNull().orEmpty().forEach { project ->
+                githubRepository.getProjectRepositories(project.id).getOrNull().orEmpty()
+                    .filter { it.authorizationStatus == "REVOKED" }
+                    .forEach { revoked.add(it.fullName) }
+            }
+
+            val allNames = authorizedNames + revoked.distinct()
+            fillLinearLayout(binding.rvRepository, allNames, R.layout.item_repository) { view, name ->
+                val item = ItemRepositoryBinding.bind(view)
+                item.tvRepositoryName.text = name
+                val isRevoked = name in revoked
+                item.tvRepositoryStatus.isVisible = isRevoked
+                if (isRevoked) {
+                    // 标红 + 点击提示原因
+                    item.tvRepositoryName.setTextColor(
+                        androidx.core.content.ContextCompat.getColor(requireContext(), R.color.exit_red)
+                    )
+                    item.root.setOnClickListener {
+                        Toast.makeText(requireContext(), R.string.repo_revoked_hint, Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }
     }

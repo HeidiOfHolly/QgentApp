@@ -44,6 +44,8 @@ object MockDataSource {
 
     private val groupsByProjectId = mapOf(
         "p1" to listOf(
+            // 项目总群（PROJECT_MAIN）：创建项目时自动生成，恒置顶
+            GroupDto("main-1", "p1", "项目总群", null, "PROJECT_MAIN", "ACTIVE", 4, null, iso(20 * MINUTE), GroupLatestMessageDto("李四", "总群最新消息")),
             GroupDto("1", "p1", "登录功能", null, "REQUIREMENT", "ACTIVE", 3, null, iso(30 * MINUTE), GroupLatestMessageDto("李四", "好的没问题")),
             GroupDto("2", "p1", "认证安全", null, "REQUIREMENT", "ACTIVE", 2, null, iso(90 * MINUTE), GroupLatestMessageDto("我", "RSA 公钥我看一下"))
         ),

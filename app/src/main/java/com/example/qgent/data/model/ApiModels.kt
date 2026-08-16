@@ -157,9 +157,14 @@ data class CreateProjectRequest(
     val description: String? = null
 )
 
-/** 将团队现有成员加入项目（POST /projects/{projectId}/members） */
+/** 将团队现有成员加入项目（POST /projects/{projectId}/members），初始 PROJECT_MEMBER */
 data class AddProjectMemberRequest(
     @SerializedName("userId") val userId: String
+)
+
+/** 调整项目成员角色（PATCH /projects/{projectId}/members/{userId}）：PROJECT_MEMBER / PROJECT_ADMIN */
+data class UpdateProjectMemberRequest(
+    val role: String
 )
 
 data class ProjectDto(
@@ -202,10 +207,15 @@ data class GroupMemberDto(
     val id: String,
     val nickname: String?,
     @SerializedName("displayName") val displayName: String? = null,
-    val avatar: String?
+    val avatar: String?,
+    /** 成员类型：USER / AGENT（文档 §7：群成员 = 项目成员 + 参与群聊的 Agent） */
+    @SerializedName("memberType") val memberType: String? = null
 ) {
     /** 后端用户表用 display_name，群成员昵称可能是 displayName；兼容 nickname，兜底「成员」 */
     val resolvedName: String get() = displayName ?: nickname ?: "成员"
+
+    /** 是否 Agent：memberType=AGENT；后端未返回时按昵称启发式兜底 */
+    val isAgent: Boolean get() = memberType == "AGENT" || resolvedName.startsWith("Agent", ignoreCase = true)
 }
 
 // ── 消息 ──
@@ -221,7 +231,9 @@ data class GroupMessageDto(
     @SerializedName("groupId") val groupId: String,
     @SerializedName("senderId") val senderId: String,
     @SerializedName("senderName") val senderName: String?,
-    val type: String,               // TEXT / CODE / IMAGE / FILE / SYSTEM / QUOTE
+    /** 发送者类型：USER / AGENT / SYSTEM（文档 §7）；USER=userId，AGENT=agentId */
+    @SerializedName("senderType") val senderType: String? = null,
+    val type: String,               // TEXT / CODE / IMAGE / FILE / SYSTEM / QUOTE / TASK_STATUS
     val content: MessageContentDto?,
     val mentions: List<MentionDto>?,
     @SerializedName("replyToId") val replyToId: String?,
@@ -235,7 +247,17 @@ data class MessageContentDto(
     @SerializedName("url") val url: String? = null,
     @SerializedName("name") val name: String? = null,
     @SerializedName("size") val size: Long? = null,
-    @SerializedName("mimeType") val mimeType: String? = null
+    @SerializedName("mimeType") val mimeType: String? = null,
+    // ── TASK_STATUS 卡片（文档 §7）：content 至少含 taskId、status ──
+    @SerializedName("taskId") val taskId: String? = null,
+    @SerializedName("status") val status: String? = null,
+    @SerializedName("node") val node: String? = null,
+    @SerializedName("message") val message: String? = null,
+    // ── DIFF 卡片（文档 §7）：content 至少含 diffId ──
+    @SerializedName("diffId") val diffId: String? = null,
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("additions") val additions: Int? = null,
+    @SerializedName("deletions") val deletions: Int? = null
 )
 
 /** 创建对象存储直传凭证（§18.1：POST /projects/{projectId}/attachments） */
@@ -266,6 +288,8 @@ data class CreateGroupRequest(
     val title: String,
     val description: String? = null,
     @SerializedName("repositoryIds") val repositoryIds: List<String>? = null,
+    /** 创建需求群时选中的成员（userId 列表）；为空则由后端默认（文档契约以 memberIds 为准，已与后端确认） */
+    @SerializedName("memberIds") val memberIds: List<String>? = null,
     val type: String = "REQUIREMENT"
 )
 
