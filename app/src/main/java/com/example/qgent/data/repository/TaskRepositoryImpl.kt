@@ -6,6 +6,7 @@ import com.example.qgent.data.model.DiffFileResponseDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
 import com.example.qgent.data.model.ReplaceAgentRequest
+import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.data.model.TaskRunDetailListItemDto
@@ -15,6 +16,14 @@ import com.example.qgent.data.model.toDataOrThrow
 import com.example.qgent.data.model.toUnitOrThrow
 
 class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
+
+    override suspend fun createTask(
+        projectId: String,
+        request: TaskCreateRequest,
+        idempotencyKey: String
+    ): Result<TaskListItemDto> = apiCall {
+        service.createTask(projectId, idempotencyKey, request).toDataOrThrow()
+    }
 
     override suspend fun getTasks(
         projectId: String,

@@ -15,6 +15,7 @@ import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.ChatRepositoryImpl
 import com.example.qgent.data.repository.DiffRepository
 import com.example.qgent.data.repository.DiffRepositoryImpl
+import com.example.qgent.data.repository.FallbackAgentRepository
 import com.example.qgent.data.repository.FallbackDiffRepository
 import com.example.qgent.data.repository.FallbackMemoryRepository
 import com.example.qgent.data.repository.FallbackSkillRepository
@@ -22,6 +23,7 @@ import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.GitHubRepositoryImpl
 import com.example.qgent.data.repository.MemoryRepository
 import com.example.qgent.data.repository.MemoryRepositoryImpl
+import com.example.qgent.data.repository.MockAgentRepository
 import com.example.qgent.data.repository.MockDiffRepository
 import com.example.qgent.data.repository.MockMemoryRepository
 import com.example.qgent.data.repository.MockSkillRepository
@@ -55,7 +57,14 @@ class AppContainer(context: Context) {
 
     val chatRepository: ChatRepository = ChatRepositoryImpl(RetrofitClient.service)
 
-    val agentRepository: AgentRepository = AgentRepositoryImpl(RetrofitClient.service)
+    /**
+     * Agent：真实接口优先，失败回退 mock（"新手大礼包"演示 Agent）。
+     * 真实 GET /teams/{id}/agents 未就绪时，@ Agent / 发起任务仍需 Agent 数据可用，故用 Fallback 保底。
+     */
+    val agentRepository: AgentRepository = FallbackAgentRepository(
+        AgentRepositoryImpl(RetrofitClient.service),
+        MockAgentRepository()
+    )
 
     /**
      * Skill / Memory：真实接口优先，失败回退 mock 保底（Fallback 层）。

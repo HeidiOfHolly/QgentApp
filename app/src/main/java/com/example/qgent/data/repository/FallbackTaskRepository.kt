@@ -7,6 +7,9 @@ class FallbackTaskRepository(
 ) : TaskRepository {
     private val fb = FallbackDelegate(real, mock)
 
+    override suspend fun createTask(projectId: String, request: com.example.qgent.data.model.TaskCreateRequest, idempotencyKey: String) =
+        fb.call { createTask(projectId, request, idempotencyKey) }
+
     override suspend fun getTasks(
         projectId: String,
         groupId: String?,

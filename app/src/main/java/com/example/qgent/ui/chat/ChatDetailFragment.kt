@@ -3,6 +3,8 @@ import android.app.Dialog
 import android.content.Intent
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.os.Bundle
@@ -40,6 +42,7 @@ import com.example.qgent.data.local.MessageCache
 import com.example.qgent.data.model.CreateMemoryRequest
 import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
+import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.toChatMessage
 import com.example.qgent.data.model.toDiffFile
 import com.example.qgent.data.model.toGroupMember
@@ -53,6 +56,7 @@ import com.example.qgent.databinding.FragmentChatDetailBinding
 import com.example.qgent.model.ChatMessage
 import com.example.qgent.model.DiffFile
 import com.example.qgent.model.GroupMember
+import com.example.qgent.model.GroupType
 import com.example.qgent.model.MemberType
 import com.example.qgent.model.MessageType
 import com.example.qgent.viewmodel.MainViewModel
@@ -239,6 +243,10 @@ class ChatDetailFragment : Fragment() {
                     .onSuccess { dto ->
                         Log.d("SendMsg", "send success id=${dto.id} senderId=${dto.senderId} mentions=${dto.mentions} replyTo=${dto.replyToId}")
                         appendMessage(dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
+                        // @ 了 Agent → 自动弹发起任务（预填消息内容为需求，用户确认后创建任务让 Agent 干活）
+                        if (mentions.any { it.type == "AGENT" }) {
+                            showCreateTaskDialog(prefillTitle = text.take(30), prefillRequirement = text)
+                        }
                     }
                     .onFailure { e ->
                         Log.e("SendMsg", "send FAILED: ${e::class.simpleName} message=${e.message}", e)
@@ -257,15 +265,17 @@ class ChatDetailFragment : Fragment() {
      * 按成员类型生成 mention：普通用户 → USER，Agent → AGENT（文档 §7）。
      */
     private fun extractMentions(text: String): List<MentionDto> {
+        Log.d("Mention", "extract from '$text', memberById=${memberById.map { "${it.value.name}:${it.value.type}" }}")
         if (memberById.isEmpty()) return emptyList()
         val mentions = mutableListOf<MentionDto>()
-        Regex("@([^@\\s]+)").findAll(text).forEach { match ->
-            val name = match.groupValues[1]
-            memberById.entries.firstOrNull { it.value.name == name }?.let {
+        // 成员名可含空格（如 "开发 Agent"）：按名字长度降序，优先匹配最长的成员名
+        val sortedMembers = memberById.entries.sortedByDescending { it.value.name.length }
+        sortedMembers.forEach { (id, member) ->
+            if (Regex("@" + Regex.escape(member.name) + "(?=\\s|$)").containsMatchIn(text)) {
                 mentions.add(
                     MentionDto(
-                        type = if (it.value.type == MemberType.AGENT) "AGENT" else "USER",
-                        id = it.key
+                        type = if (member.type == MemberType.AGENT) "AGENT" else "USER",
+                        id = id
                     )
                 )
             }
@@ -413,7 +423,7 @@ class ChatDetailFragment : Fragment() {
         binding.tvMultiSelectCount.text = getString(R.string.multi_select_count, selectedMessageIds.size)
     }
 
-    /** 生成 Memory 草稿：选中消息拼接为标题+内容，调 POST /memories 提交审核 */
+    /** 生成 Memory 草稿：先让用户填标题/简介，再拼接选中消息为内容，POST /memories 提交审核 */
     private fun createMemoryDraftFromSelection() {
         if (selectedMessageIds.isEmpty()) {
             Toast.makeText(requireContext(), R.string.memory_draft_empty, Toast.LENGTH_SHORT).show()
@@ -430,10 +440,48 @@ class ChatDetailFragment : Fragment() {
             Toast.makeText(requireContext(), R.string.memory_draft_empty, Toast.LENGTH_SHORT).show()
             return
         }
-        // 标题取第一条消息摘要，内容拼接选中消息（发送者：内容）
-        val title = selected.first().displayContent().take(30)
-        val content = selected.joinToString("\n") { "${it.senderName}：${it.displayContent()}" }
 
+        // 弹窗：输入 Memory 标题 + 简介（简介留空时用选中消息拼接）
+        val container = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 16, 48, 8)
+        }
+        val etTitle = EditText(requireContext()).apply {
+            hint = getString(R.string.memory_draft_title_hint)
+            textSize = 14f
+        }
+        val etSummary = EditText(requireContext()).apply {
+            hint = getString(R.string.memory_draft_summary_hint)
+            textSize = 14f
+            minLines = 2
+            gravity = android.view.Gravity.TOP
+        }
+        container.addView(etTitle)
+        container.addView(etSummary)
+
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.memory_draft_title)
+            .setView(container)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.confirm) { _, _ ->
+                val title = etTitle.text.toString().trim()
+                if (title.isEmpty()) {
+                    Toast.makeText(requireContext(), R.string.memory_draft_title_required, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                // 简介为空时拼接选中消息；否则用用户输入的简介
+                val summary = etSummary.text.toString().trim()
+                val content = if (summary.isNotEmpty()) {
+                    summary
+                } else {
+                    selected.joinToString("\n") { "${it.senderName}：${it.displayContent()}" }
+                }
+                submitMemoryDraft(projectId, title, content)
+            }
+            .show()
+    }
+
+    private fun submitMemoryDraft(projectId: String, title: String, content: String) {
         viewLifecycleOwner.lifecycleScope.launch {
             // 创建草稿（DRAFT）→ 立即提交审核（PENDING_REVIEW，进审核队列）
             memoryRepo().createMemory(
@@ -631,17 +679,115 @@ class ChatDetailFragment : Fragment() {
         binding.etInput.setSelection(text.length)
     }
 
+    /**
+     * 发起任务弹窗：标题 + 需求描述 + 选项目绑定仓库，调 POST /tasks 创建 → Agent 开始干活。
+     * 需求群 id = 当前群（文档 §11.3：requirementGroupId 必须指向当前项目 ACTIVE 的 REQUIREMENT 群）。
+     */
+    private fun showCreateTaskDialog(prefillTitle: String = "", prefillRequirement: String = "") {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (groupId.isEmpty()) return
+
+        val container = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 16, 48, 8)
+        }
+        val etTitle = EditText(requireContext()).apply {
+            hint = getString(R.string.start_task_name_hint)
+            textSize = 14f
+            setText(prefillTitle)
+        }
+        val etRequirement = EditText(requireContext()).apply {
+            hint = getString(R.string.start_task_requirement_hint)
+            textSize = 14f
+            minLines = 3
+            gravity = android.view.Gravity.TOP
+            setText(prefillRequirement)
+        }
+        val tvRepoLabel = TextView(requireContext()).apply {
+            text = getString(R.string.manage_repositories)
+            textSize = 14f
+        }
+        val repoChecks = mutableListOf<android.widget.CheckBox>()
+
+        container.addView(etTitle)
+        container.addView(etRequirement)
+        container.addView(tvRepoLabel)
+
+        // 加载项目绑定仓库（文档 §6 ProjectRepository），失败时提示
+        viewLifecycleOwner.lifecycleScope.launch {
+            val repos = githubRepo().getProjectRepositories(projectId).getOrNull().orEmpty()
+            if (repos.isEmpty()) {
+                tvRepoLabel.text = getString(R.string.start_task_repo_required)
+                return@launch
+            }
+            repos.forEach { repo ->
+                val cb = android.widget.CheckBox(requireContext()).apply {
+                    text = repo.displayName
+                    textSize = 14f
+                    tag = repo.id
+                    isChecked = repos.size == 1
+                }
+                repoChecks.add(cb)
+                container.addView(cb)
+            }
+        }
+
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.start_task_title)
+            .setView(container)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.confirm) { _, _ ->
+                val title = etTitle.text.toString().trim()
+                val requirement = etRequirement.text.toString().trim()
+                val repoIds = repoChecks.filter { it.isChecked }.map { it.tag as String }
+                when {
+                    title.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_name_required, Toast.LENGTH_SHORT).show()
+                    requirement.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_requirement_required, Toast.LENGTH_SHORT).show()
+                    repoIds.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_repo_required, Toast.LENGTH_SHORT).show()
+                    else -> createTask(projectId, groupId, title, requirement, repoIds)
+                }
+            }
+            .show()
+    }
+
+    private fun createTask(projectId: String, groupId: String, title: String, requirement: String, repoIds: List<String>) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepo().createTask(
+                projectId,
+                TaskCreateRequest(
+                    requirementGroupId = groupId,
+                    title = title,
+                    requirement = requirement,
+                    repositoryIds = repoIds
+                ),
+                UUID.randomUUID().toString()
+            ).onSuccess {
+                Toast.makeText(requireContext(), R.string.start_task_success, Toast.LENGTH_LONG).show()
+            }.onFailure { e ->
+                Toast.makeText(requireContext(), "${getString(R.string.start_task_failed)}：${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun githubRepo(): com.example.qgent.data.repository.GitHubRepository =
+        (requireActivity().application as QgentApp).container.githubRepository
+
+    private fun taskRepo(): com.example.qgent.data.repository.TaskRepository =
+        (requireActivity().application as QgentApp).container.taskRepository
+
     private fun showAttachmentMenu() {
         val popup = PopupMenu(requireContext(), binding.btnPlus)
         popup.menu.add(getString(R.string.image))
         popup.menu.add(getString(R.string.file))
+        popup.menu.add(getString(R.string.start_task))
         popup.setOnMenuItemClickListener { item ->
-            if (item.title == getString(R.string.image)) {
-                pickImage.launch(
+            when (item.title) {
+                getString(R.string.image) -> pickImage.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 )
-            } else {
-                pickFile.launch(arrayOf("*/*"))
+                getString(R.string.file) -> pickFile.launch(arrayOf("*/*"))
+                getString(R.string.start_task) -> showCreateTaskDialog()
             }
             true
         }
@@ -739,11 +885,14 @@ class ChatDetailFragment : Fragment() {
 
             val membersResult = membersDeferred.await()
             membersResult.onSuccess { dtos ->
+                Log.d("Mention", "getMembers success: ${dtos.map { "${it.id}:${it.resolvedName}:${it.memberType}" }}")
                 // 保存原始群成员；Agent 合并由 rebuildMemberMaps 统一处理（agents 可能异步后加载）
                 baseGroupMembers = dtos.map { it.toGroupMember() }
                 baseMemberNamesById = dtos.associate { it.id to it.resolvedName }
                 baseMemberById = dtos.associate { it.id to it.toGroupMember() }
                 rebuildMemberMaps()
+            }.onFailure {
+                Log.e("Mention", "getMembers FAILED: ${it::class.simpleName} ${it.message}")
             }
 
             val messagesResult = messagesDeferred.await()
@@ -765,12 +914,19 @@ class ChatDetailFragment : Fragment() {
 
     /**
      * 重建成员映射：原始群成员 + 团队 Agent（Agent 是团队级 @ 渠道）。
-     * 在群成员加载完成和 agents 变化时调用，保证 @ 弹窗始终有 Agent。
+     * 仅需求群合并 Agent；项目总群（PROJECT_MAIN）是纯人类聊天页面，不合并（产品约定）。
      */
     private fun rebuildMemberMaps() {
-        val teamAgents = mainViewModel.agents.value.orEmpty()
-            .filter { it.status.name != "ARCHIVED" }
-            .map { GroupMember(id = it.id, name = it.name, type = MemberType.AGENT) }
+        val isMainGroup = mainViewModel.groups.value.orEmpty()
+            .firstOrNull { it.id == arguments?.getString("groupId") }
+            ?.type == GroupType.PROJECT_MAIN
+        val teamAgents = if (isMainGroup) {
+            emptyList()
+        } else {
+            mainViewModel.agents.value.orEmpty()
+                .filter { it.status.name != "ARCHIVED" }
+                .map { GroupMember(id = it.id, name = it.name, type = MemberType.AGENT) }
+        }
         groupMembers = baseGroupMembers + teamAgents
         memberNamesById = baseMemberNamesById + teamAgents.associate { it.id to it.name }
         memberById = baseMemberById + teamAgents.associate { it.id to it }

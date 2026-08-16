@@ -40,6 +40,7 @@ import com.example.qgent.data.model.ActivityDto
 import com.example.qgent.data.model.DiffFileResponseDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
+import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.data.model.TaskRunDetailListItemDto
@@ -529,6 +530,14 @@ interface QgApiService {
         @Query("limit") limit: Int = 20
     ): Response<ApiResponse<List<DiffFileDto>>>
     // ── 任务（§16 任务列表） ──
+
+    /** 创建任务（§11.3：从需求群创建，可创建新 Workspace） */
+    @POST("projects/{projectId}/tasks")
+    suspend fun createTask(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: TaskCreateRequest
+    ): Response<ApiResponse<TaskListItemDto>>
 
     @GET("projects/{projectId}/tasks")
     suspend fun getTasks(

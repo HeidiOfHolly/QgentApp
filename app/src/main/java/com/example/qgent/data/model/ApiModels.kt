@@ -572,6 +572,14 @@ data class TaskExecutionSummaryDto(
 )
 
 /** 任务列表项（GET /projects/{projectId}/tasks，§16.1）。priority 后端恒为 null，不展示。 */
+data class TaskCreateRequest(
+    @SerializedName("requirementGroupId") val requirementGroupId: String,
+    @SerializedName("triggerMessageId") val triggerMessageId: String? = null,
+    val title: String,
+    val requirement: String,
+    @SerializedName("repositoryIds") val repositoryIds: List<String>,
+    @SerializedName("baseRef") val baseRef: String? = null
+)
 data class TaskListItemDto(
     val id: String,
     @SerializedName("displayCode") val displayCode: String,

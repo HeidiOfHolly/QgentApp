@@ -4,6 +4,7 @@ import com.example.qgent.data.model.ActivityDto
 import com.example.qgent.data.model.DiffFileResponseDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
+import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.data.model.TaskRunDetailListItemDto
@@ -12,6 +13,29 @@ import com.example.qgent.data.model.TaskStepListItemDto
 
 /** mock 任务/动态/MR：返回空列表，任务页展示空态 */
 class MockTaskRepository : TaskRepository {
+
+    override suspend fun createTask(
+        projectId: String,
+        request: TaskCreateRequest,
+        idempotencyKey: String
+    ): Result<TaskListItemDto> = Result.success(
+        TaskListItemDto(
+            id = "mock-task-${System.currentTimeMillis()}",
+            displayCode = "TASK-mock",
+            projectId = projectId,
+            title = request.title,
+            requirementSummary = request.requirement.take(50),
+            status = "PLANNING",
+            deliveryMode = "STANDARD",
+            requirementGroup = null,
+            createdByUser = null,
+            repositories = null,
+            executionSummary = null,
+            attention = null,
+            createdAt = "2026-08-16T08:00:00Z",
+            updatedAt = "2026-08-16T08:00:00Z"
+        )
+    )
 
     override suspend fun getTasks(
         projectId: String,

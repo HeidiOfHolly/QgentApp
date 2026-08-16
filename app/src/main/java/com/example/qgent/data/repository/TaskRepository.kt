@@ -4,6 +4,7 @@ import com.example.qgent.data.model.ActivityDto
 import com.example.qgent.data.model.DiffFileResponseDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
+import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.data.model.TaskRunDetailListItemDto
@@ -12,6 +13,13 @@ import com.example.qgent.data.model.TaskStepListItemDto
 
 /** 任务/动态/MR 仓库：任务页三列表查询（§16 任务 / §19.4 动态 / §13 MR） */
 interface TaskRepository {
+    /** 创建任务（§11.3：从需求群创建，可创建新 Workspace 或复用前序） */
+    suspend fun createTask(
+        projectId: String,
+        request: TaskCreateRequest,
+        idempotencyKey: String
+    ): Result<TaskListItemDto>
+
     /** 查询项目可见任务（§16.1），支持需求群/状态/发起人/仓库过滤，分页返回单页数据 */
     suspend fun getTasks(
         projectId: String,

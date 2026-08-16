@@ -3,6 +3,42 @@
 > 本文件记录开发过程中确认的产品逻辑与契约决策，供任何新会话读取，
 > 避免依赖对话记忆。修改时同步更新。
 
+## @ Agent 自动触发任务（2026-08-16 实现）
+
+- **机制**：在需求群发消息 @ 了 Agent（mention type=AGENT）→ 消息发送成功后**自动弹「发起任务」弹窗**，
+  预填标题（消息前 30 字）和需求（消息全文）→ 用户选仓库确认 → POST /tasks 创建任务 →
+  后端自动建 `feat/task-{taskId}` 分支并开始编排（Planner→Developer→Tester→Reviewer）。
+- 实现：`sendTextMessage` onSuccess 里判断 `mentions.any { it.type == "AGENT" }` →
+  `showCreateTaskDialog(prefillTitle, prefillRequirement)`（原 + 号菜单入口保留）。
+- 说明：后端创建 Task 时自动生成分支（TaskService `"feat/task-" + task.getId()`），
+  Agent 在该分支干活，交付时基于 sourceBranch 发 PR。
+
+## Memory / Skill 池交互（2026-08-16 完善）
+
+- **生成 Memory 草稿**：多选聊天记录 → 弹窗填**标题（必填）+ 简介（可选，留空拼接选中消息）** →
+  POST /memories（DRAFT）→ submit-review（PENDING_REVIEW 进审核队列）。
+- **审核队列条目（待审核）**：点击**直接弹审核操作（通过/拒绝）**；非 Admin Toast 无权限不弹。
+  审核权限 = 项目 Admin（getProjectMembers role=PROJECT_ADMIN）**或** 团队 Owner
+  （getTeamMembers role=TEAM_OWNER，文档 §3.1 兜底管理权限），实时读取不依赖写死 isProjectAdmin。
+- **共享池条目（已通过）**：点击弹 ResourceDetailSheet 只读纯文本详情（白底圆角 bg_card，
+  类型标签 + 标题 + 内容）。
+
+## 总群 vs 需求群：Agent 规则（2026-08-16 确认）- **项目总群（PROJECT_MAIN）是纯人类聊天页面**：不合并 Agent，@ 弹窗只有真实群成员。
+- **需求群（REQUIREMENT）自动带 Agent**：创建群弹窗成员选择区并入团队 ACTIVE Agent（默认勾选，
+  显示 "Agent" 标签）；Agent 入群靠后端 `sendAsAgent` 回消息（不随创建群提交 Agent id，
+  `checkedUserIds()` 只提交真实用户）；@ 弹窗合并 Agent。
+- ChatDetailFragment `rebuildMemberMaps()` 按群类型（mainViewModel.groups 反查）决定是否合并 Agent。
+
+## 群里发起任务（D 组，2026-08-16 完成）- **后端机制**：@ Agent 不会自动触发任务（后端无消息→任务监听器）。Agent 干活 =
+  显式 `POST /projects/{projectId}/tasks`（TaskCreateRequest：requirementGroupId=当前需求群、
+  title、requirement、repositoryIds 至少 1 个、baseRef 可选）。创建后后端 Orchestrator 编排
+  （Planner→Developer→Tester→Reviewer），各 Agent 执行时经 `sendAsAgent` 回群发消息
+  （TASK_STATUS/DIFF 等），App 端已支持卡片展示。
+- **App 端入口**：聊天详情页「+ → 发起任务」→ 弹窗（标题 + 需求描述 + 项目绑定仓库多选）→ 创建任务。
+- 数据层：`TaskCreateRequest` DTO + `QgApiService.createTask` + `TaskRepository.createTask`
+  （Impl 真实 / Mock 保底，AppContainer 用 TaskRepositoryImpl）。
+- 任务侧（同事合并）：TaskRepository 查询/详情/步骤/运行/取消/换 Agent 已就绪。
+
 ## 消息系统提示与引用（2026-08-16 确认）
 
 - **系统提示（SYSTEM 消息）**：成员进群/退群等由后端以 `SYSTEM` 消息推送

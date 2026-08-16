@@ -13,6 +13,7 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.model.ProjectMemberDto
 import com.example.qgent.data.repository.MemoryRepository
 import com.example.qgent.databinding.FragmentMemoryPoolBinding
 import com.example.qgent.model.MemoryItem
@@ -23,7 +24,9 @@ import java.util.UUID
 
 /**
  * Memory 池：审核队列（PENDING_REVIEW）+ 共享池（APPROVED）。
- * 真实接口优先，失败由数据层 Fallback 回退 mock 保底（测试完成后移除）。
+ * - 点击条目：弹纯文本详情（ResourceDetailSheet）；
+ * - 审核队列条目：长按弹出 通过/拒绝（仅项目 Admin，权限从项目成员角色实时判断）；
+ * - 真实接口优先，失败由数据层 Fallback 回退 mock 保底（测试完成后移除）。
  */
 class MemoryPoolFragment : Fragment() {
 
@@ -34,6 +37,8 @@ class MemoryPoolFragment : Fragment() {
     }
     private val memoryRepo: MemoryRepository
         get() = (requireActivity().application as QgentApp).container.memoryRepository
+
+    private var isAdmin = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -52,7 +57,28 @@ class MemoryPoolFragment : Fragment() {
         binding.rvReviewList.layoutManager = LinearLayoutManager(requireContext())
         binding.rvApprovedList.layoutManager = LinearLayoutManager(requireContext())
 
+        checkAdminRole()
         loadMemories()
+    }
+
+    /**
+     * 审核权限判断：项目 Admin 或 当前团队 Owner（文档 §3.1：Team Owner 对本团队项目有兜底管理权限）。
+     * 从项目成员角色 + 团队成员角色实时读取，不依赖写死的 isProjectAdmin。
+     */
+    private fun checkAdminRole() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val teamId = mainViewModel.currentTeamId() ?: return
+        val myId = com.example.qgent.data.SessionStore.user()?.id ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val app = requireActivity().application as QgentApp
+            val projectAdmin = app.container.userRepository.getProjectMembers(projectId)
+                .getOrNull().orEmpty()
+                .any { it.userId == myId && it.role == "PROJECT_ADMIN" }
+            val teamOwner = app.container.userRepository.getTeamMembers(teamId)
+                .getOrNull().orEmpty()
+                .any { it.userId == myId && it.role == "TEAM_OWNER" }
+            isAdmin = projectAdmin || teamOwner
+        }
     }
 
     private fun loadMemories() {
@@ -69,54 +95,54 @@ class MemoryPoolFragment : Fragment() {
     }
 
     private fun render(pending: List<MemoryItem>, approved: List<MemoryItem>) {
+        // 审核队列：点击弹详情卡片，右上角带 通过/拒绝（Admin 可操作；非 Admin 只读）
         binding.rvReviewList.adapter = PoolResourceAdapter(pending) { item ->
-            onItemClick(item, isPending = true)
+            showReviewSheet(item)
         }
         binding.tvReviewEmpty.isVisible = pending.isEmpty()
 
+        // 共享池：点击看纯文本详情
         binding.tvApprovedCount.text = "共 ${approved.size} 条"
         binding.rvApprovedList.adapter = PoolResourceAdapter(approved) { item ->
-            onItemClick(item, isPending = false)
+            onItemClick(item)
         }
     }
 
-    private fun onItemClick(item: MemoryItem, isPending: Boolean) {
-        if (isPending && !mainViewModel.isProjectAdmin) {
-            Toast.makeText(requireContext(), R.string.review_permission_denied, Toast.LENGTH_SHORT).show()
-            return
-        }
+    /** 审核队列详情卡片：显示内容 + 右上角通过/拒绝（非 Admin 无按钮） */
+    private fun showReviewSheet(item: MemoryItem) {
+        ResourceDetailSheet(
+            name = item.name,
+            description = item.description,
+            isPending = true,
+            onApprove = if (isAdmin) { { approveItem(item) } } else null,
+            onReject = if (isAdmin) { { rejectItem(item) } } else null
+        ).show(childFragmentManager, ResourceDetailSheet.TAG)
+    }
+
+    private fun approveItem(item: MemoryItem) {
         val projectId = mainViewModel.currentProjectId() ?: return
-        if (isPending && mainViewModel.isProjectAdmin) {
-            showReviewAction(projectId, item)
-        } else {
-            ResourceDetailSheet(item.name, item.description, isPending).show(
-                childFragmentManager,
-                ResourceDetailSheet.TAG
-            )
+        viewLifecycleOwner.lifecycleScope.launch {
+            memoryRepo.approve(projectId, item.id, UUID.randomUUID().toString())
+                .onSuccess { Toast.makeText(requireContext(), "已通过", Toast.LENGTH_SHORT).show(); loadMemories() }
+                .onFailure { Toast.makeText(requireContext(), "操作失败：${it.message}", Toast.LENGTH_SHORT).show() }
         }
     }
 
-    /** 审核弹窗：通过 / 拒绝 / 仅查看 */
-    private fun showReviewAction(projectId: String, item: MemoryItem) {
-        val options = arrayOf("通过", "拒绝")
-        androidx.appcompat.app.AlertDialog.Builder(requireContext())
-            .setTitle(item.name)
-            .setItems(options) { _, which ->
-                viewLifecycleOwner.lifecycleScope.launch {
-                    val key = UUID.randomUUID().toString()
-                    when (which) {
-                        0 -> memoryRepo.approve(projectId, item.id, key)
-                        else -> memoryRepo.reject(projectId, item.id, key)
-                    }.onSuccess {
-                        Toast.makeText(requireContext(), "操作成功", Toast.LENGTH_SHORT).show()
-                        loadMemories()
-                    }.onFailure {
-                        Toast.makeText(requireContext(), "操作失败：${it.message}", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
+    private fun rejectItem(item: MemoryItem) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            memoryRepo.reject(projectId, item.id, UUID.randomUUID().toString())
+                .onSuccess { Toast.makeText(requireContext(), "已驳回", Toast.LENGTH_SHORT).show(); loadMemories() }
+                .onFailure { Toast.makeText(requireContext(), "操作失败：${it.message}", Toast.LENGTH_SHORT).show() }
+        }
+    }
+
+    /** 点击共享条目：纯文本详情（只读展示） */
+    private fun onItemClick(item: MemoryItem) {
+        ResourceDetailSheet(item.name, item.description, isPending = false).show(
+            childFragmentManager,
+            ResourceDetailSheet.TAG
+        )
     }
 
     override fun onDestroyView() {
