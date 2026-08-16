@@ -42,6 +42,7 @@ import com.example.qgent.data.model.toChatMessage
 import com.example.qgent.data.model.toGroupMember
 import com.example.qgent.data.repository.AttachmentUploader
 import com.example.qgent.data.repository.ChatRepository
+import com.example.qgent.data.sse.ProjectEventStream
 import com.example.qgent.databinding.BottomSheetMentionMemberBinding
 import com.example.qgent.databinding.DialogImagePreviewBinding
 import com.example.qgent.databinding.FragmentChatDetailBinding
@@ -80,11 +81,15 @@ class ChatDetailFragment : Fragment() {
     private val attachmentUploader: AttachmentUploader by lazy {
         (requireActivity().application as QgentApp).container.attachmentUploader
     }
+    private val eventStream: ProjectEventStream by lazy {
+        (requireActivity().application as QgentApp).container.projectEventStream
+    }
 
     private val messages = mutableListOf<ChatMessage>()
     private lateinit var rows: MutableList<ChatRow>
     private lateinit var adapter: ChatMessageAdapter
     private var pollingJob: Job? = null
+    private var eventStreamJob: Job? = null
 
     // 系统相册选图：免存储权限，返回图片 content:// URI
     private val pickImage = registerForActivityResult(
@@ -196,6 +201,7 @@ class ChatDetailFragment : Fragment() {
                     }
                     .onFailure { e ->
                         Log.e("SendMsg", "send FAILED: ${e::class.simpleName} message=${e.message}", e)
+                        Toast.makeText(requireContext(), "发送失败，仅自己可见", Toast.LENGTH_SHORT).show()
                         appendLocalMessage(text)
                     }
             }
@@ -283,10 +289,12 @@ class ChatDetailFragment : Fragment() {
         }.getOrNull()
     }
 
+    /** 发送失败时的本地兜底消息：id 加 local- 前缀标记，
+     *  仅在本次会话内展示，不写入缓存、不与网络消息混淆（修复幽灵 @ 消息残留） */
     private fun appendLocalMessage(text: String) {
         appendMessage(
             ChatMessage(
-                UUID.randomUUID().toString(),
+                LOCAL_ID_PREFIX + UUID.randomUUID(),
                 "我",
                 text,
                 MessageType.TEXT,
@@ -468,10 +476,13 @@ class ChatDetailFragment : Fragment() {
         rows.add(ChatRow.Message(message))
         adapter.notifyItemRangeInserted(start, rows.size - start)
         scrollToBottom()
-        // 发送后立即落缓存，避免退出重进后新消息丢失
+        // 发送后立即落缓存，避免退出重进后新消息丢失；
+        // 本地兜底消息（发送失败）不落缓存，防止幽灵消息持久化残留
         val groupId = arguments?.getString("groupId").orEmpty()
         if (groupId.isNotEmpty()) {
-            viewLifecycleOwner.lifecycleScope.launch { messageCache.save(groupId, messages) }
+            viewLifecycleOwner.lifecycleScope.launch {
+                messageCache.save(groupId, messages.filterNot { it.id.startsWith(LOCAL_ID_PREFIX) })
+            }
         }
     }
 
@@ -528,7 +539,7 @@ class ChatDetailFragment : Fragment() {
                 // 合并时必须以「当前内存列表」为基准（而非开头读的 cached 快照）：
                 // 若初始 getMessages 较慢，期间用户已发出消息并 append 到 messages，
                 // 用 cached 会把这几天新消息连同网络结果一起覆盖掉，导致「发出后几秒消失」。
-                val merged = (messages + list).distinctBy { it.id }.sortedChronologically()
+                val merged = mergeWithNetwork(list)
                 setMessages(merged)
                 messageCache.save(groupId, merged)
             }.onFailure {
@@ -563,12 +574,37 @@ class ChatDetailFragment : Fragment() {
         val myId = SessionStore.user()?.id
         chatRepo.getMessages(projectId, groupId).onSuccess { dtos ->
             val list = dtos.map { it.toChatMessage(myId, memberNamesById) }
-            val merged = (messages + list).distinctBy { it.id }.sortedChronologically()
+            // 轮询时保留本会话内刚发的本地兜底消息（keepLocal=true），
+            // 避免用户刚发送失败的消息被下一次轮询立刻删掉；下次进页面时由 loadInitialData 清掉
+            val merged = mergeWithNetwork(list, keepLocal = true)
             if (merged != messages) {
                 setMessages(merged)
-                messageCache.save(groupId, merged)
+                messageCache.save(groupId, merged.filterNot { it.id.startsWith(LOCAL_ID_PREFIX) })
             }
         }
+    }
+
+    /**
+     * 网络消息与当前内存列表合并，并剔除「幽灵消息」：
+     * 发送失败时 appendLocalMessage 生成的本地兜底消息（isMine && sequence<=0）后端不存在，
+     * 历史出错版本（如 @ 功能早期版本）把它们写进了 Room 缓存，导致：
+     * 1) 只在自己这边显示、别人看不到；
+     * 2) 永远无法被 distinctBy(id) 匹配清除，一直残留；
+     * 3) 本地消息 sequence=0 → 排序恒排末尾，新消息反而显示在它上方。
+     *
+     * [keepLocal]=false（初次加载）：剔除所有未被后端确认的本地兜底消息（含历史残留）；
+     * [keepLocal]=true（轮询）：仅剔除旧幽灵（无 local- 前缀的），本会话新发的 local- 消息保留显示。
+     */
+    private fun mergeWithNetwork(network: List<ChatMessage>, keepLocal: Boolean = false): List<ChatMessage> {
+        val networkIds = network.map { it.id }.toSet()
+        val kept = messages.filter { msg ->
+            when {
+                msg.id in networkIds -> true                                  // 后端已确认
+                keepLocal && msg.id.startsWith(LOCAL_ID_PREFIX) -> true        // 本会话刚发的本地消息
+                else -> !(msg.isMine && msg.sequence <= 0L)                    // 历史幽灵：自己发的且无 sequence
+            }
+        }
+        return (kept + network).distinctBy { it.id }.sortedChronologically()
     }
 
     /** 按后端单调 sequence 排序（本地兜底消息无 sequence，恒排末尾）；timestamp 因时区不一致不可靠，仅作 sequence 相同时的次级排序 */
@@ -590,17 +626,44 @@ class ChatDetailFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         startPolling()
+        startEventStream()
     }
 
     override fun onPause() {
         super.onPause()
         stopPolling()
+        stopEventStream()
         // 退出详情页时把已看到的最新消息时间回传，避免回到列表页仍显示红点
         val groupId = arguments?.getString("groupId").orEmpty()
         val lastSeen = messages.maxOfOrNull { it.timestamp }
         if (groupId.isNotEmpty() && lastSeen != null) {
             mainViewModel.markGroupRead(groupId, lastSeen)
         }
+    }
+
+    /**
+     * 项目级 SSE 事件流：任何事件到达（任务状态变化会往群写 TASK_STATUS 消息，
+     * 其他人发消息后端暂无推送事件）都立即拉取一次消息，比 3s 轮询更快；
+     * 轮询保留作为无事件时的兜底（文档 §12.1 无聊天消息事件）。
+     */
+    private fun startEventStream() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (groupId.isEmpty()) return
+        eventStream.start(projectId)
+        if (eventStreamJob == null) {
+            eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
+                eventStream.events.collect {
+                    pollMessages(projectId, groupId)
+                }
+            }
+        }
+    }
+
+    private fun stopEventStream() {
+        eventStreamJob?.cancel()
+        eventStreamJob = null
+        eventStream.stop()
     }
 
     override fun onDestroyView() {
@@ -613,6 +676,10 @@ class ChatDetailFragment : Fragment() {
         private const val TIME_GAP_MS = 5 * 60 * 1000L
         private const val POLL_INTERVAL_MS = 3_000L
         private const val MAX_PREVIEW_CHARS = 100_000
+
+        /** 本地兜底消息（发送失败）id 前缀：不落缓存、合并时剔除，防止幽灵消息残留 */
+        private const val LOCAL_ID_PREFIX = "local-"
+
         private val TEXT_EXTENSIONS = setOf(
             "txt", "md", "json", "xml", "yaml", "yml", "csv", "log", "kt", "java", "py",
             "js", "ts", "html", "css", "sql", "sh", "gradle", "properties", "ini", "conf",

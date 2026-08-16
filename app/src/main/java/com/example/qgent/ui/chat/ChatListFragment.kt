@@ -20,6 +20,7 @@ import com.example.qgent.R
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.repository.UserRepository
+import com.example.qgent.data.sse.ProjectEventStream
 import com.example.qgent.databinding.BottomSheetCreateGroupBinding
 import com.example.qgent.databinding.FragmentChatListBinding
 import com.example.qgent.model.ChatGroup
@@ -42,7 +43,12 @@ class ChatListFragment : Fragment() {
     private val userRepository: UserRepository
         get() = (requireActivity().application as QgentApp).container.userRepository
 
+    /** 项目级 SSE 事件流：收到事件立即刷新群列表（摘要/未读/新消息），替代部分轮询延迟 */
+    private val eventStream: ProjectEventStream
+        get() = (requireActivity().application as QgentApp).container.projectEventStream
+
     private var pollingJob: Job? = null
+    private var eventStreamJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -58,11 +64,36 @@ class ChatListFragment : Fragment() {
         super.onResume()
         mainViewModel.refreshGroups()
         startPolling()
+        startEventStream()
     }
 
     override fun onPause() {
         super.onPause()
         stopPolling()
+        stopEventStream()
+    }
+
+    /**
+     * 建立项目级 SSE 连接：任何事件到达（任务状态变化会往群写 TASK_STATUS 消息、
+     * diff/delivery 事件同步刷新）都立即刷新群列表，比轮询更快感知新消息。
+     * 轮询仍保留作为无事件时的兜底。
+     */
+    private fun startEventStream() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        eventStream.start(projectId)
+        if (eventStreamJob == null) {
+            eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
+                eventStream.events.collect {
+                    mainViewModel.refreshGroups()
+                }
+            }
+        }
+    }
+
+    private fun stopEventStream() {
+        eventStreamJob?.cancel()
+        eventStreamJob = null
+        eventStream.stop()
     }
 
     /** 轮询群聊列表：后端暂无聊天推送，用定时 refreshGroups 兜底实现别人发消息红点实时显示 */
