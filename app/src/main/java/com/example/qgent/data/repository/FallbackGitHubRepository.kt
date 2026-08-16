@@ -20,6 +20,9 @@ class FallbackGitHubRepository(
     override suspend fun syncInstallation(teamId: String, installationId: String, idempotencyKey: String) =
         fb.call { syncInstallation(teamId, installationId, idempotencyKey) }
 
+    override suspend fun revokeGithubRepository(teamId: String, repositoryId: String, idempotencyKey: String) =
+        fb.call { revokeGithubRepository(teamId, repositoryId, idempotencyKey) }
+
     override suspend fun getGithubRepositories(teamId: String) = fb.call { getGithubRepositories(teamId) }
 
     override suspend fun getProjectRepositories(projectId: String) = fb.call { getProjectRepositories(projectId) }

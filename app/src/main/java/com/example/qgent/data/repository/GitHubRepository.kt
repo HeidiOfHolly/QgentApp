@@ -23,6 +23,9 @@ interface GitHubRepository {
     /** 团队被授权的 GitHub 仓库列表 */
     suspend fun getGithubRepositories(teamId: String): Result<List<GitHubRepositoryDto>>
 
+    /** 撤销单个仓库授权（团队级，repositoryId = 授权仓本地 UUID） */
+    suspend fun revokeGithubRepository(teamId: String, repositoryId: String, idempotencyKey: String): Result<Unit>
+
     /** 项目已绑定的仓库列表 */
     suspend fun getProjectRepositories(projectId: String): Result<List<ProjectRepositoryDto>>
 

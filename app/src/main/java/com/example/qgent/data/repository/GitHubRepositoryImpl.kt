@@ -23,6 +23,9 @@ class GitHubRepositoryImpl(private val service: QgApiService) : GitHubRepository
     override suspend fun syncInstallation(teamId: String, installationId: String, idempotencyKey: String): Result<GitHubInstallationDto> =
         apiCall { service.syncInstallation(teamId, installationId, idempotencyKey).toDataOrThrow() }
 
+    override suspend fun revokeGithubRepository(teamId: String, repositoryId: String, idempotencyKey: String): Result<Unit> =
+        apiCall { service.revokeGithubRepository(teamId, repositoryId, idempotencyKey).toUnitOrThrow() }
+
     override suspend fun getGithubRepositories(teamId: String): Result<List<GitHubRepositoryDto>> =
         apiCall {
             // 接口按 cursor/limit 分页（文档 §2，默认 30），循环拉全量避免仓库数量被截断

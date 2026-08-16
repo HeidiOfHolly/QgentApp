@@ -26,6 +26,7 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
         val repositories: List<GitHubRepositoryDto> = emptyList(),
         val repoCounts: Map<String, Int> = emptyMap(),
         val installed: Boolean = false,
+        val uninstallDone: Boolean = false,
         val error: String? = null
     )
 
@@ -78,28 +79,32 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
     /** 拉取团队已安装列表（授权回调后 onResume 调用，检测新安装） */
     fun refreshInstallations(teamId: String) {
         viewModelScope.launch {
-            repo.getInstallations(teamId).onSuccess { installations ->
-                val prevIds = _uiState.value.installations.map { it.id }.toSet()
-                val installedNow = pendingInstallationKey != null &&
-                    installations.any { it.id !in prevIds }
-                pendingInstallationKey = null
-                _uiState.value = _uiState.value.copy(
-                    installations = installations,
-                    installed = installedNow
-                )
-            }
+            repo.getInstallations(teamId)
+                .onSuccess { installations ->
+                    val prevIds = _uiState.value.installations.map { it.id }.toSet()
+                    val installedNow = pendingInstallationKey != null &&
+                        installations.any { it.id !in prevIds }
+                    pendingInstallationKey = null
+                    _uiState.value = _uiState.value.copy(
+                        installations = installations,
+                        installed = installedNow
+                    )
+                }
+                .onFailure { e -> reportRefreshError(e) }
         }
     }
 
     /** 拉取团队授权仓库列表（只保留 AUTHORIZED，REVOKED 是网页端已撤销授权的，不显示） */
     fun loadRepositories(teamId: String) {
         viewModelScope.launch {
-            repo.getGithubRepositories(teamId).onSuccess { repos ->
-                Log.d("GithubViewModel", "repos raw: ${repos.map { "${it.fullName}=${it.authorizationStatus}" }}")
-                _uiState.value = _uiState.value.copy(
-                    repositories = repos.filter { it.authorizationStatus == "AUTHORIZED" }
-                )
-            }
+            repo.getGithubRepositories(teamId)
+                .onSuccess { repos ->
+                    Log.d("GithubViewModel", "repos raw: ${repos.map { "${it.fullName}=${it.authorizationStatus}" }}")
+                    _uiState.value = _uiState.value.copy(
+                        repositories = repos.filter { it.authorizationStatus == "AUTHORIZED" }
+                    )
+                }
+                .onFailure { e -> reportRefreshError(e) }
         }
     }
 
@@ -107,12 +112,17 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
     fun loadRepositoryCounts(teamIds: List<String>) {
         teamIds.forEach { teamId ->
             viewModelScope.launch {
-                repo.getGithubRepositories(teamId).onSuccess { repos ->
-                    _uiState.value = _uiState.value.copy(
-                        repoCounts = _uiState.value.repoCounts +
-                            (teamId to repos.count { it.authorizationStatus == "AUTHORIZED" })
-                    )
-                }
+                repo.getGithubRepositories(teamId)
+                    .onSuccess { repos ->
+                        _uiState.value = _uiState.value.copy(
+                            repoCounts = _uiState.value.repoCounts +
+                                (teamId to repos.count { it.authorizationStatus == "AUTHORIZED" })
+                        )
+                    }
+                    .onFailure { e ->
+                        // 仓库数徽章是后台统计，失败不打扰用户，仅留日志排查
+                        Log.w("GithubViewModel", "拉取团队 $teamId 仓库数量失败: ${e.message}", e)
+                    }
             }
         }
     }
@@ -124,14 +134,32 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
      */
     fun syncInstallations(teamId: String) {
         viewModelScope.launch {
-            repo.getInstallations(teamId).onSuccess { installations ->
-                _uiState.value = _uiState.value.copy(installations = installations)
-                installations.filter { it.status == "ACTIVE" }.forEach { inst ->
-                    repo.syncInstallation(teamId, inst.id, UUID.randomUUID().toString())
+            repo.getInstallations(teamId)
+                .onSuccess { installations ->
+                    _uiState.value = _uiState.value.copy(installations = installations)
+                    installations.filter { it.status == "ACTIVE" }.forEach { inst ->
+                        repo.syncInstallation(teamId, inst.id, UUID.randomUUID().toString())
+                            .onFailure { e -> reportRefreshError(e) }
+                    }
+                    loadRepositories(teamId)
                 }
-                loadRepositories(teamId)
-            }
+                .onFailure { e -> reportRefreshError(e) }
         }
+    }
+
+    /**
+     * 后台自动刷新失败统一处理：仅在当前无更紧急错误（如归属冲突 message）时展示，
+     * 避免覆盖冲突提示；有更紧急错误时只留日志。
+     */
+    private fun reportRefreshError(e: Throwable) {
+        if (_uiState.value.error != null) {
+            Log.w("GithubViewModel", "刷新 GitHub 信息失败(已有更紧急错误): ${e.message}", e)
+            return
+        }
+        Log.w("GithubViewModel", "刷新 GitHub 信息失败: ${e.message}", e)
+        _uiState.value = _uiState.value.copy(
+            error = if (e is ApiException) e.message else (e.message ?: "刷新 GitHub 信息失败，请稍后重试")
+        )
     }
 
     /** 手动刷新授权仓库元数据，成功后重拉 Installation 与 Repository 列表 */
@@ -154,12 +182,60 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
         }
     }
 
+    /**
+     * 解除团队的全部 GitHub 安装：拉取安装列表逐个删除，遇到第一个失败即终止。
+     * 安装仍被项目仓库绑定引用时后端返回 409 GITHUB_INSTALLATION_IN_USE，给专门提示。
+     * 全部成功后置 uninstallDone 一次性事件并刷新安装/仓库列表。
+     */
+    fun uninstallTeam(teamId: String) {
+        if (_uiState.value.loading) return
+        _uiState.value = _uiState.value.copy(loading = true, error = null)
+        viewModelScope.launch {
+            repo.getInstallations(teamId)
+                .onSuccess { installations ->
+                    var failed: Throwable? = null
+                    for (inst in installations) {
+                        repo.deleteInstallation(teamId, inst.id, UUID.randomUUID().toString())
+                            .onFailure { e ->
+                                failed = e
+                                return@onFailure
+                            }
+                        if (failed != null) break
+                    }
+                    failed?.let {
+                        _uiState.value = _uiState.value.copy(
+                            loading = false,
+                            error = if (it is ApiException && it.code == "GITHUB_INSTALLATION_IN_USE") {
+                                "该安装仍被项目仓库绑定引用，无法解除，请先解绑相关仓库"
+                            } else {
+                                it.message ?: "解除安装失败，请稍后重试"
+                            }
+                        )
+                        return@launch
+                    }
+                    _uiState.value = _uiState.value.copy(loading = false, uninstallDone = true)
+                    refreshInstallations(teamId)
+                    loadRepositories(teamId)
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        loading = false,
+                        error = e.message ?: "解除安装失败，请稍后重试"
+                    )
+                }
+        }
+    }
+
     fun consumeInstalled() {
         _uiState.value = _uiState.value.copy(installed = false)
     }
 
     fun consumeInstallationUrl() {
         _uiState.value = _uiState.value.copy(installationUrl = null)
+    }
+
+    fun consumeUninstallDone() {
+        _uiState.value = _uiState.value.copy(uninstallDone = false)
     }
 
     fun consumeError() {

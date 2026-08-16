@@ -20,6 +20,7 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.model.InviteTeamMemberRequest
 import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
@@ -133,14 +134,61 @@ class TeamDetailFragment : Fragment() {
         }
     }
 
-    /** 加载团队授权仓库（AUTHORIZED），与 GitHub 页计数口径一致 */
+    /** 加载团队授权仓库（AUTHORIZED）：标注「是否已绑定项目」，已绑定的提供解绑入口 */
     private fun loadAuthorizedRepositories(teamId: String) {
         viewLifecycleOwner.lifecycleScope.launch {
             val repos = githubRepository.getGithubRepositories(teamId).getOrNull().orEmpty()
-            val names = repos.filter { it.authorizationStatus == "AUTHORIZED" }.map { it.fullName }
-            fillLinearLayout(binding.rvRepository, names, R.layout.item_repository) { view, name ->
-                ItemRepositoryBinding.bind(view).tvRepositoryName.text = name
+                .filter { it.authorizationStatus == "AUTHORIZED" }
+            // 授权仓库 → 项目绑定列表（repositoryId = github_repositories.id，即 GitHubRepositoryDto.id）
+            val bindingsByRepository = userRepository.getProjects(teamId).getOrNull().orEmpty()
+                .flatMap { project ->
+                    githubRepository.getProjectRepositories(project.id).getOrNull().orEmpty()
+                        .map { it.repositoryId to (project.id to it.id) }
+                }
+                .groupBy({ it.first }, { it.second })
+            fillLinearLayout(binding.rvRepository, repos, R.layout.item_repository) { view, repo ->
+                val item = ItemRepositoryBinding.bind(view)
+                item.tvRepositoryName.text = repo.fullName
+                val bindings = bindingsByRepository[repo.id].orEmpty()
+                item.tvBoundStatus.text = getString(
+                    if (bindings.isEmpty()) R.string.github_repo_unbound else R.string.github_repo_bound
+                )
+                // 已绑定项目的仓库不可删除（保护项目引用），仅未绑定的仓库提供撤销授权入口
+                item.ivDeleteRepository.isVisible = bindings.isEmpty()
+                item.ivDeleteRepository.setOnClickListener {
+                    confirmDeleteRepository(teamId, repo)
+                }
             }
+        }
+    }
+
+    /** 确认撤销仓库授权：从团队授权列表移除该仓库 */
+    private fun confirmDeleteRepository(teamId: String, repo: GitHubRepositoryDto) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.github_repo_delete)
+            .setMessage(getString(R.string.github_repo_delete_confirm, repo.fullName))
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.github_repo_delete) { _, _ ->
+                deleteRepository(teamId, repo)
+            }
+            .show()
+    }
+
+    /** 撤销仓库授权（DELETE /teams/{teamId}/integrations/github/repositories/{repositoryId}）并刷新 */
+    private fun deleteRepository(teamId: String, repo: GitHubRepositoryDto) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            githubRepository.revokeGithubRepository(teamId, repo.id, UUID.randomUUID().toString())
+                .onSuccess {
+                    Toast.makeText(requireContext(), R.string.github_repo_delete_success, Toast.LENGTH_SHORT).show()
+                    loadAuthorizedRepositories(teamId)
+                }
+                .onFailure { e ->
+                    Toast.makeText(
+                        requireContext(),
+                        e.message ?: getString(R.string.github_repo_delete_failed),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
         }
     }
 

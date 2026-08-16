@@ -27,6 +27,9 @@ class MockGitHubRepository : GitHubRepository {
     override suspend fun syncInstallation(teamId: String, installationId: String, idempotencyKey: String): Result<GitHubInstallationDto> =
         Result.success(MockDataSource.githubInstallations.first())
 
+    override suspend fun revokeGithubRepository(teamId: String, repositoryId: String, idempotencyKey: String): Result<Unit> =
+        Result.failure(UnsupportedOperationException("mock 不支持撤销仓库授权"))
+
     override suspend fun getGithubRepositories(teamId: String): Result<List<GitHubRepositoryDto>> =
         Result.success(MockDataSource.githubRepositories)
 

@@ -1,5 +1,6 @@
 package com.example.qgent.ui.github
 
+import android.app.AlertDialog
 import android.app.Dialog
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -38,12 +39,15 @@ class GithubFragment : Fragment() {
 
     private var currentTeams: List<TeamDto> = emptyList()
 
-    private val adapter = GithubTeamAdapter { team ->
-        findNavController().navigate(
-            R.id.githubAuthorizeFragment,
-            bundleOf("teamId" to team.id, "teamName" to team.name)
-        )
-    }
+    private val adapter = GithubTeamAdapter(
+        onItemClick = { team ->
+            findNavController().navigate(
+                R.id.githubAuthorizeFragment,
+                bundleOf("teamId" to team.id, "teamName" to team.name)
+            )
+        },
+        onUninstallClick = { team -> confirmUninstall(team) }
+    )
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -71,14 +75,36 @@ class GithubFragment : Fragment() {
         binding.tvAddTeam.setOnClickListener { showSelectTeamDialog() }
 
         mainViewModel.teamDtos.observe(viewLifecycleOwner) { teams ->
-            currentTeams = teams
-            adapter.submitList(teams)
-            githubViewModel.loadRepositoryCounts(teams.map { it.id })
+            // GitHub 授权是团队级能力，仅展示我创建的团队（TEAM_OWNER）
+            currentTeams = teams.filter { it.role == "TEAM_OWNER" }
+            adapter.submitList(currentTeams)
+            binding.tvEmpty.isVisible = currentTeams.isEmpty()
+            githubViewModel.loadRepositoryCounts(currentTeams.map { it.id })
         }
 
         githubViewModel.uiState.observe(viewLifecycleOwner) { state ->
             adapter.updateRepoCounts(state.repoCounts)
+            if (state.uninstallDone) {
+                Toast.makeText(requireContext(), R.string.github_uninstall_success, Toast.LENGTH_SHORT).show()
+                githubViewModel.consumeUninstallDone()
+            }
+            state.error?.let {
+                Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
+                githubViewModel.consumeError()
+            }
         }
+    }
+
+    /** 解除安装确认弹窗：确认后解除该团队的全部 GitHub 安装 */
+    private fun confirmUninstall(team: TeamDto) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.github_uninstall_confirm_title)
+            .setMessage(R.string.github_uninstall_confirm_message)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.github_uninstall) { _, _ ->
+                githubViewModel.uninstallTeam(team.id)
+            }
+            .show()
     }
 
     /** 右上角加号：从「我创建的团队」单选一个，下一步进入新建项目页 */

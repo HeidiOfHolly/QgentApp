@@ -36,6 +36,9 @@ class NewProjectViewModel(
     private val _repos = MutableStateFlow<List<GitHubRepositoryDto>>(emptyList())
     val repos: LiveData<List<GitHubRepositoryDto>> = _repos.asLiveData()
 
+    private val _loadError = MutableStateFlow<String?>(null)
+    val loadError: LiveData<String?> = _loadError.asLiveData()
+
     private var teamId = ""
 
     fun init(teamId: String) {
@@ -43,6 +46,11 @@ class NewProjectViewModel(
         this.teamId = teamId
         loadMembers()
         loadRepos()
+    }
+
+    /** 候选列表加载失败提示一次性事件，UI 观察后消费 */
+    fun consumeLoadError() {
+        _loadError.value = null
     }
 
     fun updateName(name: String) {
@@ -63,27 +71,43 @@ class NewProjectViewModel(
 
     private fun loadMembers() {
         viewModelScope.launch {
-            userRepo.getTeamMembers(teamId).onSuccess { _members.value = it }
+            userRepo.getTeamMembers(teamId)
+                .onSuccess { _members.value = it }
+                .onFailure { e -> _loadError.value = e.message ?: "加载团队成员失败，请稍后重试" }
         }
     }
 
     private fun loadRepos() {
         viewModelScope.launch {
             // 文档 §6：只允许绑定 AUTHORIZED、未归档、默认分支非空且对应 Installation ACTIVE 的仓库
-            val activeInstallationIds = githubRepo.getInstallations(teamId).getOrNull().orEmpty()
+            val installations = githubRepo.getInstallations(teamId)
+            if (installations.isFailure) {
+                _loadError.value = installations.exceptionOrNull()?.message ?: "加载 GitHub 安装信息失败，请稍后重试"
+                return@launch
+            }
+            val repos = githubRepo.getGithubRepositories(teamId)
+            if (repos.isFailure) {
+                _loadError.value = repos.exceptionOrNull()?.message ?: "加载授权仓库失败，请稍后重试"
+                return@launch
+            }
+            // 排除已绑定到本团队任一项目的仓库：只展示已授权且未绑定的
+            val projects = userRepo.getProjects(teamId)
+            if (projects.isFailure) {
+                _loadError.value = projects.exceptionOrNull()?.message ?: "加载项目失败，请稍后重试"
+                return@launch
+            }
+            val activeInstallationIds = installations.getOrThrow()
                 .filter { it.status == "ACTIVE" }
                 .map { it.id }
                 .toSet()
-            val authorized = githubRepo.getGithubRepositories(teamId).getOrNull().orEmpty()
+            val authorized = repos.getOrThrow()
                 .filter {
                     it.authorizationStatus == "AUTHORIZED" &&
                         !it.archived &&
                         !it.defaultBranch.isNullOrEmpty() &&
                         it.installationId in activeInstallationIds
                 }
-            // 排除已绑定到本团队任一项目的仓库：只展示已授权且未绑定的
-            val projects = userRepo.getProjects(teamId).getOrNull().orEmpty()
-            val boundIds = projects
+            val boundIds = projects.getOrThrow()
                 .mapNotNull { githubRepo.getProjectRepositories(it.id).getOrNull() }
                 .flatten()
                 .map { it.repositoryId }

@@ -9,7 +9,8 @@ import com.example.qgent.databinding.ItemTeamGithubBinding
 
 /** GitHub 页的团队列表适配器：展示团队名与仓库数 */
 class GithubTeamAdapter(
-    private val onItemClick: (TeamDto) -> Unit
+    private val onItemClick: (TeamDto) -> Unit,
+    private val onUninstallClick: (TeamDto) -> Unit
 ) : RecyclerView.Adapter<GithubTeamAdapter.VH>() {
 
     private val items = mutableListOf<TeamDto>()
@@ -44,6 +45,7 @@ class GithubTeamAdapter(
             binding.tvTeamName.text = team.name
             binding.tvRepositoryNum.text = binding.root.context.getString(R.string.github_repo_count, repoCounts[team.id] ?: 0)
             binding.root.setOnClickListener { onItemClick(team) }
+            binding.btnUninstall.setOnClickListener { onUninstallClick(team) }
         }
     }
 }

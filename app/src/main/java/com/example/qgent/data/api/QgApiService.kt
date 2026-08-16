@@ -347,6 +347,13 @@ interface QgApiService {
         @Query("limit") limit: Int = 100
     ): Response<ApiResponse<List<GitHubRepositoryDto>>>
 
+    @DELETE("teams/{teamId}/integrations/github/repositories/{repositoryId}")
+    suspend fun revokeGithubRepository(
+        @Path("teamId") teamId: String,
+        @Path("repositoryId") repositoryId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<Unit>
+
     @GET("projects/{projectId}/repositories")
     suspend fun getProjectRepositories(
         @Path("projectId") projectId: String
