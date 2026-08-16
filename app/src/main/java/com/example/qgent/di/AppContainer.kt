@@ -17,6 +17,7 @@ import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.GitHubRepositoryImpl
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.data.repository.UserRepositoryImpl
+import com.example.qgent.data.sse.ProjectEventStream
 import com.example.qgent.ui.auth.AuthViewModel
 import com.example.qgent.ui.github.GithubViewModel
 import com.example.qgent.viewmodel.MainViewModel
@@ -42,6 +43,12 @@ class AppContainer(context: Context) {
     val agentRepository: AgentRepository = AgentRepositoryImpl(RetrofitClient.service)
 
     val githubRepository: GitHubRepository = GitHubRepositoryImpl(RetrofitClient.service)
+
+    /**
+     * 项目级 SSE 事件流（文档 §12.1）。
+     * 复用带鉴权 + Token 自动刷新的 httpClient；连接生命周期由使用方（Fragment）控制。
+     */
+    val projectEventStream = ProjectEventStream(RetrofitClient.httpClient, RetrofitClient.BASE_URL)
 
     val authViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer { AuthViewModel(authRepository) }

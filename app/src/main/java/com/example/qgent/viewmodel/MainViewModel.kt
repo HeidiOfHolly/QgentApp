@@ -20,6 +20,7 @@ import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.model.Agent
 import com.example.qgent.model.ChatGroup
+import com.example.qgent.model.GroupType
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -207,11 +208,13 @@ class MainViewModel(
         _groups.value = sortGroups(updated)
     }
 
-    // ── 排序：置顶优先（按 lastActiveTime 倒序），非置顶按 lastActiveTime 倒序 ──
+    // ── 排序：项目总群恒置顶（文档 §7：PROJECT_MAIN 不可归档/删除，天然固定首位），
+    //    其余群按最新活跃倒序排列；置顶（手动 pin）群在总群之后、普通群之前 ──
 
     private fun sortGroups(groups: List<ChatGroup>): List<ChatGroup> =
         groups.sortedWith(
-            compareByDescending<ChatGroup> { it.isPinned }
+            compareByDescending<ChatGroup> { it.type == GroupType.PROJECT_MAIN }
+                .thenByDescending { it.isPinned }
                 .thenByDescending { it.lastActiveTime }
         )
 
@@ -324,7 +327,8 @@ class MainViewModel(
                 lastMessage = dto.latestMessage.toSummary(),
                 time = formatGroupTime(lastActive),
                 unread = 0,
-                lastActiveTime = lastActive
+                lastActiveTime = lastActive,
+                type = if (dto.type == "PROJECT_MAIN") GroupType.PROJECT_MAIN else GroupType.REQUIREMENT
             )
         })
 

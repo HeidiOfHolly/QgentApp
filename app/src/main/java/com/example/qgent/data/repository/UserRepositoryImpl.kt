@@ -12,6 +12,7 @@ import com.example.qgent.data.model.ReceivedInvitationDto
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
+import com.example.qgent.data.model.UpdateProjectMemberRequest
 import com.example.qgent.data.model.UserProfileDto
 import com.example.qgent.data.model.toDataOrThrow
 import com.example.qgent.data.model.toUnitOrThrow
@@ -80,6 +81,15 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
         idempotencyKey: String
     ): Result<ProjectMemberDto> = apiCall {
         service.addProjectMember(projectId, idempotencyKey, AddProjectMemberRequest(userId)).toDataOrThrow()
+    }
+
+    override suspend fun updateProjectMemberRole(
+        projectId: String,
+        userId: String,
+        role: String,
+        idempotencyKey: String
+    ): Result<ProjectMemberDto> = apiCall {
+        service.updateProjectMemberRole(projectId, userId, idempotencyKey, UpdateProjectMemberRequest(role)).toDataOrThrow()
     }
 
     override suspend fun getProjectMembers(projectId: String): Result<List<ProjectMemberDto>> = apiCall {

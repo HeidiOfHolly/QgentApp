@@ -34,6 +34,7 @@ import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.model.UpdateAgentRequest
 import com.example.qgent.data.model.UpdateGroupRequest
+import com.example.qgent.data.model.UpdateProjectMemberRequest
 import com.example.qgent.data.model.UserProfileDto
 import retrofit2.Response
 import retrofit2.http.Body
@@ -159,6 +160,15 @@ interface QgApiService {
         @Path("projectId") projectId: String,
         @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: AddProjectMemberRequest
+    ): Response<ApiResponse<ProjectMemberDto>>
+
+    /** 调整项目成员角色（§5.2）：在 PROJECT_MEMBER / PROJECT_ADMIN 间切换 */
+    @PATCH("projects/{projectId}/members/{userId}")
+    suspend fun updateProjectMemberRole(
+        @Path("projectId") projectId: String,
+        @Path("userId") userId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: UpdateProjectMemberRequest
     ): Response<ApiResponse<ProjectMemberDto>>
 
     @GET("projects/{projectId}/members")

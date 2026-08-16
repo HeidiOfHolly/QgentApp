@@ -119,11 +119,13 @@ class TeamDetailFragment : Fragment() {
         binding.btnDissolveTeam.setOnClickListener { confirmLeaveOrDissolve(isOwner) }
     }
 
-    /** 加载并填充团队成员列表；isOwner 控制是否显示删除按钮 */
+    /** 加载并填充团队成员列表；isOwner 控制是否显示删除按钮。
+     *  排序：创建者（TEAM_OWNER）置顶，其余保持后端返回顺序（产品约定，见 docs/product-notes.md）。 */
     private fun loadMembers(teamId: String, isOwner: Boolean) {
         viewLifecycleOwner.lifecycleScope.launch {
             userRepository.getTeamMembers(teamId).onSuccess { members ->
-                fillLinearLayout(binding.rvMembers, members, R.layout.item_chat_member) { view, member ->
+                val sorted = members.sortedByDescending { it.role == "TEAM_OWNER" }
+                fillLinearLayout(binding.rvMembers, sorted, R.layout.item_chat_member) { view, member ->
                     val item = ItemChatMemberBinding.bind(view)
                     item.tvMemberName.text = member.displayName
                     item.tvAgentTag.isVisible = member.role == "TEAM_OWNER"
@@ -136,11 +138,14 @@ class TeamDetailFragment : Fragment() {
         }
     }
 
-    /** 加载团队授权仓库（AUTHORIZED）：标注「是否已绑定项目」，已绑定的提供解绑入口 */
+    /**
+     * 加载团队授权仓库并渲染列表，两套能力合并：
+     * - 展示 AUTHORIZED 仓库 + 「已被项目绑定但授权已撤销」的死绑定仓库（REVOKED），后者标红并点击提示；
+     * - 每个仓库标注「已绑定项目 / 未绑定项目」，未绑定且仍授权的提供撤销授权删除入口。
+     */
     private fun loadAuthorizedRepositories(teamId: String) {
         viewLifecycleOwner.lifecycleScope.launch {
             val repos = githubRepository.getGithubRepositories(teamId).getOrNull().orEmpty()
-                .filter { it.authorizationStatus == "AUTHORIZED" }
             // 授权仓库 → 项目绑定列表（repositoryId = github_repositories.id，即 GitHubRepositoryDto.id）
             val bindingsByRepository = userRepository.getProjects(teamId).getOrNull().orEmpty()
                 .flatMap { project ->
@@ -148,17 +153,35 @@ class TeamDetailFragment : Fragment() {
                         .map { it.repositoryId to (project.id to it.id) }
                 }
                 .groupBy({ it.first }, { it.second })
-            fillLinearLayout(binding.rvRepository, repos, R.layout.item_repository) { view, repo ->
+            // 展示集：AUTHORIZED 全部展示；REVOKED 仅展示仍被项目绑定的死绑定（未绑定的已无意义，不展示）
+            val displayRepos = repos.filter {
+                it.authorizationStatus == "AUTHORIZED" ||
+                    (it.authorizationStatus == "REVOKED" && bindingsByRepository[it.id].orEmpty().isNotEmpty())
+            }
+            fillLinearLayout(binding.rvRepository, displayRepos, R.layout.item_repository) { view, repo ->
                 val item = ItemRepositoryBinding.bind(view)
                 item.tvRepositoryName.text = repo.fullName
                 val bindings = bindingsByRepository[repo.id].orEmpty()
+                val bound = bindings.isNotEmpty()
+                val revoked = repo.authorizationStatus == "REVOKED"
                 item.tvBoundStatus.text = getString(
-                    if (bindings.isEmpty()) R.string.github_repo_unbound else R.string.github_repo_bound
+                    if (bound) R.string.github_repo_bound else R.string.github_repo_unbound
                 )
-                // 已绑定项目的仓库不可删除（保护项目引用），仅未绑定的仓库提供撤销授权入口
-                item.ivDeleteRepository.isVisible = bindings.isEmpty()
-                item.ivDeleteRepository.setOnClickListener {
-                    confirmDeleteRepository(teamId, repo)
+                item.tvRepositoryStatus.isVisible = revoked
+                if (revoked) {
+                    // 死绑定标红，点击提示原因
+                    item.tvRepositoryName.setTextColor(
+                        androidx.core.content.ContextCompat.getColor(requireContext(), R.color.exit_red)
+                    )
+                    item.root.setOnClickListener {
+                        Toast.makeText(requireContext(), R.string.repo_revoked_hint, Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    // 未绑定项目且仍授权 → 提供撤销授权删除入口；已绑定保护项目引用，不显示
+                    item.ivDeleteRepository.isVisible = !bound
+                    item.ivDeleteRepository.setOnClickListener {
+                        confirmDeleteRepository(teamId, repo)
+                    }
                 }
             }
         }

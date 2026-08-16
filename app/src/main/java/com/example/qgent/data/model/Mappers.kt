@@ -25,19 +25,21 @@ fun AgentDto.toAgent(): Agent = Agent(
     visibility = if (visibility == "PRIVATE") AgentVisibility.PRIVATE else AgentVisibility.TEAM_SHARED
 )
 
-/** GroupMemberDto → UI GroupMember。API 无 member/agent 类型字段，统一按 HUMAN。 */
+/** GroupMemberDto → UI GroupMember。memberType=AGENT 映射为 AGENT，其余按 HUMAN */
 fun GroupMemberDto.toGroupMember(): GroupMember = GroupMember(
+    id = id,
     name = resolvedName,
-    type = MemberType.HUMAN
+    type = if (isAgent) MemberType.AGENT else MemberType.HUMAN
 )
 
-/** GroupMessageDto → UI ChatMessage。isMine 依据当前用户 id 与 senderId 比对。 */
+/** GroupMessageDto → UI ChatMessage。isMine 依据当前用户 id 与 senderId 比对。
+ *  TASK_STATUS 消息 content 无 text，从 JSON 解析 taskId/status/node/message 拼可读摘要。 */
 fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String, String>): ChatMessage {
     val parsedType = runCatching { MessageType.valueOf(type) }.getOrDefault(MessageType.TEXT)
-    val displayContent = if (parsedType == MessageType.IMAGE || parsedType == MessageType.FILE) {
-        content?.url ?: ""
-    } else {
-        content?.text ?: ""
+    val displayContent = when {
+        parsedType == MessageType.IMAGE || parsedType == MessageType.FILE -> content?.url ?: ""
+        parsedType == MessageType.TASK_STATUS -> taskStatusSummary()
+        else -> content?.text ?: ""
     }
     return ChatMessage(
         id = id,
@@ -49,8 +51,20 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
         isMine = myUserId != null && senderId == myUserId,
         fileName = content?.name,
         fileSize = content?.size,
-        sequence = sequence
+        sequence = sequence,
+        replyToId = replyToId
     )
+}
+
+/** TASK_STATUS 卡片摘要：content JSON 含 taskId/status/node/message，拼成「状态 · 节点 · 说明」 */
+private fun GroupMessageDto.taskStatusSummary(): String {
+    val c = content ?: return "[任务状态]"
+    val statusLabel = c.status ?: c.text ?: return "[任务状态]"
+    return buildString {
+        append("任务状态：").append(statusLabel)
+        c.node?.let { append(" · ").append(it) }
+        c.message?.let { append("\n").append(it) }
+    }
 }
 
 /** 群列表摘要：图片/文件消息显示 [图片]/[文件]，其余显示 text；senderName 为空（如 SYSTEM 消息）时只显示正文。 */

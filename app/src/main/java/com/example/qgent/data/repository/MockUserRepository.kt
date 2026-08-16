@@ -97,6 +97,13 @@ class MockUserRepository : UserRepository {
         idempotencyKey: String
     ): Result<ProjectMemberDto> = Result.success(ProjectMemberDto(userId, "PROJECT_MEMBER"))
 
+    override suspend fun updateProjectMemberRole(
+        projectId: String,
+        userId: String,
+        role: String,
+        idempotencyKey: String
+    ): Result<ProjectMemberDto> = Result.success(ProjectMemberDto(userId, role))
+
     override suspend fun getProjectMembers(projectId: String): Result<List<ProjectMemberDto>> =
         Result.success(listOf(ProjectMemberDto("mock-user", "PROJECT_ADMIN")))
 

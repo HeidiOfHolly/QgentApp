@@ -2,6 +2,7 @@ package com.example.qgent.ui.chat
 
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
@@ -15,6 +16,7 @@ import com.example.qgent.data.SessionStore
 import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.databinding.ItemMessageBinding
 import com.example.qgent.databinding.ItemMessageDiffBinding
+import com.example.qgent.databinding.ItemMessageSystemBinding
 import com.example.qgent.databinding.ItemMessageTimeBinding
 import com.example.qgent.model.ChatMessage
 import com.example.qgent.model.MessageType
@@ -25,27 +27,39 @@ sealed class ChatRow {
     data class Message(val message: ChatMessage) : ChatRow()
 }
 
+/**
+ * 消息列表适配器。
+ * 行类型：时间 / 普通消息（含图片/文件/引用）/ Diff / 系统提示（SYSTEM，居中灰色小字）。
+ * 普通消息支持长按菜单（引用/复制/多选，由 [onMessageLongClick] 回调到 Fragment 弹出）。
+ */
 class ChatMessageAdapter(
     private val rows: List<ChatRow>,
     private val onAvatarLongClick: ((String) -> Unit)? = null,
     private val onImageClick: ((String) -> Unit)? = null,
-    private val onFileClick: ((ChatMessage) -> Unit)? = null
+    private val onFileClick: ((ChatMessage) -> Unit)? = null,
+    private val onMessageLongClick: ((View, ChatMessage) -> Unit)? = null
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     override fun getItemViewType(position: Int): Int = when (val row = rows[position]) {
         is ChatRow.Time -> TYPE_TIME
-        is ChatRow.Message -> if (row.message.type == MessageType.DIFF) TYPE_DIFF else TYPE_MESSAGE
+        is ChatRow.Message -> when (row.message.type) {
+            MessageType.SYSTEM -> TYPE_SYSTEM
+            MessageType.DIFF -> TYPE_DIFF
+            else -> TYPE_MESSAGE
+        }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         return when (viewType) {
             TYPE_TIME -> TimeVH(ItemMessageTimeBinding.inflate(LayoutInflater.from(parent.context), parent, false))
             TYPE_DIFF -> DiffVH(ItemMessageDiffBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+            TYPE_SYSTEM -> SystemVH(ItemMessageSystemBinding.inflate(LayoutInflater.from(parent.context), parent, false))
             else -> MessageVH(
                 ItemMessageBinding.inflate(LayoutInflater.from(parent.context), parent, false),
                 onAvatarLongClick,
                 onImageClick,
-                onFileClick
+                onFileClick,
+                onMessageLongClick
             )
         }
     }
@@ -54,12 +68,10 @@ class ChatMessageAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = rows[position]) {
             is ChatRow.Time -> (holder as TimeVH).binding.tvTime.text = row.text
-            is ChatRow.Message -> {
-                if (row.message.type == MessageType.DIFF) {
-                    (holder as DiffVH).bind(row.message)
-                } else {
-                    (holder as MessageVH).bind(row.message)
-                }
+            is ChatRow.Message -> when (row.message.type) {
+                MessageType.SYSTEM -> (holder as SystemVH).bind(row.message)
+                MessageType.DIFF -> (holder as DiffVH).bind(row.message)
+                else -> (holder as MessageVH).bind(row.message)
             }
         }
     }
@@ -68,11 +80,19 @@ class ChatMessageAdapter(
 
     class TimeVH(val binding: ItemMessageTimeBinding) : RecyclerView.ViewHolder(binding.root)
 
+    /** 系统提示行：居中灰色小字（成员进群/退群等） */
+    class SystemVH(private val binding: ItemMessageSystemBinding) : RecyclerView.ViewHolder(binding.root) {
+        fun bind(message: ChatMessage) {
+            binding.tvSystemMessage.text = message.content
+        }
+    }
+
     class MessageVH(
         private val binding: ItemMessageBinding,
         private val onAvatarLongClick: ((String) -> Unit)?,
         private val onImageClick: ((String) -> Unit)?,
-        private val onFileClick: ((ChatMessage) -> Unit)?
+        private val onFileClick: ((ChatMessage) -> Unit)?,
+        private val onMessageLongClick: ((View, ChatMessage) -> Unit)?
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(message: ChatMessage) {
@@ -84,6 +104,10 @@ class ChatMessageAdapter(
             binding.ivAvatar.isVisible = !mine
             binding.tvSenderName.isVisible = !mine
             binding.tvSenderName.text = message.senderName
+
+            // 引用消息：气泡上方显示被引用摘要（摘要缺失时兜底文案，避免空条）
+            binding.tvQuoteSummary.isVisible = message.replyToId != null
+            binding.tvQuoteSummary.text = message.replyToSummary ?: "引用消息"
 
             binding.tvBubble.isVisible = !isImage && !isFile
             binding.ivBubbleImage.isVisible = isImage
@@ -117,6 +141,11 @@ class ChatMessageAdapter(
             }
             binding.ivAvatar.setOnLongClickListener {
                 onAvatarLongClick?.invoke(message.senderName)
+                true
+            }
+            // 长按整行 → 引用/复制/多选菜单（系统提示行除外，由 viewType 隔离）
+            binding.root.setOnLongClickListener {
+                onMessageLongClick?.invoke(it, message)
                 true
             }
         }
@@ -179,6 +208,7 @@ class ChatMessageAdapter(
         private const val TYPE_TIME = 0
         private const val TYPE_MESSAGE = 1
         private const val TYPE_DIFF = 2
+        private const val TYPE_SYSTEM = 3
 
         private fun formatFileSize(size: Long?): String {
             if (size == null || size <= 0) return ""

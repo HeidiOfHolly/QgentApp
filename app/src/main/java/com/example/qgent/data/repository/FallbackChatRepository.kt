@@ -13,8 +13,8 @@ class FallbackChatRepository(
     override suspend fun getGroups(projectId: String, cursor: String?, limit: Int) =
         fb.call { getGroups(projectId, cursor, limit) }
 
-    override suspend fun createGroup(projectId: String, title: String, description: String?, idempotencyKey: String) =
-        fb.call { createGroup(projectId, title, description, idempotencyKey) }
+    override suspend fun createGroup(projectId: String, title: String, description: String?, memberIds: List<String>?, idempotencyKey: String) =
+        fb.call { createGroup(projectId, title, description, memberIds, idempotencyKey) }
 
     override suspend fun getGroup(projectId: String, groupId: String) =
         fb.call { getGroup(projectId, groupId) }
@@ -34,6 +34,6 @@ class FallbackChatRepository(
     override suspend fun getMessages(projectId: String, groupId: String, cursor: String?, limit: Int) =
         fb.call { getMessages(projectId, groupId, cursor, limit) }
 
-    override suspend fun sendMessage(projectId: String, groupId: String, type: String, content: MessageContentDto, clientMessageId: String?, mentions: List<MentionDto>?, idempotencyKey: String) =
-        fb.call { sendMessage(projectId, groupId, type, content, clientMessageId, mentions, idempotencyKey) }
+    override suspend fun sendMessage(projectId: String, groupId: String, type: String, content: MessageContentDto, clientMessageId: String?, mentions: List<MentionDto>?, replyToId: String?, idempotencyKey: String) =
+        fb.call { sendMessage(projectId, groupId, type, content, clientMessageId, mentions, replyToId, idempotencyKey) }
 }

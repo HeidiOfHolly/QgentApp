@@ -37,6 +37,26 @@
             android:textSize="12sp"
             tools:text="张三" />
 
+        <!-- 引用消息摘要：气泡上方小灰字，被引用消息时显示 -->
+        <TextView
+            android:id="@+id/tvQuoteSummary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="2dp"
+            android:background="@drawable/bg_status_review"
+            android:ellipsize="end"
+            android:maxWidth="260dp"
+            android:maxLines="1"
+            android:paddingStart="8dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="2dp"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:visibility="gone"
+            tools:text="回复 @张三：今天把登录接口联调一下"
+            tools:visibility="visible" />
+
         <FrameLayout
             android:id="@+id/flBubble"
             android:layout_width="wrap_content"

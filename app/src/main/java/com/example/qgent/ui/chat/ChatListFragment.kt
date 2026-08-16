@@ -19,13 +19,15 @@ import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.model.TeamMemberDto
+import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.UserRepository
+import com.example.qgent.data.sse.ProjectEventStream
+import com.example.qgent.data.sse.SseEventType
 import com.example.qgent.databinding.BottomSheetCreateGroupBinding
 import com.example.qgent.databinding.FragmentChatListBinding
 import com.example.qgent.model.ChatGroup
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -42,7 +44,12 @@ class ChatListFragment : Fragment() {
     private val userRepository: UserRepository
         get() = (requireActivity().application as QgentApp).container.userRepository
 
+    /** 项目级 SSE 事件流：收到事件立即刷新群列表（摘要/未读/新消息），替代部分轮询延迟 */
+    private val eventStream: ProjectEventStream
+        get() = (requireActivity().application as QgentApp).container.projectEventStream
+
     private var pollingJob: Job? = null
+    private var eventStreamJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -59,11 +66,45 @@ class ChatListFragment : Fragment() {
         mainViewModel.refreshGroups()
         mainViewModel.refreshUnreadInvitations()
         startPolling()
+        startEventStream()
     }
 
     override fun onPause() {
         super.onPause()
         stopPolling()
+        stopEventStream()
+    }
+
+    /**
+     * 项目级 SSE 事件流（文档 §12.1 + message.created 补充）：
+     * 仅当事件影响群列表（新消息、群变更、成员变动）时刷新群列表摘要/未读，
+     * 任务/Diff 类事件不触发全量刷新，避免事件风暴导致列表频繁重建。
+     * 轮询仍保留作为无事件时的兜底。
+     */
+    private fun startEventStream() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        eventStream.startProject(projectId)
+        if (eventStreamJob == null) {
+            eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
+                eventStream.events.collect { event ->
+                    when (event.type) {
+                        SseEventType.MESSAGE_CREATED,
+                        SseEventType.GROUP_CREATED,
+                        SseEventType.GROUP_UPDATED,
+                        SseEventType.GROUP_ARCHIVED,
+                        SseEventType.GROUP_MEMBER_UPDATED,
+                        SseEventType.PROJECT_MEMBER_ADDED -> mainViewModel.refreshGroups()
+                        else -> Unit // 任务/Diff/交付等事件不影响群列表，跳过
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopEventStream() {
+        eventStreamJob?.cancel()
+        eventStreamJob = null
+        eventStream.stop()
     }
 
     /** 轮询群聊列表：后端暂无聊天推送，用定时 refreshGroups 兜底实现别人发消息红点实时显示 */
@@ -149,7 +190,11 @@ class ChatListFragment : Fragment() {
         popup.show()
     }
 
-    /** 添加成员：列出团队中尚未加入当前项目的成员，勾选后逐个调 API-069 加入 */
+    /**
+     * 添加成员：列出团队中尚未加入当前项目的成员，勾选后逐个调 API-069 加入；
+     * 每个成员可选择身份（项目成员/项目管理员，默认项目成员），
+     * 选管理员的加入后再 PATCH 升级（§5.2）。
+     */
     private fun showAddMemberDialog() {
         val teamId = mainViewModel.currentTeamId()
         val projectId = mainViewModel.currentProjectId()
@@ -159,41 +204,71 @@ class ChatListFragment : Fragment() {
             return
         }
 
+        val dialog = BottomSheetDialog(requireContext())
+        val sheetBinding = BottomSheetCreateGroupBinding.inflate(layoutInflater)
+        dialog.setContentView(sheetBinding.root)
+        // 添加成员复用创建群弹窗布局：标题改为添加成员，隐藏全选按钮与描述输入
+        sheetBinding.tvSheetTitle.text = getString(R.string.action_add_member)
+        sheetBinding.tvSheetSubtitle.text = getString(R.string.add_member_subtitle)
+        sheetBinding.etGroupDescription.visibility = View.GONE
+        sheetBinding.btnSelectAll.visibility = View.GONE
+        sheetBinding.etGroupName.hint = getString(R.string.add_member_select_hint)
+
+        lateinit var pickAdapter: GroupMemberPickAdapter
+        pickAdapter = GroupMemberPickAdapter(
+            onItemClick = { pickAdapter.toggle(it) },
+            onRoleClick = { pickAdapter.toggleRole(it) }
+        )
+        sheetBinding.rvGroupMembers.layoutManager = LinearLayoutManager(requireContext())
+        sheetBinding.rvGroupMembers.adapter = pickAdapter
+
         viewLifecycleOwner.lifecycleScope.launch {
             val teamMembers = userRepository.getTeamMembers(teamId).getOrElse {
                 Toast.makeText(requireContext(), R.string.add_member_failed, Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
                 return@launch
             }
             val existingIds = userRepository.getProjectMembers(projectId)
                 .getOrNull()?.map { it.userId }?.toSet().orEmpty()
-
             val candidates = teamMembers.filter { it.userId !in existingIds }
             if (candidates.isEmpty()) {
                 Toast.makeText(requireContext(), R.string.add_member_empty, Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
                 return@launch
             }
-
-            val names = candidates.map { "${it.displayName}（${it.email}）" }.toTypedArray()
-            val checked = BooleanArray(candidates.size)
-            MaterialAlertDialogBuilder(requireContext())
-                .setTitle(R.string.action_add_member)
-                .setMultiChoiceItems(names, checked) { _, _, _ -> }
-                .setPositiveButton(R.string.confirm) { _, _ ->
-                    addMembers(projectId, candidates.filterIndexed { i, _ -> checked[i] })
-                }
-                .setNegativeButton(R.string.cancel, null)
-                .show()
+            pickAdapter.submitList(
+                candidates.map { GroupMemberPick(it.userId, it.displayName, "PROJECT_MEMBER") }
+            )
         }
+
+        sheetBinding.btnSend.setOnClickListener {
+            val selected = pickAdapter.checkedIds()
+            if (selected.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.add_member_empty, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val roles = pickAdapter.roleById()
+            dialog.dismiss()
+            addMembers(projectId, selected, roles)
+        }
+        sheetBinding.btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
     }
 
-    /** 逐个将选中成员加入项目，汇总成功数量提示 */
-    private fun addMembers(projectId: String, members: List<TeamMemberDto>) {
-        if (members.isEmpty()) return
+    /** 逐个将选中成员加入项目：先 POST 加入（初始 PROJECT_MEMBER），选管理员的再 PATCH 升级，汇总成功数量提示 */
+    private fun addMembers(projectId: String, userIds: List<String>, roles: Map<String, String>) {
+        if (userIds.isEmpty()) return
         viewLifecycleOwner.lifecycleScope.launch {
             var added = 0
-            members.forEach { member ->
-                userRepository.addProjectMember(projectId, member.userId, UUID.randomUUID().toString())
-                    .onSuccess { added++ }
+            userIds.forEach { userId ->
+                userRepository.addProjectMember(projectId, userId, UUID.randomUUID().toString())
+                    .onSuccess {
+                        added++
+                        // 期望身份为管理员 → 加入后 PATCH 升级（§5.2）
+                        if (roles[userId] == "PROJECT_ADMIN") {
+                            userRepository.updateProjectMemberRole(projectId, userId, "PROJECT_ADMIN", UUID.randomUUID().toString())
+                        }
+                    }
             }
             if (added == 0) {
                 Toast.makeText(requireContext(), R.string.add_member_failed, Toast.LENGTH_SHORT).show()
@@ -229,19 +304,81 @@ class ChatListFragment : Fragment() {
         popup.show()
     }
 
-    /** 创建群聊：输入成员邮箱发送邀请（邀请/通知/入群待后端与多用户就绪后接入） */
+    /**
+     * 创建需求群弹窗：群名 + 描述 + 从项目成员多选群成员（默认全不选，可全选）。
+     * 需求群只包含选中的成员，群内成员权限平等（产品约定，见 docs/product-notes.md）。
+     */
     private fun showCreateGroupDialog() {
+        val projectId = mainViewModel.currentProjectId() ?: run {
+            Toast.makeText(requireContext(), R.string.add_member_missing_project, Toast.LENGTH_SHORT).show()
+            return
+        }
         val dialog = BottomSheetDialog(requireContext())
         val sheetBinding = BottomSheetCreateGroupBinding.inflate(layoutInflater)
         dialog.setContentView(sheetBinding.root)
 
+        lateinit var memberAdapter: GroupMemberPickAdapter
+        memberAdapter = GroupMemberPickAdapter(
+            onItemClick = { member -> memberAdapter.toggle(member) }
+        )
+        sheetBinding.rvGroupMembers.layoutManager = LinearLayoutManager(requireContext())
+        sheetBinding.rvGroupMembers.adapter = memberAdapter
+
+        // 全选 / 取消全选
+        var allSelected = false
+        sheetBinding.btnSelectAll.setOnClickListener {
+            allSelected = !allSelected
+            memberAdapter.setAllChecked(allSelected)
+            sheetBinding.btnSelectAll.text = getString(if (allSelected) R.string.cancel_select_all else R.string.select_all)
+        }
+
+        // 加载项目成员（关联团队成员显示名字）
+        viewLifecycleOwner.lifecycleScope.launch {
+            val teamId = mainViewModel.currentTeamId()
+            val memberDtos = if (teamId != null) {
+                val teamMembers = userRepository.getTeamMembers(teamId).getOrNull().orEmpty()
+                val nameById = teamMembers.associate { it.userId to it.displayName }
+                userRepository.getProjectMembers(projectId).getOrNull().orEmpty().map {
+                    GroupMemberPick(it.userId, nameById[it.userId] ?: "成员", it.role)
+                }
+            } else {
+                emptyList()
+            }
+            memberAdapter.submitList(memberDtos)
+        }
+
         sheetBinding.btnSend.setOnClickListener {
-            Toast.makeText(requireContext(), R.string.invite_sent_placeholder, Toast.LENGTH_SHORT).show()
+            val name = sheetBinding.etGroupName.text?.toString()?.trim().orEmpty()
+            if (name.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.create_group_name_required, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val description = sheetBinding.etGroupDescription.text?.toString()?.trim().orEmpty().ifEmpty { null }
+            val memberIds = memberAdapter.checkedIds()
             dialog.dismiss()
+            createGroup(projectId, name, description, memberIds)
         }
         sheetBinding.btnCancel.setOnClickListener { dialog.dismiss() }
         dialog.show()
     }
+
+    /** 提交创建需求群：调 POST /groups（携带选中成员），成功后刷新群列表 */
+    private fun createGroup(projectId: String, name: String, description: String?, memberIds: List<String>) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            chatRepository().createGroup(
+                projectId, name, description, memberIds,
+                UUID.randomUUID().toString()
+            ).onSuccess {
+                Toast.makeText(requireContext(), R.string.create_group_success, Toast.LENGTH_SHORT).show()
+                mainViewModel.refreshGroups()
+            }.onFailure {
+                Toast.makeText(requireContext(), R.string.create_group_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun chatRepository(): ChatRepository =
+        (requireActivity().application as QgentApp).container.chatRepository
 
     override fun onDestroyView() {
         super.onDestroyView()

@@ -26,12 +26,13 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         projectId: String,
         title: String,
         description: String?,
+        memberIds: List<String>?,
         idempotencyKey: String
     ): Result<GroupDto> = apiCall {
         service.createGroup(
             projectId,
             idempotencyKey,
-            CreateGroupRequest(title = title, description = description)
+            CreateGroupRequest(title = title, description = description, memberIds = memberIds)
         ).toDataOrThrow()
     }
 
@@ -81,6 +82,7 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         content: MessageContentDto,
         clientMessageId: String?,
         mentions: List<MentionDto>?,
+        replyToId: String?,
         idempotencyKey: String
     ): Result<GroupMessageDto> = apiCall {
         service.sendMessage(
@@ -90,7 +92,8 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
                 type = type,
                 content = content,
                 clientMessageId = clientMessageId,
-                mentions = mentions
+                mentions = mentions,
+                replyToId = replyToId
             )
         ).toDataOrThrow()
     }

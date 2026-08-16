@@ -23,6 +23,7 @@ import androidx.core.content.FileProvider
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -42,11 +43,14 @@ import com.example.qgent.data.model.toChatMessage
 import com.example.qgent.data.model.toGroupMember
 import com.example.qgent.data.repository.AttachmentUploader
 import com.example.qgent.data.repository.ChatRepository
+import com.example.qgent.data.sse.ProjectEventStream
+import com.example.qgent.data.sse.SseEventType
 import com.example.qgent.databinding.BottomSheetMentionMemberBinding
 import com.example.qgent.databinding.DialogImagePreviewBinding
 import com.example.qgent.databinding.FragmentChatDetailBinding
 import com.example.qgent.model.ChatMessage
 import com.example.qgent.model.GroupMember
+import com.example.qgent.model.MemberType
 import com.example.qgent.model.MessageType
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -80,11 +84,18 @@ class ChatDetailFragment : Fragment() {
     private val attachmentUploader: AttachmentUploader by lazy {
         (requireActivity().application as QgentApp).container.attachmentUploader
     }
+    private val eventStream: ProjectEventStream by lazy {
+        (requireActivity().application as QgentApp).container.projectEventStream
+    }
 
     private val messages = mutableListOf<ChatMessage>()
     private lateinit var rows: MutableList<ChatRow>
     private lateinit var adapter: ChatMessageAdapter
     private var pollingJob: Job? = null
+    private var eventStreamJob: Job? = null
+
+    /** 当前引用的目标消息（非空时输入框上方显示引用条，发送时带 replyToId） */
+    private var quoteTarget: ChatMessage? = null
 
     // 系统相册选图：免存储权限，返回图片 content:// URI
     private val pickImage = registerForActivityResult(
@@ -102,6 +113,9 @@ class ChatDetailFragment : Fragment() {
 
     // 群成员 id → 昵称（文档 §7：消息 senderName 需按 senderId 反查）
     private var memberNamesById: Map<String, String> = emptyMap()
+
+    // 群成员 id → 成员（含类型，@ 时按 USER/AGENT 生成 mention）
+    private var memberById: Map<String, GroupMember> = emptyMap()
 
     private var groupMembers = emptyList<GroupMember>()
 
@@ -168,10 +182,14 @@ class ChatDetailFragment : Fragment() {
             rows,
             onAvatarLongClick = { senderName -> insertMention(senderName) },
             onImageClick = { uri -> showImagePreview(uri) },
-            onFileClick = { message -> openFile(message) }
+            onFileClick = { message -> openFile(message) },
+            onMessageLongClick = { anchor, message -> showMessageLongPressMenu(anchor, message) }
         )
         binding.rvMessages.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMessages.adapter = adapter
+
+        // 取消引用：关闭引用条，发送不再带 replyToId
+        binding.btnCancelQuote.setOnClickListener { clearQuote() }
 
         loadInitialData()
     }
@@ -180,8 +198,10 @@ class ChatDetailFragment : Fragment() {
         val text = binding.etInput.text.toString().trim()
         if (text.isEmpty()) return
         val mentions = extractMentions(text)
-        Log.d("SendMsg", "send text=$text mentions=$mentions memberNamesById=$memberNamesById")
+        val replyToId = quoteTarget?.id
+        Log.d("SendMsg", "send text=$text mentions=$mentions replyToId=$replyToId memberNamesById=$memberNamesById")
         binding.etInput.text.clear()
+        clearQuote()
 
         val projectId = mainViewModel.currentProjectId()
         val groupId = arguments?.getString("groupId").orEmpty()
@@ -189,13 +209,14 @@ class ChatDetailFragment : Fragment() {
         if (projectId != null && groupId.isNotEmpty()) {
             viewLifecycleOwner.lifecycleScope.launch {
                 // Idempotency-Key 后端强制要求，防重复提交；每次发送都是全新消息，生成新 UUID
-                chatRepo.sendMessage(projectId, groupId, "TEXT", MessageContentDto(text = text), mentions = mentions, idempotencyKey = UUID.randomUUID().toString())
+                chatRepo.sendMessage(projectId, groupId, "TEXT", MessageContentDto(text = text), mentions = mentions, replyToId = replyToId, idempotencyKey = UUID.randomUUID().toString())
                     .onSuccess { dto ->
-                        Log.d("SendMsg", "send success id=${dto.id} senderId=${dto.senderId} mentions=${dto.mentions}")
+                        Log.d("SendMsg", "send success id=${dto.id} senderId=${dto.senderId} mentions=${dto.mentions} replyTo=${dto.replyToId}")
                         appendMessage(dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
                     }
                     .onFailure { e ->
                         Log.e("SendMsg", "send FAILED: ${e::class.simpleName} message=${e.message}", e)
+                        Toast.makeText(requireContext(), "发送失败，仅自己可见", Toast.LENGTH_SHORT).show()
                         appendLocalMessage(text)
                     }
             }
@@ -205,13 +226,23 @@ class ChatDetailFragment : Fragment() {
         }
     }
 
-    /** 解析输入文本中的 @成员名，反查 userId 组装结构化 mentions（后端据此实现 @ 通知）；当前群成员统一按 USER 处理 */
+    /**
+     * 解析输入文本中的 @成员名，反查成员 id 组装结构化 mentions（后端据此实现 @ 通知）。
+     * 按成员类型生成 mention：普通用户 → USER，Agent → AGENT（文档 §7）。
+     */
     private fun extractMentions(text: String): List<MentionDto> {
-        if (memberNamesById.isEmpty()) return emptyList()
+        if (memberById.isEmpty()) return emptyList()
         val mentions = mutableListOf<MentionDto>()
         Regex("@([^@\\s]+)").findAll(text).forEach { match ->
             val name = match.groupValues[1]
-            memberNamesById.entries.firstOrNull { it.value == name }?.let { mentions.add(MentionDto(type = "USER", id = it.key)) }
+            memberById.entries.firstOrNull { it.value.name == name }?.let {
+                mentions.add(
+                    MentionDto(
+                        type = if (it.value.type == MemberType.AGENT) "AGENT" else "USER",
+                        id = it.key
+                    )
+                )
+            }
         }
         return mentions.distinct()
     }
@@ -246,8 +277,9 @@ class ChatDetailFragment : Fragment() {
                             name = meta.fileName, size = size, mimeType = meta.mimeType
                         )
                     }
-                    chatRepo.sendMessage(projectId, groupId, type, content, idempotencyKey = UUID.randomUUID().toString())
+                    chatRepo.sendMessage(projectId, groupId, type, content, replyToId = quoteTarget?.id, idempotencyKey = UUID.randomUUID().toString())
                         .onSuccess { dto ->
+                            clearQuote()
                             appendMessage(dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
                         }
                         .onFailure { e ->
@@ -283,10 +315,12 @@ class ChatDetailFragment : Fragment() {
         }.getOrNull()
     }
 
+    /** 发送失败时的本地兜底消息：id 加 local- 前缀标记，
+     *  仅在本次会话内展示，不写入缓存、不与网络消息混淆（修复幽灵 @ 消息残留） */
     private fun appendLocalMessage(text: String) {
         appendMessage(
             ChatMessage(
-                UUID.randomUUID().toString(),
+                LOCAL_ID_PREFIX + UUID.randomUUID(),
                 "我",
                 text,
                 MessageType.TEXT,
@@ -294,6 +328,49 @@ class ChatDetailFragment : Fragment() {
                 true
             )
         )
+    }
+
+    /** 长按消息：弹出 引用/复制/多选 菜单（全部消息可引用） */
+    private fun showMessageLongPressMenu(anchor: View, message: ChatMessage) {
+        val popup = PopupMenu(requireContext(), anchor)
+        popup.menuInflater.inflate(R.menu.menu_message_long_press, popup.menu)
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_quote -> setQuote(message)
+                R.id.action_copy -> copyMessage(message)
+                R.id.action_multi_select ->
+                    Toast.makeText(requireContext(), R.string.multi_select_pending, Toast.LENGTH_SHORT).show()
+            }
+            true
+        }
+        popup.show()
+    }
+
+    /** 设置引用目标：显示引用条，发送时带 replyToId */
+    private fun setQuote(message: ChatMessage) {
+        quoteTarget = message
+        binding.tvQuoteBar.text = getString(R.string.quote_prefix, message.senderName) +
+            "：" + message.displayContent()
+        binding.llQuoteBar.isVisible = true
+        binding.etInput.requestFocus()
+    }
+
+    /** 清除引用：隐藏引用条，发送不再带 replyToId */
+    private fun clearQuote() {
+        quoteTarget = null
+        binding.llQuoteBar.isVisible = false
+    }
+
+    /** 复制消息文本到剪贴板 */
+    private fun copyMessage(message: ChatMessage) {
+        val label = if (message.type == MessageType.IMAGE || message.type == MessageType.FILE) {
+            message.displayContent()
+        } else {
+            message.content
+        }
+        val cm = requireContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("chat", label))
+        Toast.makeText(requireContext(), R.string.message_copied, Toast.LENGTH_SHORT).show()
     }
 
     /** 弹出 @ 成员选择器 */
@@ -459,20 +536,38 @@ class ChatDetailFragment : Fragment() {
     }
 
     private fun appendMessage(message: ChatMessage) {
-        messages.add(message)
+        // 引用消息：后端只回 replyToId 无被引用内容，从本地列表反查生成摘要，保证自己发的引用也显示
+        val resolved = resolveReplySummary(message)
+        messages.add(resolved)
         val start = rows.size
         val prevTime = messages.getOrNull(messages.size - 2)?.timestamp
-        if (prevTime == null || message.timestamp - prevTime > TIME_GAP_MS) {
-            rows.add(ChatRow.Time(formatTime(message.timestamp)))
+        if (prevTime == null || resolved.timestamp - prevTime > TIME_GAP_MS) {
+            rows.add(ChatRow.Time(formatTime(resolved.timestamp)))
         }
-        rows.add(ChatRow.Message(message))
+        rows.add(ChatRow.Message(resolved))
         adapter.notifyItemRangeInserted(start, rows.size - start)
         scrollToBottom()
-        // 发送后立即落缓存，避免退出重进后新消息丢失
+        // 发送后立即落缓存，避免退出重进后新消息丢失；
+        // 本地兜底消息（发送失败）不落缓存，防止幽灵消息持久化残留
         val groupId = arguments?.getString("groupId").orEmpty()
         if (groupId.isNotEmpty()) {
-            viewLifecycleOwner.lifecycleScope.launch { messageCache.save(groupId, messages) }
+            viewLifecycleOwner.lifecycleScope.launch {
+                messageCache.save(groupId, messages.filterNot { it.id.startsWith(LOCAL_ID_PREFIX) })
+            }
         }
+    }
+
+    /**
+     * 为引用消息补全摘要：replyToId 非空但缺 replyToSummary 时，
+     * 从当前消息列表反查被引用消息，拼成「发送者：内容」；查不到时兜底「引用消息」。
+     */
+    private fun resolveReplySummary(message: ChatMessage): ChatMessage {
+        val replyId = message.replyToId ?: return message
+        if (message.replyToSummary != null) return message
+        val target = messages.firstOrNull { it.id == replyId }
+        val summary = target?.let { "${it.senderName}：${it.displayContent()}" }
+            ?: "引用消息"
+        return message.copy(replyToSummary = summary)
     }
 
     private fun buildRows(list: List<ChatMessage>): List<ChatRow> {
@@ -519,6 +614,7 @@ class ChatDetailFragment : Fragment() {
             membersResult.onSuccess { dtos ->
                 groupMembers = dtos.map { it.toGroupMember() }
                 memberNamesById = dtos.associate { it.id to it.resolvedName }
+                memberById = dtos.associate { it.id to it.toGroupMember() }
             }
 
             val messagesResult = messagesDeferred.await()
@@ -528,7 +624,7 @@ class ChatDetailFragment : Fragment() {
                 // 合并时必须以「当前内存列表」为基准（而非开头读的 cached 快照）：
                 // 若初始 getMessages 较慢，期间用户已发出消息并 append 到 messages，
                 // 用 cached 会把这几天新消息连同网络结果一起覆盖掉，导致「发出后几秒消失」。
-                val merged = (messages + list).distinctBy { it.id }.sortedChronologically()
+                val merged = mergeWithNetwork(list)
                 setMessages(merged)
                 messageCache.save(groupId, merged)
             }.onFailure {
@@ -563,12 +659,37 @@ class ChatDetailFragment : Fragment() {
         val myId = SessionStore.user()?.id
         chatRepo.getMessages(projectId, groupId).onSuccess { dtos ->
             val list = dtos.map { it.toChatMessage(myId, memberNamesById) }
-            val merged = (messages + list).distinctBy { it.id }.sortedChronologically()
+            // 轮询时保留本会话内刚发的本地兜底消息（keepLocal=true），
+            // 避免用户刚发送失败的消息被下一次轮询立刻删掉；下次进页面时由 loadInitialData 清掉
+            val merged = mergeWithNetwork(list, keepLocal = true)
             if (merged != messages) {
                 setMessages(merged)
-                messageCache.save(groupId, merged)
+                messageCache.save(groupId, merged.filterNot { it.id.startsWith(LOCAL_ID_PREFIX) })
             }
         }
+    }
+
+    /**
+     * 网络消息与当前内存列表合并，并剔除「幽灵消息」：
+     * 发送失败时 appendLocalMessage 生成的本地兜底消息（isMine && sequence<=0）后端不存在，
+     * 历史出错版本（如 @ 功能早期版本）把它们写进了 Room 缓存，导致：
+     * 1) 只在自己这边显示、别人看不到；
+     * 2) 永远无法被 distinctBy(id) 匹配清除，一直残留；
+     * 3) 本地消息 sequence=0 → 排序恒排末尾，新消息反而显示在它上方。
+     *
+     * [keepLocal]=false（初次加载）：剔除所有未被后端确认的本地兜底消息（含历史残留）；
+     * [keepLocal]=true（轮询）：仅剔除旧幽灵（无 local- 前缀的），本会话新发的 local- 消息保留显示。
+     */
+    private fun mergeWithNetwork(network: List<ChatMessage>, keepLocal: Boolean = false): List<ChatMessage> {
+        val networkIds = network.map { it.id }.toSet()
+        val kept = messages.filter { msg ->
+            when {
+                msg.id in networkIds -> true                                  // 后端已确认
+                keepLocal && msg.id.startsWith(LOCAL_ID_PREFIX) -> true        // 本会话刚发的本地消息
+                else -> !(msg.isMine && msg.sequence <= 0L)                    // 历史幽灵：自己发的且无 sequence
+            }
+        }
+        return (kept + network).distinctBy { it.id }.sortedChronologically()
     }
 
     /** 按后端单调 sequence 排序（本地兜底消息无 sequence，恒排末尾）；timestamp 因时区不一致不可靠，仅作 sequence 相同时的次级排序 */
@@ -579,8 +700,21 @@ class ChatDetailFragment : Fragment() {
         )
 
     private fun setMessages(newMessages: List<ChatMessage>) {
+        // 引用摘要统一补齐：resolveReplySummary 依赖当前 messages 查找被引用消息，
+        // 因此先合并查找（旧列表 + 新列表），再整体替换
+        val lookup = messages + newMessages
+        val resolved = newMessages.map { msg ->
+            if (msg.replyToId != null && msg.replyToSummary == null) {
+                val target = lookup.firstOrNull { it.id == msg.replyToId }
+                msg.copy(
+                    replyToSummary = target?.let { "${it.senderName}：${it.displayContent()}" } ?: "引用消息"
+                )
+            } else {
+                msg
+            }
+        }
         messages.clear()
-        messages.addAll(newMessages)
+        messages.addAll(resolved)
         rows.clear()
         rows.addAll(buildRows(messages))
         adapter.notifyDataSetChanged()
@@ -590,17 +724,57 @@ class ChatDetailFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         startPolling()
+        startEventStream()
     }
 
     override fun onPause() {
         super.onPause()
         stopPolling()
+        stopEventStream()
         // 退出详情页时把已看到的最新消息时间回传，避免回到列表页仍显示红点
         val groupId = arguments?.getString("groupId").orEmpty()
         val lastSeen = messages.maxOfOrNull { it.timestamp }
         if (groupId.isNotEmpty() && lastSeen != null) {
             mainViewModel.markGroupRead(groupId, lastSeen)
         }
+    }
+
+    /**
+     * 项目级 SSE 事件流（文档 §12.1 + message.created 补充）：
+     * 只对 message.created 且 groupId 匹配当前群的事件刷新消息；
+     * 其他任务/Diff 事件（无 groupId）不触发消息拉取，避免事件风暴导致列表频繁重建。
+     * 3s 轮询保留作为无事件时的兜底。
+     */
+    private fun startEventStream() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (groupId.isEmpty()) return
+        eventStream.startProject(projectId)
+        if (eventStreamJob == null) {
+            eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
+                eventStream.events.collect { event ->
+                    // 只处理消息事件：当前群有新消息 → 立即拉取一次
+                    if (event.type == SseEventType.MESSAGE_CREATED) {
+                        val targetGroup = parseGroupId(event.data)
+                        if (targetGroup == groupId) {
+                            pollMessages(projectId, groupId)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** 从事件 payload 中解析 groupId（无该字段返回 null） */
+    private fun parseGroupId(data: String): String? =
+        runCatching {
+            org.json.JSONObject(data).optString("groupId").takeIf { it.isNotBlank() }
+        }.getOrNull()
+
+    private fun stopEventStream() {
+        eventStreamJob?.cancel()
+        eventStreamJob = null
+        eventStream.stop()
     }
 
     override fun onDestroyView() {
@@ -613,6 +787,10 @@ class ChatDetailFragment : Fragment() {
         private const val TIME_GAP_MS = 5 * 60 * 1000L
         private const val POLL_INTERVAL_MS = 3_000L
         private const val MAX_PREVIEW_CHARS = 100_000
+
+        /** 本地兜底消息（发送失败）id 前缀：不落缓存、合并时剔除，防止幽灵消息残留 */
+        private const val LOCAL_ID_PREFIX = "local-"
+
         private val TEXT_EXTENSIONS = setOf(
             "txt", "md", "json", "xml", "yaml", "yml", "csv", "log", "kt", "java", "py",
             "js", "ts", "html", "css", "sql", "sh", "gradle", "properties", "ini", "conf",

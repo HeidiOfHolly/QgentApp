@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.R
 import com.example.qgent.databinding.ItemChatBinding
 import com.example.qgent.model.ChatGroup
+import com.example.qgent.model.GroupType
 
 class ChatListAdapter(
     private var items: List<ChatGroup>,
@@ -17,8 +18,10 @@ class ChatListAdapter(
 ) : RecyclerView.Adapter<ChatListAdapter.VH>() {
 
     fun submitList(newItems: List<ChatGroup>) {
+        // 排序与 MainViewModel.sortGroups 一致：项目总群恒置顶 → 手动置顶 → 最新活跃倒序
         items = newItems.sortedWith(
-            compareByDescending<ChatGroup> { it.isPinned }
+            compareByDescending<ChatGroup> { it.type == GroupType.PROJECT_MAIN }
+                .thenByDescending { it.isPinned }
                 .thenByDescending { it.lastActiveTime }
         )
         notifyDataSetChanged()
@@ -45,6 +48,8 @@ class ChatListAdapter(
         fun bind(group: ChatGroup) {
             binding.tvName.text = group.name
             binding.tvTime.text = group.time
+            // 项目总群标识（PROJECT_MAIN 恒置顶，标「总群」）
+            binding.tvGroupTag.isVisible = group.type == GroupType.PROJECT_MAIN
             binding.tvUnread.isVisible = group.unread > 0
             binding.tvUnread.text = if (group.unread > 99) "99+" else group.unread.toString()
             val context = binding.root.context
