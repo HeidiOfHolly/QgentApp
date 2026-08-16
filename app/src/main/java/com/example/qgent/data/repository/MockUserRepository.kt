@@ -5,6 +5,7 @@ import com.example.qgent.data.model.InviteTeamMemberRequest
 import com.example.qgent.data.model.NotificationDto
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.ProjectMemberDto
+import com.example.qgent.data.model.ReceivedInvitationDto
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
@@ -75,6 +76,9 @@ class MockUserRepository : UserRepository {
             )
         )
 
+    override suspend fun getReceivedInvitations(): Result<List<ReceivedInvitationDto>> =
+        Result.success(emptyList())
+
     override suspend fun getProjects(teamId: String): Result<List<ProjectDto>> =
         Result.success(MockDataSource.projectsOf(teamId))
 
@@ -106,6 +110,9 @@ class MockUserRepository : UserRepository {
                 createdAt = "2026-08-14"
             )
         )
+
+    override suspend fun deleteTeam(teamId: String, idempotencyKey: String): Result<TeamDto> =
+        Result.failure(UnsupportedOperationException("mock 不支持解散团队"))
 
     override suspend fun getNotifications(): Result<List<NotificationDto>> =
         Result.success(

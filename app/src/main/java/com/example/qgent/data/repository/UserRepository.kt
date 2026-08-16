@@ -4,6 +4,7 @@ import com.example.qgent.data.model.InviteTeamMemberRequest
 import com.example.qgent.data.model.NotificationDto
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.ProjectMemberDto
+import com.example.qgent.data.model.ReceivedInvitationDto
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
@@ -18,11 +19,13 @@ interface UserRepository {
     suspend fun getTeamInvitations(teamId: String): Result<List<TeamInvitationDto>>
     suspend fun revokeInvitation(teamId: String, invitationId: String, idempotencyKey: String): Result<Unit>
     suspend fun acceptTeamInvitation(reference: String, idempotencyKey: String): Result<TeamMemberDto>
+    suspend fun getReceivedInvitations(): Result<List<ReceivedInvitationDto>>
     suspend fun getProjects(teamId: String): Result<List<ProjectDto>>
     suspend fun createProject(teamId: String, name: String, description: String?, idempotencyKey: String): Result<ProjectDto>
     suspend fun addProjectMember(projectId: String, userId: String, idempotencyKey: String): Result<ProjectMemberDto>
     suspend fun getProjectMembers(projectId: String): Result<List<ProjectMemberDto>>
     suspend fun createTeam(name: String, description: String? = null, idempotencyKey: String): Result<TeamDto>
+    suspend fun deleteTeam(teamId: String, idempotencyKey: String): Result<TeamDto>
     suspend fun getNotifications(): Result<List<NotificationDto>>
     suspend fun markNotificationRead(notificationId: String, idempotencyKey: String): Result<Unit>
     suspend fun markAllNotificationsRead(idempotencyKey: String): Result<Unit>

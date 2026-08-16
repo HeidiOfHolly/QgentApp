@@ -3,12 +3,14 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:background="@drawable/bg_card"
     android:backgroundTint="@color/white"
     android:paddingTop="5dp"
-    android:paddingBottom="5dp">
+    android:paddingBottom="5dp"
+    android:layout_marginTop="5dp">
 
     <ImageView
         android:id="@+id/ivMemberAvatar"
@@ -53,7 +55,7 @@
         android:contentDescription="@string/remove_member"
         android:padding="6dp"
         android:src="@drawable/ic_close"
-        android:tint="@color/gray"
+        app:tint="@color/gray"
         android:visibility="gone"
         tools:visibility="visible" />
 

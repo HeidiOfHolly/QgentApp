@@ -16,15 +16,29 @@
         android:paddingEnd="8dp"
         android:paddingBottom="10dp">
 
-        <ImageView
-            android:id="@+id/btnAvatar"
+        <FrameLayout
             android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="@drawable/bg_avatar"
-            android:clickable="true"
-            android:contentDescription="@string/user_name_placeholder"
-            android:focusable="true"
-            android:src="@drawable/ic_avatar_default" />
+            android:layout_height="44dp">
+
+            <ImageView
+                android:id="@+id/btnAvatar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_avatar"
+                android:clickable="true"
+                android:contentDescription="@string/user_name_placeholder"
+                android:focusable="true"
+                android:src="@drawable/ic_avatar_default" />
+
+            <!-- 未读团队邀请红点 -->
+            <View
+                android:id="@+id/ivInviteBadge"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_gravity="top|end"
+                android:background="@drawable/bg_unread_badge"
+                android:visibility="gone" />
+        </FrameLayout>
         <TextView
             android:id="@+id/tvUserName"
             android:text="@string/user_name_placeholder"

@@ -115,8 +115,23 @@ class MainViewModel(
     private val _createProjectState = MutableStateFlow<CreateProjectState>(CreateProjectState.Idle)
     val createProjectState: LiveData<CreateProjectState> = _createProjectState.asLiveData()
 
+    // ── 未读的团队邀请通知（kind=INVITED 且未读），抽屉铃铛 / 群聊列表头像 / GitHub 页头像红点 ──
+
+    private val _unreadInvitations = MutableStateFlow(false)
+    val unreadInvitations: LiveData<Boolean> = _unreadInvitations.asLiveData()
+
     init {
         loadTeams()
+        refreshUnreadInvitations()
+    }
+
+    /** 拉取通知列表，统计未读的团队邀请（INVITED）；失败时保持现状不打扰用户 */
+    fun refreshUnreadInvitations() {
+        viewModelScope.launch {
+            userRepo.getNotifications().onSuccess { list ->
+                _unreadInvitations.value = list.any { it.kind == "INVITED" && !it.isRead }
+            }
+        }
     }
 
     /** 加入团队后刷新团队列表（复用 init 的加载逻辑） */

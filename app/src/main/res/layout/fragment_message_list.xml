@@ -38,16 +38,19 @@
             android:textColor="@color/blue_tint"
             android:textStyle="bold" />
 
-        <TextView
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnReadAll"
+            style="?attr/materialButtonOutlinedStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="?attr/selectableItemBackground"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
+            android:minHeight="40dp"
             android:text="@string/read_all"
             android:textColor="@color/blue_tint"
-            android:textSize="15sp" />
+            android:textStyle="bold"
+            android:textSize="15sp"
+            app:cornerRadius="20dp"
+            app:strokeColor="@color/blue_tint"
+            app:strokeWidth="1dp" />
     </LinearLayout>
 
     <TextView

@@ -8,6 +8,7 @@ import com.example.qgent.data.model.InviteTeamMemberRequest
 import com.example.qgent.data.model.NotificationDto
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.ProjectMemberDto
+import com.example.qgent.data.model.ReceivedInvitationDto
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
@@ -56,6 +57,10 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
             service.acceptTeamInvitation(reference, idempotencyKey).toDataOrThrow()
         }
 
+    override suspend fun getReceivedInvitations(): Result<List<ReceivedInvitationDto>> = apiCall {
+        service.getReceivedInvitations().toDataOrThrow()
+    }
+
     override suspend fun getProjects(teamId: String): Result<List<ProjectDto>> = apiCall {
         service.getProjects(teamId).toDataOrThrow()
     }
@@ -85,6 +90,10 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
         apiCall {
             service.createTeam(idempotencyKey, CreateTeamRequest(name, description)).toDataOrThrow()
         }
+
+    override suspend fun deleteTeam(teamId: String, idempotencyKey: String): Result<TeamDto> = apiCall {
+        service.deleteTeam(teamId, idempotencyKey).toDataOrThrow()
+    }
 
     override suspend fun getNotifications(): Result<List<NotificationDto>> = apiCall {
         service.getNotifications().toDataOrThrow()

@@ -25,6 +25,7 @@ import com.example.qgent.data.model.NotificationDto
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.ProjectMemberDto
 import com.example.qgent.data.model.ProjectRepositoryDto
+import com.example.qgent.data.model.ReceivedInvitationDto
 import com.example.qgent.data.model.RefreshRequest
 import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.SendMessageRequest
@@ -82,6 +83,12 @@ interface QgApiService {
     @GET("teams")
     suspend fun getTeams(): Response<ApiResponse<List<TeamDto>>>
 
+    @DELETE("teams/{teamId}")
+    suspend fun deleteTeam(
+        @Path("teamId") teamId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<TeamDto>>
+
     @POST("teams")
     suspend fun createTeam(
         @Header("Idempotency-Key") idempotencyKey: String,
@@ -113,6 +120,12 @@ interface QgApiService {
     suspend fun getTeamInvitations(
         @Path("teamId") teamId: String
     ): Response<ApiResponse<List<TeamInvitationDto>>>
+
+    @GET("team-invitations")
+    suspend fun getReceivedInvitations(
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 30
+    ): Response<ApiResponse<List<ReceivedInvitationDto>>>
 
     @POST("team-invitations/{reference}/accept")
     suspend fun acceptTeamInvitation(

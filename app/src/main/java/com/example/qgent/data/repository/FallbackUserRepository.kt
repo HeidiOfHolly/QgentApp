@@ -29,6 +29,8 @@ class FallbackUserRepository(
     override suspend fun acceptTeamInvitation(reference: String, idempotencyKey: String) =
         fb.call { acceptTeamInvitation(reference, idempotencyKey) }
 
+    override suspend fun getReceivedInvitations() = fb.call { getReceivedInvitations() }
+
     override suspend fun getProjects(teamId: String) = fb.call { getProjects(teamId) }
 
     override suspend fun createProject(teamId: String, name: String, description: String?, idempotencyKey: String) =
@@ -42,6 +44,9 @@ class FallbackUserRepository(
 
     override suspend fun createTeam(name: String, description: String?, idempotencyKey: String) =
         fb.call { createTeam(name, description, idempotencyKey) }
+
+    override suspend fun deleteTeam(teamId: String, idempotencyKey: String) =
+        fb.call { deleteTeam(teamId, idempotencyKey) }
 
     override suspend fun getNotifications() = fb.call { getNotifications() }
 

@@ -138,6 +138,18 @@ data class TeamInvitationDto(
     @SerializedName("expiresAt") val expiresAt: String
 )
 
+/** 我收到的团队邀请（GET /team-invitations，§19.2）：id 为邀请记录 UUID，接受时用此值 */
+data class ReceivedInvitationDto(
+    val id: String,
+    @SerializedName("teamId") val teamId: String,
+    @SerializedName("teamName") val teamName: String,
+    val role: String,                   // 恒为 TEAM_MEMBER
+    @SerializedName("inviterDisplayName") val inviterDisplayName: String,
+    val status: String,                 // PENDING / EXPIRED
+    @SerializedName("expiresAt") val expiresAt: String,
+    @SerializedName("createdAt") val createdAt: String
+)
+
 /** 创建团队邀请（POST /teams/{teamId}/invitations，§5.1）：按邮箱邀请，role + 有效期必填 */
 data class InviteTeamMemberRequest(
     val email: String,

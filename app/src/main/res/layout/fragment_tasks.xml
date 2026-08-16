@@ -34,18 +34,32 @@
             android:textStyle="bold"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintLeft_toLeftOf="parent"/>
-        <ImageView
-            android:id="@+id/btnNotification"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/bg_oval"
-            android:clickable="true"
-            android:contentDescription="@string/notification"
-            android:focusable="true"
-            android:padding="4dp"
-            android:src="@drawable/ic_bell"
-            app:layout_constraintBottom_toBottomOf="@+id/tvProjectName"
-            app:layout_constraintRight_toRightOf="parent" />
+        <FrameLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintRight_toRightOf="parent">
+            <ImageView
+                android:id="@+id/btnNotification"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_oval"
+                android:clickable="true"
+                android:contentDescription="@string/notification"
+                android:focusable="true"
+                android:padding="4dp"
+                android:src="@drawable/ic_bell"
+                app:layout_constraintBottom_toBottomOf="@+id/tvProjectName"
+                app:layout_constraintRight_toRightOf="parent" />
+            <View
+                android:id="@+id/ivInviteBadge"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_gravity="top|end"
+                android:background="@drawable/bg_unread_badge"
+                android:visibility="gone"
+                tools:visibility="visible" />
+        </FrameLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
     <TextView
         android:id="@+id/tvMyTask"

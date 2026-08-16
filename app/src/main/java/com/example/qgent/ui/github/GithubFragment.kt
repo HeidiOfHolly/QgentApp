@@ -93,6 +93,11 @@ class GithubFragment : Fragment() {
                 githubViewModel.consumeError()
             }
         }
+
+        // 未读团队邀请 → 头像右上角红点
+        mainViewModel.unreadInvitations.observe(viewLifecycleOwner) { hasUnread ->
+            binding.ivInviteBadge.isVisible = hasUnread
+        }
     }
 
     /** 解除安装确认弹窗：确认后解除该团队的全部 GitHub 安装 */
@@ -162,6 +167,7 @@ class GithubFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         githubViewModel.loadRepositoryCounts(currentTeams.map { it.id })
+        mainViewModel.refreshUnreadInvitations()
     }
 
     override fun onDestroyView() {

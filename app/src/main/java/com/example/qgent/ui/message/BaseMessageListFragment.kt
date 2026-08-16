@@ -1,5 +1,6 @@
 package com.example.qgent.ui.message
 
+import android.app.AlertDialog
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -16,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.NotificationDto
+import com.example.qgent.data.model.ReceivedInvitationDto
 import com.example.qgent.data.model.formatGroupTime
 import com.example.qgent.data.model.parseRfc3339
 import com.example.qgent.data.repository.UserRepository
@@ -29,8 +31,15 @@ import java.util.UUID
  * 消息列表页公共基类（通知中心 §7.1）：抽屉铃铛与任务界面铃铛两个入口共用。
  * 展示当前用户通知列表，支持全部已读 / 单条已读；
  * 通知 groupId 属于当前项目时点击可进入对应群聊，否则仅标记已读。
+ *
+ * 子类通过 [notificationsFilter] 决定展示的通知子集：
+ * - 抽屉铃铛（MessageListFragment）：仅“被邀请加入团队”的 INVITED
+ * - 任务铃铛（TaskMessageListFragment）：其余所有（排除 INVITED）
  */
 abstract class BaseMessageListFragment : Fragment() {
+
+    /** 通知过滤规则，默认展示全部；子类覆盖以限定子集 */
+    protected open val notificationsFilter: (NotificationDto) -> Boolean = { true }
 
     private var _binding: FragmentMessageListBinding? = null
     protected val binding get() = _binding!!
@@ -69,7 +78,7 @@ abstract class BaseMessageListFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             userRepository.getNotifications().onSuccess { list ->
                 items.clear()
-                items.addAll(list)
+                items.addAll(list.filter(notificationsFilter))
                 adapter.notifyDataSetChanged()
                 updateEmptyState()
             }.onFailure { e ->
@@ -85,6 +94,8 @@ abstract class BaseMessageListFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             userRepository.markNotificationRead(notification.id, UUID.randomUUID().toString())
         }
+        // 同步刷新未读邀请红点（可能标记的正是最后一条 INVITED）
+        mainViewModel.refreshUnreadInvitations()
     }
 
     private fun markAllRead() {
@@ -94,11 +105,16 @@ abstract class BaseMessageListFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             userRepository.markAllNotificationsRead(UUID.randomUUID().toString())
         }
+        mainViewModel.refreshUnreadInvitations()
     }
 
-    /** 通知的群聊属于当前项目时进入对应群聊；否则仅标记已读 */
+    /** 通知点击：团队邀请 → 待处理则弹窗选择是否接受；其余 → 群聊属于当前项目时进入群聊 */
     private fun onNotificationClick(notification: NotificationDto, position: Int) {
         markOneRead(notification, position)
+        if (notification.kind == "INVITED") {
+            handleInvitation(notification)
+            return
+        }
         val groupId = notification.groupId.orEmpty()
         val projectId = notification.projectId.orEmpty()
         if (groupId.isNotEmpty() && projectId == mainViewModel.currentProjectId()) {
@@ -106,6 +122,62 @@ abstract class BaseMessageListFragment : Fragment() {
                 R.id.chatDetailFragment,
                 bundleOf("groupName" to notification.title, "groupId" to groupId)
             )
+        }
+    }
+
+    /**
+     * 点击团队邀请通知：查收件人的待处理邀请列表，该团队邀请仍为 PENDING 时弹窗；
+     * 已处理（接受/撤销/过期）则提示且不再弹窗，避免重复操作。
+     */
+    private fun handleInvitation(notification: NotificationDto) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            userRepository.getReceivedInvitations()
+                .onSuccess { invitations ->
+                    val pending = invitations.firstOrNull {
+                        it.teamId == notification.resourceId && it.status == "PENDING"
+                    }
+                    if (pending == null) {
+                        Toast.makeText(requireContext(), R.string.invitation_processed, Toast.LENGTH_SHORT).show()
+                        return@onSuccess
+                    }
+                    showAcceptInvitationDialog(pending)
+                }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), e.message ?: getString(R.string.load_failed), Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    /** 邀请接受弹窗：展示团队与邀请人，选择接受或暂不 */
+    private fun showAcceptInvitationDialog(invitation: ReceivedInvitationDto) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.invitation_accept_title)
+            .setMessage(
+                getString(
+                    R.string.invitation_accept_message,
+                    invitation.inviterDisplayName,
+                    invitation.teamName
+                )
+            )
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.invitation_accept) { _, _ ->
+                acceptInvitation(invitation)
+            }
+            .show()
+    }
+
+    /** 接受邀请：调 POST /team-invitations/{id}/accept，成功后刷新团队与未读邀请红点 */
+    private fun acceptInvitation(invitation: ReceivedInvitationDto) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            userRepository.acceptTeamInvitation(invitation.id, UUID.randomUUID().toString())
+                .onSuccess {
+                    Toast.makeText(requireContext(), R.string.join_team_success, Toast.LENGTH_SHORT).show()
+                    mainViewModel.refreshTeams()
+                    mainViewModel.refreshUnreadInvitations()
+                }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), e.message ?: getString(R.string.invitation_accept_failed), Toast.LENGTH_SHORT).show()
+                }
         }
     }
 

@@ -57,6 +57,7 @@ class ChatListFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         mainViewModel.refreshGroups()
+        mainViewModel.refreshUnreadInvitations()
         startPolling()
     }
 
@@ -100,6 +101,11 @@ class ChatListFragment : Fragment() {
         binding.tvUserName.text = SessionStore.user()?.displayName ?: getString(R.string.user_name_placeholder)
         mainViewModel.currentTeam.observe(viewLifecycleOwner) { team ->
             binding.tvTeamName.text = team
+        }
+
+        // 未读团队邀请 → 头像右上角红点
+        mainViewModel.unreadInvitations.observe(viewLifecycleOwner) { hasUnread ->
+            binding.ivInviteBadge.isVisible = hasUnread
         }
 
         binding.rvChatList.layoutManager = LinearLayoutManager(requireContext())

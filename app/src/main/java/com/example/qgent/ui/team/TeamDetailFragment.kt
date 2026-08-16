@@ -2,6 +2,7 @@ package com.example.qgent.ui.team
 
 import android.app.AlertDialog
 import android.app.Dialog
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
@@ -21,6 +22,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.GitHubRepositoryDto
+import com.example.qgent.ui.auth.TeamEntryActivity
 import com.example.qgent.data.model.InviteTeamMemberRequest
 import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
@@ -192,19 +194,61 @@ class TeamDetailFragment : Fragment() {
         }
     }
 
-    /** 底部操作：我创建的团队 → 解散；我加入的团队 → 退出。API 待后端就绪后接入 */
+    /** 底部操作：我创建的团队 → 解散（契约 §5.1）；我加入的团队 → 退出（待接入） */
     private fun confirmLeaveOrDissolve(isOwner: Boolean) {
         val titleRes = if (isOwner) R.string.dissolve_team else R.string.exit_team
         val confirmRes = if (isOwner) R.string.dissolve_team_confirm else R.string.exit_team_confirm
-        val toastRes = if (isOwner) R.string.dissolve_team_placeholder else R.string.exit_team_placeholder
+        if (!isOwner) {
+            Toast.makeText(requireContext(), R.string.exit_team_placeholder, Toast.LENGTH_SHORT).show()
+            return
+        }
         AlertDialog.Builder(requireContext())
             .setTitle(titleRes)
             .setMessage(confirmRes)
             .setNegativeButton(R.string.cancel, null)
             .setPositiveButton(titleRes) { _, _ ->
-                Toast.makeText(requireContext(), toastRes, Toast.LENGTH_SHORT).show()
+                dissolveTeam(arguments?.getString(ARG_TEAM_ID).orEmpty())
             }
             .show()
+    }
+
+    /** 解散团队：调用契约 §5.1 DELETE /teams/{teamId}，成功后刷新团队列表并返回上一页 */
+    private fun dissolveTeam(teamId: String) {
+        if (teamId.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            userRepository.deleteTeam(teamId, UUID.randomUUID().toString())
+                .onSuccess {
+                    Toast.makeText(requireContext(), R.string.dissolve_team_success, Toast.LENGTH_SHORT).show()
+                    routeAfterDissolve()
+                }
+                .onFailure { e ->
+                    Toast.makeText(
+                        requireContext(),
+                        e.message ?: getString(R.string.dissolve_team_failed),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+        }
+    }
+
+    /** 解散后路由：重新拉取团队列表，无其他团队 → 团队引导页（创建/加入）；有 → 返回团队管理页 */
+    private fun routeAfterDissolve() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            userRepository.getTeams()
+                .onSuccess { teams ->
+                    if (teams.isEmpty()) {
+                        startActivity(Intent(requireContext(), TeamEntryActivity::class.java))
+                        requireActivity().finish()
+                    } else {
+                        mainViewModel.refreshTeams()
+                        findNavController().popBackStack()
+                    }
+                }
+                .onFailure {
+                    mainViewModel.refreshTeams()
+                    findNavController().popBackStack()
+                }
+        }
     }
 
     /** 邀请记录弹窗：加载该团队邀请并支持撤销待接受邀请 */
