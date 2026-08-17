@@ -22,6 +22,7 @@ import com.example.qgent.databinding.FragmentTeamManageBinding
 import com.example.qgent.databinding.ItemTeamManageBinding
 import com.example.qgent.ui.personal.bindCollapsibleSection
 import com.example.qgent.ui.personal.fillLinearLayout
+import com.example.qgent.ui.personal.joinTeamErrorMessage
 import com.example.qgent.ui.personal.newInputDialog
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
@@ -135,11 +136,11 @@ class TeamManageFragment : Fragment() {
                         Toast.makeText(requireContext(), R.string.join_team_success, Toast.LENGTH_SHORT).show()
                         mainViewModel.refreshTeams()
                     }
-                    .onFailure {
+                    .onFailure { e ->
                         dialogBinding.btnJoin.isEnabled = true
                         Toast.makeText(
                             requireContext(),
-                            it.message ?: getString(R.string.join_team_failed),
+                            joinTeamErrorMessage(requireContext(), e, getString(R.string.join_team_failed)),
                             Toast.LENGTH_SHORT
                         ).show()
                     }

@@ -141,11 +141,18 @@ class MainViewModel(
         }
     }
 
-    /** 拉取通知列表，统计未读的任务类通知（除 INVITED 外）；失败时保持现状不打扰用户 */
+    /**
+     * 拉取通知列表，统计「当前项目」下未读的任务类通知（除 INVITED 外），
+     * 与任务铃铛列表过滤条件（TaskMessageListFragment）保持一致，
+     * 避免其他项目/历史遗留的未读通知点亮当前任务页红点；失败时保持现状不打扰用户。
+     */
     fun refreshUnreadTaskNotifications() {
         viewModelScope.launch {
             userRepo.getNotifications().onSuccess { list ->
-                _unreadTaskNotifications.value = list.any { it.kind != "INVITED" && !it.isRead }
+                val projectId = currentProjectId()
+                _unreadTaskNotifications.value = list.any {
+                    it.kind != "INVITED" && !it.isRead && projectId != null && it.projectId == projectId
+                }
             }
         }
     }
@@ -174,6 +181,8 @@ class MainViewModel(
                 resolveRoutingReady()
             }
             onProjectsLoaded?.invoke(firstProject.isNotEmpty())
+            // 项目上下文已定，同步刷新任务红点（限定当前项目），避免沿用上一项目的未读状态
+            refreshUnreadTaskNotifications()
         }
     }
 
@@ -181,6 +190,7 @@ class MainViewModel(
         if (_currentProject.value != project) {
             _currentProject.value = project
             loadGroups(project)
+            refreshUnreadTaskNotifications()
         }
     }
 

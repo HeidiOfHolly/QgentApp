@@ -156,6 +156,10 @@ class MainActivity : AppCompatActivity() {
             }
             val hasProjects = mainViewModel.projects.value?.isNotEmpty() == true
             val destinationId = if (hasProjects) R.id.chatListFragment else R.id.githubFragment
+            // 因团队未创建项目而跳转 GitHub 页：弹提示
+            if (!hasProjects) {
+                Toast.makeText(this@MainActivity, R.string.github_enter_no_project, Toast.LENGTH_SHORT).show()
+            }
             navController.navigate(
                 destinationId,
                 null,

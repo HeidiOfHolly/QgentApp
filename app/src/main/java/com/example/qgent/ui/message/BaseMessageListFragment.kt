@@ -23,6 +23,7 @@ import com.example.qgent.data.model.parseRfc3339
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.databinding.FragmentMessageListBinding
 import com.example.qgent.databinding.ItemNotificationBinding
+import com.example.qgent.ui.personal.joinTeamErrorMessage
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -52,6 +53,9 @@ abstract class BaseMessageListFragment : Fragment() {
 
     private val items = mutableListOf<NotificationDto>()
     private lateinit var adapter: NotificationAdapter
+
+    /** 已拒绝的团队邀请通知 id：后端无“拒绝”接口，本地标记后不再展示、不再弹窗 */
+    private val rejectedInvitationIds = mutableSetOf<String>()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -132,6 +136,10 @@ abstract class BaseMessageListFragment : Fragment() {
      * 已处理（接受/撤销/过期）则提示且不再弹窗，避免重复操作。
      */
     private fun handleInvitation(notification: NotificationDto) {
+        if (notification.id in rejectedInvitationIds) {
+            Toast.makeText(requireContext(), R.string.invitation_rejected, Toast.LENGTH_SHORT).show()
+            return
+        }
         viewLifecycleOwner.lifecycleScope.launch {
             userRepository.getReceivedInvitations()
                 .onSuccess { invitations ->
@@ -142,7 +150,7 @@ abstract class BaseMessageListFragment : Fragment() {
                         Toast.makeText(requireContext(), R.string.invitation_processed, Toast.LENGTH_SHORT).show()
                         return@onSuccess
                     }
-                    showAcceptInvitationDialog(pending)
+                    showAcceptInvitationDialog(notification, pending)
                 }
                 .onFailure { e ->
                     Toast.makeText(requireContext(), e.message ?: getString(R.string.load_failed), Toast.LENGTH_SHORT).show()
@@ -150,8 +158,8 @@ abstract class BaseMessageListFragment : Fragment() {
         }
     }
 
-    /** 邀请接受弹窗：展示团队与邀请人，选择接受或暂不 */
-    private fun showAcceptInvitationDialog(invitation: ReceivedInvitationDto) {
+    /** 邀请处理弹窗：展示团队与邀请人，可选择接受 / 拒绝 / 暂不 */
+    private fun showAcceptInvitationDialog(notification: NotificationDto, invitation: ReceivedInvitationDto) {
         AlertDialog.Builder(requireContext())
             .setTitle(R.string.invitation_accept_title)
             .setMessage(
@@ -161,11 +169,25 @@ abstract class BaseMessageListFragment : Fragment() {
                     invitation.teamName
                 )
             )
-            .setNegativeButton(R.string.cancel, null)
+            .setNeutralButton(R.string.cancel, null)
+            .setNegativeButton(R.string.invitation_reject) { _, _ ->
+                rejectInvitation(notification)
+            }
             .setPositiveButton(R.string.invitation_accept) { _, _ ->
                 acceptInvitation(invitation)
             }
             .show()
+    }
+
+    /** 拒绝邀请：后端无对应接口，本地标记后从列表移除并刷新未读红点 */
+    private fun rejectInvitation(notification: NotificationDto) {
+        rejectedInvitationIds.add(notification.id)
+        items.removeAll { it.id == notification.id }
+        adapter.notifyDataSetChanged()
+        updateEmptyState()
+        mainViewModel.refreshUnreadInvitations()
+        mainViewModel.refreshUnreadTaskNotifications()
+        Toast.makeText(requireContext(), R.string.invitation_rejected, Toast.LENGTH_SHORT).show()
     }
 
     /** 接受邀请：调 POST /team-invitations/{id}/accept，成功后刷新团队与未读邀请红点 */
@@ -178,7 +200,11 @@ abstract class BaseMessageListFragment : Fragment() {
                     mainViewModel.refreshUnreadInvitations()
                 }
                 .onFailure { e ->
-                    Toast.makeText(requireContext(), e.message ?: getString(R.string.invitation_accept_failed), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        requireContext(),
+                        joinTeamErrorMessage(requireContext(), e, getString(R.string.invitation_accept_failed)),
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
         }
     }

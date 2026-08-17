@@ -53,9 +53,10 @@
         <FrameLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="1dp"
+            android:layout_marginBottom="5dp"
+            android:layout_marginRight="15dp"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintRight_toRightOf="parent">
+            app:layout_constraintRight_toLeftOf="@+id/btnNewTask">
             <ImageView
                 android:id="@+id/btnNotification"
                 android:layout_width="40dp"
@@ -75,6 +76,19 @@
                 android:visibility="gone"
                 tools:visibility="visible" />
         </FrameLayout>
+        <ImageView
+            android:id="@+id/btnNewTask"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_oval"
+            android:clickable="true"
+            android:contentDescription="新建任务"
+            android:layout_marginBottom="5dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            android:focusable="true"
+            android:padding="4dp"
+            android:src="@drawable/ic_add" />
     </androidx.constraintlayout.widget.ConstraintLayout>
     <ImageView
         android:id="@+id/ivTask"

@@ -138,14 +138,18 @@ class PersonalCenterFragment : Fragment() {
         navController.navigate(R.id.messageListFragment)
     }
 
-    /** 点击团队切换：若该团队未创建任何项目，则收起抽屉并进入 GitHub 页 */
+    /** 点击团队切换：若该团队未创建任何项目，则收起抽屉并进入 GitHub 页，并弹提示 */
     private fun onTeamClick(teamName: String) {
         // 在 GitHub 页时项目列表已被清空，重复点选同一团队也强制重载
         mainViewModel.setCurrentTeam(
             teamName,
             force = onGithubPage,
             onProjectsLoaded = { hasProjects ->
-                if (!hasProjects) openGithub()
+                if (!hasProjects) {
+                    // 每次切换到无项目团队都提示：已在 GitHub 页则只弹不重复导航
+                    if (!onGithubPage) openGithub()
+                    Toast.makeText(requireContext(), R.string.github_enter_no_project, Toast.LENGTH_SHORT).show()
+                }
             }
         )
     }

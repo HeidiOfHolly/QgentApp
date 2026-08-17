@@ -78,21 +78,6 @@
                 android:textSize="16sp"
                 tools:text="执行中" />
 
-            <!-- 取消任务 -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnCancelTask"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:minHeight="36dp"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
-                android:text="@string/cancel_task"
-                android:textColor="@color/white"
-                android:textSize="14sp"
-                app:backgroundTint="@color/exit_red"
-                app:cornerRadius="18dp" />
-
             <!-- 仓库 -->
             <TextView
                 android:id="@+id/tvRepo"
@@ -197,6 +182,20 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
+            <!-- 取消任务 -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCancelTask"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:minHeight="36dp"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:text="@string/cancel_task"
+                android:textColor="@color/white"
+                android:textSize="14sp"
+                app:backgroundTint="@color/exit_red"
+                app:cornerRadius="18dp" />
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

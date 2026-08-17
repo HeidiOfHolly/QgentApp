@@ -14,6 +14,7 @@ import com.example.qgent.R
 import com.example.qgent.databinding.ActivityTeamEntryBinding
 import com.example.qgent.databinding.DialogJoinTeamBinding
 import com.example.qgent.databinding.DialogNewTewmBinding
+import com.example.qgent.ui.personal.joinTeamErrorMessage
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -66,11 +67,11 @@ class TeamEntryActivity : AppCompatActivity() {
                         startActivity(Intent(this@TeamEntryActivity, MainActivity::class.java))
                         finish()
                     }
-                    .onFailure {
+                    .onFailure { e ->
                         dialogBinding.btnJoin.isEnabled = true
                         Toast.makeText(
                             this@TeamEntryActivity,
-                            it.message ?: getString(R.string.join_team_failed),
+                            joinTeamErrorMessage(this@TeamEntryActivity, e, getString(R.string.join_team_failed)),
                             Toast.LENGTH_SHORT
                         ).show()
                     }

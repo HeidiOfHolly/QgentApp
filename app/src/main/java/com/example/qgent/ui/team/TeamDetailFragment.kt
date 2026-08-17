@@ -20,6 +20,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.ui.auth.TeamEntryActivity
 import com.example.qgent.data.model.InviteTeamMemberRequest
@@ -405,7 +406,7 @@ class TeamDetailFragment : Fragment() {
         dialog.show()
     }
 
-    /** 发送邀请请求：调 POST 接口，成功提示 */
+    /** 发送邀请请求：调 POST 接口；失败时区分网络错误与后端业务错误（如邮箱已加入团队） */
     private fun sendInvitation(teamId: String, email: String) {
         viewLifecycleOwner.lifecycleScope.launch {
             userRepository.createInvitation(
@@ -414,8 +415,15 @@ class TeamDetailFragment : Fragment() {
                 UUID.randomUUID().toString()
             ).onSuccess {
                 Toast.makeText(requireContext(), R.string.invite_sent_success, Toast.LENGTH_SHORT).show()
-            }.onFailure {
-                Toast.makeText(requireContext(), R.string.invite_send_failed, Toast.LENGTH_SHORT).show()
+            }.onFailure { e ->
+                val message = when {
+                    // 网络层异常：无法连接/超时等，与后端业务错误区分
+                    e is java.io.IOException -> getString(R.string.invite_send_network_error)
+                    // 后端业务错误：直接透出后端中文提示（如「该邮箱已加入团队」），后端未带提示时用通用文案
+                    e is ApiException -> e.message?.takeIf { it.isNotBlank() } ?: getString(R.string.invite_send_failed)
+                    else -> getString(R.string.invite_send_failed)
+                }
+                Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
             }
         }
     }
