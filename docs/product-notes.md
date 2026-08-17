@@ -3,6 +3,25 @@
 > 本文件记录开发过程中确认的产品逻辑与契约决策，供任何新会话读取，
 > 避免依赖对话记忆。修改时同步更新。
 
+## Diff 确认（2026-08-17 实现，2026-08-18 改为 Task 级批次契约）
+
+- **触发**：任务跑完停在"待确认 Diff"时，群里收到 TASK_STATUS 卡片（"任务开发完成，等待你对 diff 的确认"）。
+- **App 端交互**：点击 TASK_STATUS 卡片 → 用 `message.taskId` 拉任务详情 → 解析 `diffReviewSummary`（reviewStatus、
+  capabilities）→ 弹 Diff Review 确认对话框（批次摘要 + 首个 Diff 文件内容 + 「确认 Diff / 拒绝 Diff」按钮）。
+- **接口（§12.3 Task 级最终 Diff Review 批次）**：确认/拒绝必须走 Task 级接口，批次内 Diff 禁止用单 Diff
+  accept/reject（返回 409 DIFF_BATCH_REVIEW_REQUIRED）：
+  - `GET /projects/{projectId}/tasks/{taskId}/diff-review` — 查批次（可能为 null）
+  - `GET .../tasks/{taskId}/diff-review/diffs/{diffId}/patch` — 读不可变 patch
+  - `POST .../tasks/{taskId}/diff-review/confirm` — 确认整个批次，开始逐仓库交付（body 空对象 {}）
+  - `POST .../tasks/{taskId}/diff-review/reject` — 拒绝整个批次（body `{"reason":"..."}`）
+  - `POST .../tasks/{taskId}/diff-review/retry-delivery` — 交付失败后重试
+  - 三个写接口均要求 Idempotency-Key。
+- 数据层：`DiffRepository` 加 getTaskDiffReview/getDiffReviewPatch/confirmDiffReview/rejectDiffReview/retryDiffDelivery；
+  `TaskDetailDto.diffReviewSummary` 用 JsonElement 兼容解析；`ChatMessage.taskId` 从 TASK_STATUS content 解析。
+- **reviewStatus 语义**：仅 `PENDING_CONFIRMATION` 显示确认/拒绝按钮；`capabilities.canConfirmDiffReview`/
+  `canRejectDiffReview`/`canRetryDelivery` 优先，缺省按 reviewStatus 兜底。
+- 拒绝可填原因；确认后任务进入交付（DELIVERING → SUCCEEDED），Agent 提交 MR 等待审核。
+
 ## 编排助手与任务启动失败（2026-08-17 后端待办完成）
 
 - **TASK_STATUS 卡片**：不假设发送者是 Developer/Tester/Reviewer（正常来自 ORCHESTRATOR Agent）。
@@ -31,15 +50,19 @@
   任务卡片在 PLANNING/PENDING/RUNNING 超 5 分钟未更新时显示「任务ID: xxx」（卡死提示）。
 - 清单五/六为后端说明与确认项，前端无改动。
 
-## @ Agent 自动触发任务（2026-08-16 实现）
+## @ Agent 自动触发任务（2026-08-16 实现，2026-08-XX 契约改版）
 
-- **机制**：在需求群发消息 @ 了 Agent（mention type=AGENT）→ 消息发送成功后**自动弹「发起任务」弹窗**，
+- **机制（旧）**：在需求群发消息 @ 了 Agent（mention type=AGENT）→ 消息发送成功后**自动弹「发起任务」弹窗**，
   预填标题（消息前 30 字）和需求（消息全文）→ 用户选仓库确认 → POST /tasks 创建任务 →
   后端自动建 `feat/task-{taskId}` 分支并开始编排（Planner→Developer→Tester→Reviewer）。
-- 实现：`sendTextMessage` onSuccess 里判断 `mentions.any { it.type == "AGENT" }` →
-  `showCreateTaskDialog(prefillTitle, prefillRequirement)`（原 + 号菜单入口保留）。
-- 说明：后端创建 Task 时自动生成分支（TaskService `"feat/task-" + task.getId()`），
-  Agent 在该分支干活，交付时基于 sourceBranch 发 PR。
+- **契约改版（契约 §7）**：`POST .../messages` **请求体不再携带 `mentions`**（带 mentions 会 400「请求体格式不对」）；
+  @Agent 触发任务改为：发消息成功后，用返回的 `messageId` 显式调
+  `POST /projects/{projectId}/groups/{groupId}/messages/{messageId}/trigger-task`
+  （`TaskTriggerRequest{title, requirement?, repositoryIds?, baseRef?}`，title 必填，data 恒为 null）。
+- 实现：`sendTextMessage`/`resendText` 客户端解析 @Agent（不随消息体发送）→ 成功后
+  `showCreateTaskDialog(..., messageId = dto.id)` → 确认后 `taskRepo().triggerTask(...)`。
+- 「+ 菜单 → 发起任务」仍走 `POST /tasks`（TaskCreateRequest.requirementGroupId=当前群，无 messageId）。
+- `TaskTriggerRequest` / `QgApiService.triggerTask` / `TaskRepository.triggerTask` 已就绪。
 
 ## Memory / Skill 池交互（2026-08-16 完善）
 

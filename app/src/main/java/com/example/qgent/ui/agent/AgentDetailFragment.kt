@@ -38,8 +38,6 @@ class AgentDetailFragment : Fragment() {
         (requireActivity().application as QgentApp).container.agentRepository
     }
 
-    private val mockMemory = mutableListOf("React 组件规范", "API 接口约定", "Git 提交规范")
-    private val mockSkill = mutableListOf("TypeScript 检查", "ESLint 格式化")
     private lateinit var memoryAdapter: BoundResourceAdapter
     private lateinit var skillAdapter: BoundResourceAdapter
 
@@ -74,29 +72,27 @@ class AgentDetailFragment : Fragment() {
             }
         }
 
-        // Memory 列表
-        memoryAdapter = BoundResourceAdapter(mockMemory) { resource ->
-            mockMemory.remove(resource)
-            memoryAdapter.notifyDataSetChanged()
-        }
+        // 已绑定 Memory：暂无可查询的绑定接口，无数据时隐藏列表、显示空态文案（不展示 mock 数据）
+        memoryAdapter = BoundResourceAdapter(mutableListOf()) { }
         binding.rvBoundMemory.addItemDecoration(
             DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL)
         )
         binding.rvBoundMemory.adapter = memoryAdapter
+        binding.rvBoundMemory.isVisible = false
+        binding.tvBoundMemoryEmpty.isVisible = true
 
         binding.tvDetailAddMemory.setOnClickListener {
             Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
         }
 
-        // Skill 列表
-        skillAdapter = BoundResourceAdapter(mockSkill) { resource ->
-            mockSkill.remove(resource)
-            skillAdapter.notifyDataSetChanged()
-        }
+        // 已绑定 Skill：同上，无数据时不展示 mock 数据
+        skillAdapter = BoundResourceAdapter(mutableListOf()) { }
         binding.rvBoundSkill.addItemDecoration(
             DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL)
         )
         binding.rvBoundSkill.adapter = skillAdapter
+        binding.rvBoundSkill.isVisible = false
+        binding.tvBoundSkillEmpty.isVisible = true
 
         binding.tvDetailAddSkill.setOnClickListener {
             Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()

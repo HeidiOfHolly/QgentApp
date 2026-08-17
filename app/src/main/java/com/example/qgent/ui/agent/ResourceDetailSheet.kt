@@ -12,19 +12,22 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.isVisible
 import androidx.fragment.app.DialogFragment
+import com.example.qgent.R
 import com.example.qgent.databinding.SheetResourceDetailBinding
 
 /**
  * Memory/Skill 详情弹窗：展示内容（类型标签 + 标题 + 全文）。
  * 待审核条目且传入 [onApprove]/[onReject] 回调时，卡片右上角显示 通过/拒绝 按钮；
- * 已共享条目只读展示。
+ * 已共享条目且传入 [onDelete] 回调时，底部显示 删除 按钮；
+ * 均未传入时只读展示。
  */
 class ResourceDetailSheet(
     private val name: String,
     private val description: String,
     private val isPending: Boolean,
     private val onApprove: (() -> Unit)? = null,
-    private val onReject: (() -> Unit)? = null
+    private val onReject: (() -> Unit)? = null,
+    private val onDelete: (() -> Unit)? = null
 ) : DialogFragment() {
 
     private var _binding: SheetResourceDetailBinding? = null
@@ -92,6 +95,20 @@ class ResourceDetailSheet(
             }
         } else {
             binding.reviewActions.isVisible = false
+        }
+
+        // 已共享资源且提供删除回调 → 底部显示 删除 按钮（删除前二次确认）
+        binding.btnDelete.isVisible = onDelete != null
+        binding.btnDelete.setOnClickListener {
+            AlertDialog.Builder(requireContext())
+                .setTitle(R.string.resource_delete)
+                .setMessage(R.string.resource_delete_confirm)
+                .setPositiveButton(R.string.resource_delete) { _, _ ->
+                    onDelete?.invoke()
+                    dismiss()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
         }
     }
 

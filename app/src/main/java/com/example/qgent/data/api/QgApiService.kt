@@ -14,7 +14,11 @@ import com.example.qgent.data.model.CreateMemoryRequest
 import com.example.qgent.data.model.CreateProjectRequest
 import com.example.qgent.data.model.CreateSkillRequest
 import com.example.qgent.data.model.CreateTeamRequest
+import com.example.qgent.data.model.DiffDecisionRequest
 import com.example.qgent.data.model.DiffFileDto
+import com.example.qgent.data.model.DiffReviewBatchDto
+import com.example.qgent.data.model.DiffReviewConfirmRequest
+import com.example.qgent.data.model.DiffReviewRejectRequest
 import com.example.qgent.data.model.GitHubInstallationDto
 import com.example.qgent.data.model.GitHubInstallationUrlDto
 import com.example.qgent.data.model.GitHubRepositoryDto
@@ -35,6 +39,7 @@ import com.example.qgent.data.model.ReplaceAgentRequest
 import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.SendMessageRequest
 import com.example.qgent.data.model.SkillDto
+import com.example.qgent.data.model.TaskTriggerRequest
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.ActivityDto
 import com.example.qgent.data.model.DiffFileResponseDto
@@ -262,6 +267,16 @@ interface QgApiService {
         @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: SendMessageRequest
     ): Response<ApiResponse<GroupMessageDto>>
+
+    /** 契约 §7：从群消息显式触发 Task（data 恒为 null，成功看 HTTP 200） */
+    @POST("projects/{projectId}/groups/{groupId}/messages/{messageId}/trigger-task")
+    suspend fun triggerTask(
+        @Path("projectId") projectId: String,
+        @Path("groupId") groupId: String,
+        @Path("messageId") messageId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: TaskTriggerRequest
+    ): Response<ApiResponse<Unit>>
 
     // ── 通知中心（§7.1）──
 
@@ -580,6 +595,69 @@ interface QgApiService {
         @Path("projectId") projectId: String,
         @Path("diffId") diffId: String
     ): Response<ApiResponse<List<DiffFileResponseDto>>>
+
+    /** 确认 Diff（§15.3） */
+    @POST("projects/{projectId}/diffs/{diffId}/accept")
+    suspend fun acceptDiff(
+        @Path("projectId") projectId: String,
+        @Path("diffId") diffId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: DiffDecisionRequest?
+    ): Response<ApiResponse<Unit>>
+
+    /** 拒绝 Diff（§15.3） */
+    @POST("projects/{projectId}/diffs/{diffId}/reject")
+    suspend fun rejectDiff(
+        @Path("projectId") projectId: String,
+        @Path("diffId") diffId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: DiffDecisionRequest?
+    ): Response<ApiResponse<Unit>>
+
+    // ── Task 级 Diff Review 批次（§12.3） ──
+    // 批次内 Diff 禁止用单 Diff 的 accept/reject（409 DIFF_BATCH_REVIEW_REQUIRED），
+    // 必须用下列 Task 级接口确认/拒绝整个批次；三个写接口均要求 Idempotency-Key。
+
+    /** 查询 Task 级最终 Diff Review 批次（可能为 null：任务暂无 Diff 待确认） */
+    @GET("projects/{projectId}/tasks/{taskId}/diff-review")
+    suspend fun getTaskDiffReview(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String
+    ): Response<ApiResponse<DiffReviewBatchDto>>
+
+    /** 读取批次内单个 Diff 的不可变 patch 内容 */
+    @GET("projects/{projectId}/tasks/{taskId}/diff-review/diffs/{diffId}/patch")
+    suspend fun getDiffReviewPatch(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String,
+        @Path("diffId") diffId: String
+    ): Response<ApiResponse<com.google.gson.JsonElement>>
+
+    /** 确认整个最终 Diff 批次，开始逐仓库交付 */
+    @POST("projects/{projectId}/tasks/{taskId}/diff-review/confirm")
+    suspend fun confirmDiffReview(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: DiffReviewConfirmRequest
+    ): Response<ApiResponse<Unit>>
+
+    /** 拒绝整个最终 Diff 批次（body 带 reason） */
+    @POST("projects/{projectId}/tasks/{taskId}/diff-review/reject")
+    suspend fun rejectDiffReview(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: DiffReviewRejectRequest
+    ): Response<ApiResponse<Unit>>
+
+    /** 重试逐仓库交付（交付失败后可重试） */
+    @POST("projects/{projectId}/tasks/{taskId}/diff-review/retry-delivery")
+    suspend fun retryDiffDelivery(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<Unit>>
 
     @GET("projects/{projectId}/tasks/{taskId}")
     suspend fun getTaskDetail(

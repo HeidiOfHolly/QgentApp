@@ -25,7 +25,9 @@ import java.util.UUID
 /**
  * Memory 池：审核队列（PENDING_REVIEW）+ 共享池（APPROVED）。
  * - 点击条目：弹纯文本详情（ResourceDetailSheet）；
- * - 审核队列条目：长按弹出 通过/拒绝（仅项目 Admin，权限从项目成员角色实时判断）；
+ * - 审核队列条目：点击弹详情卡片，右上角 通过/拒绝（仅项目 Admin，权限从项目成员角色实时判断；
+ *   非 Admin 点击只能查看内容，无操作按钮）；
+ * - 共享池条目：点击弹详情卡片，底部 删除 入口（archive 归档，从共享池移除；仅项目 Admin 可见）；
  * - 真实接口优先，失败由数据层 Fallback 回退 mock 保底（测试完成后移除）。
  */
 class MemoryPoolFragment : Fragment() {
@@ -57,7 +59,6 @@ class MemoryPoolFragment : Fragment() {
         binding.rvReviewList.layoutManager = LinearLayoutManager(requireContext())
         binding.rvApprovedList.layoutManager = LinearLayoutManager(requireContext())
 
-        checkAdminRole()
         loadMemories()
     }
 
@@ -65,25 +66,25 @@ class MemoryPoolFragment : Fragment() {
      * 审核权限判断：项目 Admin 或 当前团队 Owner（文档 §3.1：Team Owner 对本团队项目有兜底管理权限）。
      * 从项目成员角色 + 团队成员角色实时读取，不依赖写死的 isProjectAdmin。
      */
-    private fun checkAdminRole() {
-        val projectId = mainViewModel.currentProjectId() ?: return
-        val teamId = mainViewModel.currentTeamId() ?: return
-        val myId = com.example.qgent.data.SessionStore.user()?.id ?: return
-        viewLifecycleOwner.lifecycleScope.launch {
-            val app = requireActivity().application as QgentApp
-            val projectAdmin = app.container.userRepository.getProjectMembers(projectId)
-                .getOrNull().orEmpty()
-                .any { it.userId == myId && it.role == "PROJECT_ADMIN" }
-            val teamOwner = app.container.userRepository.getTeamMembers(teamId)
-                .getOrNull().orEmpty()
-                .any { it.userId == myId && it.role == "TEAM_OWNER" }
-            isAdmin = projectAdmin || teamOwner
-        }
+    private suspend fun resolveAdminRole(): Boolean {
+        val projectId = mainViewModel.currentProjectId() ?: return false
+        val teamId = mainViewModel.currentTeamId() ?: return false
+        val myId = com.example.qgent.data.SessionStore.user()?.id ?: return false
+        val app = requireActivity().application as QgentApp
+        val projectAdmin = app.container.userRepository.getProjectMembers(projectId)
+            .getOrNull().orEmpty()
+            .any { it.userId == myId && it.role == "PROJECT_ADMIN" }
+        if (projectAdmin) return true
+        return app.container.userRepository.getTeamMembers(teamId)
+            .getOrNull().orEmpty()
+            .any { it.userId == myId && it.role == "TEAM_OWNER" }
     }
 
     private fun loadMemories() {
         val projectId = mainViewModel.currentProjectId() ?: return
         viewLifecycleOwner.lifecycleScope.launch {
+            // 先确认审核权限再渲染列表，避免权限未就绪时（或普通成员）误显示 通过/拒绝 按钮
+            isAdmin = resolveAdminRole()
             memoryRepo.getMemories(projectId).onSuccess { dtos ->
                 val pending = dtos.filter { it.status == "PENDING_REVIEW" }.map { it.toMemoryItem() }
                 val approved = dtos.filter { it.status == "APPROVED" }.map { it.toMemoryItem() }
@@ -137,12 +138,30 @@ class MemoryPoolFragment : Fragment() {
         }
     }
 
-    /** 点击共享条目：纯文本详情（只读展示） */
+    /** 点击共享条目：详情展示（只读 + 删除入口，删除仅项目 Admin 可见），删除后从共享池移除 */
     private fun onItemClick(item: MemoryItem) {
-        ResourceDetailSheet(item.name, item.description, isPending = false).show(
+        ResourceDetailSheet(
+            name = item.name,
+            description = item.description,
+            isPending = false,
+            onDelete = if (isAdmin) { { deleteItem(item) } } else null
+        ).show(
             childFragmentManager,
             ResourceDetailSheet.TAG
         )
+    }
+
+    /** 删除（归档）共享 Memory：调用 archive 接口后刷新列表 */
+    private fun deleteItem(item: MemoryItem) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            memoryRepo.archive(projectId, item.id, UUID.randomUUID().toString())
+                .onSuccess {
+                    Toast.makeText(requireContext(), R.string.memory_deleted, Toast.LENGTH_SHORT).show()
+                    loadMemories()
+                }
+                .onFailure { Toast.makeText(requireContext(), "删除失败：${it.message}", Toast.LENGTH_SHORT).show() }
+        }
     }
 
     override fun onDestroyView() {

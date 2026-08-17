@@ -11,6 +11,7 @@ import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskRunListItemDto
 import com.example.qgent.data.model.TaskRunLogEntryDto
 import com.example.qgent.data.model.TaskStepListItemDto
+import com.example.qgent.data.model.TaskTriggerRequest
 
 /** 任务/动态/MR 仓库：任务页三列表查询（§16 任务 / §19.4 动态 / §13 MR） */
 interface TaskRepository {
@@ -20,6 +21,15 @@ interface TaskRepository {
         request: TaskCreateRequest,
         idempotencyKey: String
     ): Result<TaskListItemDto>
+
+    /** 契约 §7：从群消息显式触发 Task（POST .../messages/{messageId}/trigger-task） */
+    suspend fun triggerTask(
+        projectId: String,
+        groupId: String,
+        messageId: String,
+        request: TaskTriggerRequest,
+        idempotencyKey: String
+    ): Result<Unit>
 
     /** 查询项目可见任务（§16.1），支持需求群/状态/发起人/仓库过滤，分页返回单页数据 */
     suspend fun getTasks(

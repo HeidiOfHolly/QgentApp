@@ -1,11 +1,11 @@
 package com.example.qgent.data.repository
 
+import android.util.Log
 import com.example.qgent.data.api.QgApiService
 import com.example.qgent.data.model.CreateGroupRequest
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.GroupMessageDto
-import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 import com.example.qgent.data.model.SendMessageRequest
 import com.example.qgent.data.model.UpdateGroupRequest
@@ -81,20 +81,21 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         type: String,
         content: MessageContentDto,
         clientMessageId: String?,
-        mentions: List<MentionDto>?,
         replyToId: String?,
         idempotencyKey: String
     ): Result<GroupMessageDto> = apiCall {
-        service.sendMessage(
-            projectId, groupId,
-            idempotencyKey,
-            SendMessageRequest(
-                type = type,
-                content = content,
-                clientMessageId = clientMessageId,
-                mentions = mentions,
-                replyToId = replyToId
-            )
-        ).toDataOrThrow()
+        val body = SendMessageRequest(
+            type = type,
+            content = content,
+            clientMessageId = clientMessageId,
+            replyToId = replyToId
+        )
+        // 排查「请求体格式不对」等后端校验错误时核对实际发送的 JSON
+        Log.d("SendMsg", "sendMessage body: ${requestGson.toJson(body)}")
+        service.sendMessage(projectId, groupId, idempotencyKey, body).toDataOrThrow()
+    }
+
+    companion object {
+        private val requestGson = com.google.gson.Gson()
     }
 }

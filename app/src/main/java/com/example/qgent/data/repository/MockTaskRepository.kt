@@ -11,6 +11,7 @@ import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskRunListItemDto
 import com.example.qgent.data.model.TaskRunLogEntryDto
 import com.example.qgent.data.model.TaskStepListItemDto
+import com.example.qgent.data.model.TaskTriggerRequest
 
 /** mock 任务/动态/MR：返回空列表，任务页展示空态 */
 class MockTaskRepository : TaskRepository {
@@ -37,6 +38,14 @@ class MockTaskRepository : TaskRepository {
             updatedAt = "2026-08-16T08:00:00Z"
         )
     )
+
+    override suspend fun triggerTask(
+        projectId: String,
+        groupId: String,
+        messageId: String,
+        request: TaskTriggerRequest,
+        idempotencyKey: String
+    ): Result<Unit> = Result.success(Unit)
 
     override suspend fun getTasks(
         projectId: String,

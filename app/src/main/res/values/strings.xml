@@ -58,6 +58,9 @@
     <string name="view_task_run_logs">查看执行日志</string>
     <string name="task_run_logs_title">执行日志</string>
     <string name="task_run_logs_empty">暂无日志</string>
+    <string name="confirm_diff">确认 Diff</string>
+    <string name="reject_diff">拒绝 Diff</string>
+    <string name="retry_delivery">重试交付</string>
     <string name="new_repo_create">自动新建 GitHub 仓库</string>
     <string name="new_repo_name_hint">仓库名（小写字母、数字、-、_、.）</string>
     <string name="new_repo_name_required">请输入仓库名</string>
@@ -69,8 +72,11 @@
     <string name="memory_draft_empty">请先选择要生成的消息</string>
     <string name="memory_draft_title">新建 Memory 草稿</string>
     <string name="memory_draft_title_hint">标题</string>
-    <string name="memory_draft_summary_hint">简介（可选，留空自动拼接选中消息）</string>
     <string name="memory_draft_title_required">请输入标题</string>
+    <string name="chat_send_failed_title">消息发送失败</string>
+    <string name="chat_send_failed_resend">是否重新发送？</string>
+    <string name="chat_resend">重新发送</string>
+    <string name="chat_delete_failed">否</string>
     <string name="task_status_title">任务状态</string>
     <string name="task_status_node">执行节点：%1$s</string>
     <string name="nav_tasks">任务</string>
@@ -86,6 +92,8 @@
     <string name="agent_detail_title">Agent 详情</string>
     <string name="agent_bound_memory">已绑定 Memory</string>
     <string name="agent_bound_skill">已绑定 Skill</string>
+    <string name="agent_bound_memory_empty">暂无绑定 Memory</string>
+    <string name="agent_bound_skill_empty">暂无绑定 Skill</string>
     <string name="agent_add">添加</string>
     <string name="agent_remove">移除</string>
     <string name="memory_pool_label">共享 Memory 池</string>
@@ -97,6 +105,9 @@
     <string name="review_reject">已驳回</string>
     <string name="review_reject_title">驳回草稿</string>
     <string name="review_reject_hint">请输入驳回原因</string>
+    <string name="resource_delete">删除</string>
+    <string name="resource_delete_confirm">删除后将从共享池移除，确定删除？</string>
+    <string name="memory_deleted">已删除</string>
 
     <string name="user_name_placeholder">用户昵称</string>
     <string name="team_name_placeholder">所在团队</string>

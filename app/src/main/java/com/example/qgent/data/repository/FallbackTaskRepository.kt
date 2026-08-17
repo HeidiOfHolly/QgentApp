@@ -10,6 +10,14 @@ class FallbackTaskRepository(
     override suspend fun createTask(projectId: String, request: com.example.qgent.data.model.TaskCreateRequest, idempotencyKey: String) =
         fb.call { createTask(projectId, request, idempotencyKey) }
 
+    override suspend fun triggerTask(
+        projectId: String,
+        groupId: String,
+        messageId: String,
+        request: com.example.qgent.data.model.TaskTriggerRequest,
+        idempotencyKey: String
+    ) = fb.call { triggerTask(projectId, groupId, messageId, request, idempotencyKey) }
+
     override suspend fun getTasks(
         projectId: String,
         groupId: String?,

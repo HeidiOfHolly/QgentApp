@@ -12,4 +12,13 @@
         android:layout_height="match_parent"
         android:adjustViewBounds="true"
         android:contentDescription="@string/image" />
+
+    <!-- 图片加载中：居中加载态，加载完成/失败后隐藏 -->
+    <ProgressBar
+        android:id="@+id/pbPreviewLoading"
+        style="?android:attr/progressBarStyleLarge"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:visibility="gone" />
 </FrameLayout>

@@ -1,6 +1,5 @@
 package com.example.qgent.data.repository
 
-import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 
 /** 真实请求失败时回退到 mock，保证演示环境可用 */
@@ -34,6 +33,6 @@ class FallbackChatRepository(
     override suspend fun getMessages(projectId: String, groupId: String, cursor: String?, limit: Int) =
         fb.call { getMessages(projectId, groupId, cursor, limit) }
 
-    override suspend fun sendMessage(projectId: String, groupId: String, type: String, content: MessageContentDto, clientMessageId: String?, mentions: List<MentionDto>?, replyToId: String?, idempotencyKey: String) =
-        fb.call { sendMessage(projectId, groupId, type, content, clientMessageId, mentions, replyToId, idempotencyKey) }
+    override suspend fun sendMessage(projectId: String, groupId: String, type: String, content: MessageContentDto, clientMessageId: String?, replyToId: String?, idempotencyKey: String) =
+        fb.call { sendMessage(projectId, groupId, type, content, clientMessageId, replyToId, idempotencyKey) }
 }
