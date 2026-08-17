@@ -98,81 +98,123 @@
             tools:text="回复 @张三：今天把登录接口联调一下"
             tools:visibility="visible" />
 
-        <FrameLayout
-            android:id="@+id/flBubble"
+        <!-- 气泡行：发送状态指示（仅自己消息显示）+ 气泡 -->
+        <LinearLayout
+            android:id="@+id/llBubbleRow"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/tvBubble"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:lineSpacingExtra="2dp"
-                android:maxWidth="280dp"
-                android:paddingStart="15dp"
-                android:paddingTop="9dp"
-                android:paddingEnd="15dp"
-                android:paddingBottom="10dp"
-                android:textColor="?android:attr/textColorPrimary"
-                android:textSize="15sp"
-                tools:text="今天把登录接口联调一下" />
-
-            <ImageView
-                android:id="@+id/ivBubbleImage"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:adjustViewBounds="true"
-                android:contentDescription="@string/image"
-                android:scaleType="fitCenter"
+            <!-- 发送中：小加载标 -->
+            <ProgressBar
+                android:id="@+id/pbSendLoading"
+                style="?android:attr/progressBarStyleSmall"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_marginEnd="6dp"
                 android:visibility="gone" />
 
-            <LinearLayout
-                android:id="@+id/llBubbleFile"
+            <!-- 发送失败：红色感叹号，点击可重发/删除 -->
+            <TextView
+                android:id="@+id/tvSendFailed"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_circle_red"
+                android:gravity="center"
+                android:text="!"
+                android:textColor="@color/white"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <FrameLayout
+                android:id="@+id/flBubble"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="15dp"
-                android:paddingTop="10dp"
-                android:paddingEnd="15dp"
-                android:paddingBottom="10dp"
-                android:visibility="gone">
+                android:layout_height="wrap_content">
 
-                <ImageView
-                    android:id="@+id/ivFileIcon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:contentDescription="@string/file"
-                    android:importantForAccessibility="no"
-                    android:src="@drawable/ic_folder" />
-
-                <LinearLayout
+                <TextView
+                    android:id="@+id/tvBubble"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:orientation="vertical">
+                    android:lineSpacingExtra="2dp"
+                    android:maxWidth="280dp"
+                    android:paddingStart="15dp"
+                    android:paddingTop="9dp"
+                    android:paddingEnd="15dp"
+                    android:paddingBottom="10dp"
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:textSize="15sp"
+                    tools:text="今天把登录接口联调一下" />
 
-                    <TextView
-                        android:id="@+id/tvFileName"
+                <ImageView
+                    android:id="@+id/ivBubbleImage"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:adjustViewBounds="true"
+                    android:contentDescription="@string/image"
+                    android:minHeight="100dp"
+                    android:scaleType="fitCenter"
+                    android:visibility="gone" />
+
+                <!-- 图片加载中：居中加载态，加载完成/失败后隐藏 -->
+                <ProgressBar
+                    android:id="@+id/pbImageLoading"
+                    style="?android:attr/progressBarStyleSmall"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:id="@+id/llBubbleFile"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="15dp"
+                    android:paddingTop="10dp"
+                    android:paddingEnd="15dp"
+                    android:paddingBottom="10dp"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:id="@+id/ivFileIcon"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:contentDescription="@string/file"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_folder" />
+
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:ellipsize="middle"
-                        android:maxWidth="200dp"
-                        android:singleLine="true"
-                        android:textSize="15sp"
-                        tools:text="需求文档.pdf" />
+                        android:layout_marginStart="10dp"
+                        android:orientation="vertical">
 
-                    <TextView
-                        android:id="@+id/tvFileSize"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp"
-                        tools:text="2.3 MB" />
+                        <TextView
+                            android:id="@+id/tvFileName"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="middle"
+                            android:maxWidth="200dp"
+                            android:singleLine="true"
+                            android:textSize="15sp"
+                            tools:text="需求文档.pdf" />
+
+                        <TextView
+                            android:id="@+id/tvFileSize"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            tools:text="2.3 MB" />
+                    </LinearLayout>
                 </LinearLayout>
-            </LinearLayout>
-        </FrameLayout>
+            </FrameLayout>
+        </LinearLayout>
     </LinearLayout>
     </LinearLayout>
 

@@ -82,6 +82,30 @@
                 android:textSize="16sp"
                 tools:text="执行中" />
 
+            <!-- 交付模式：MR_FIRST=自动交付 / DIFF_FIRST=代码交付（文档 §15） -->
+            <TextView
+                android:id="@+id/tvDeliveryMode"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="16sp"
+                android:visibility="gone"
+                tools:text="⚡ 自动交付" />
+
+            <!-- 无代码变更空态：FINAL_DIFF_EMPTY（文档 §20.3） -->
+            <TextView
+                android:id="@+id/tvNoCodeChange"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:drawablePadding="6dp"
+                android:text="@string/task_no_code_change"
+                android:textColor="@color/text_secondary"
+                android:textSize="16sp"
+                android:visibility="gone"
+                tools:text="✅ 已完成，无代码变更（未生成 Diff / MR）" />
+
             <!-- 仓库 -->
             <TextView
                 android:id="@+id/tvRepo"

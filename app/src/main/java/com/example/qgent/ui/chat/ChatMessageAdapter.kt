@@ -1,5 +1,6 @@
 package com.example.qgent.ui.chat
 
+import android.graphics.drawable.Drawable
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -11,6 +12,8 @@ import androidx.viewpager2.widget.ViewPager2
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.api.RetrofitClient
@@ -22,6 +25,7 @@ import com.example.qgent.databinding.ItemMessageTimeBinding
 import com.example.qgent.model.ChatMessage
 import com.example.qgent.model.DiffFile
 import com.example.qgent.model.MessageType
+import com.example.qgent.model.SendState
 import java.util.Locale
 
 sealed class ChatRow {
@@ -42,7 +46,9 @@ class ChatMessageAdapter(
     private val onFileClick: ((ChatMessage) -> Unit)? = null,
     private val onMessageLongClick: ((View, ChatMessage) -> Unit)? = null,
     private val onLoadDiff: ((String, (List<DiffFile>) -> Unit) -> Unit)? = null,
-    private val onMessageClick: ((ChatMessage) -> Unit)? = null
+    private val onMessageClick: ((ChatMessage) -> Unit)? = null,
+    private val onSendFailedClick: ((ChatMessage) -> Unit)? = null,
+    private val onTaskStatusClick: ((ChatMessage) -> Unit)? = null
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     /** 多选模式下被选中的消息 id（非多选模式为空集，不参与高亮） */
@@ -79,7 +85,8 @@ class ChatMessageAdapter(
             TYPE_DIFF -> DiffVH(ItemMessageDiffBinding.inflate(LayoutInflater.from(parent.context), parent, false), onLoadDiff)
             TYPE_SYSTEM -> SystemVH(ItemMessageSystemBinding.inflate(LayoutInflater.from(parent.context), parent, false))
             TYPE_TASK_STATUS -> TaskStatusVH(
-                ItemMessageTaskStatusBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+                ItemMessageTaskStatusBinding.inflate(LayoutInflater.from(parent.context), parent, false),
+                onTaskStatusClick
             )
             else -> MessageVH(
                 ItemMessageBinding.inflate(LayoutInflater.from(parent.context), parent, false),
@@ -87,7 +94,8 @@ class ChatMessageAdapter(
                 onImageClick,
                 onFileClick,
                 onMessageLongClick,
-                onMessageClick
+                onMessageClick,
+                onSendFailedClick
             )
         }
     }
@@ -121,8 +129,12 @@ class ChatMessageAdapter(
     }
 
     /** 任务状态卡片行：状态标签 + 执行节点 + 说明（Agent 任务进度）。
-     *  待办：senderType=SYSTEM 时（ORCHESTRATOR 缺失降级）展示"系统"，不读 senderId/Agent 详情。 */
-    class TaskStatusVH(private val binding: ItemMessageTaskStatusBinding) : RecyclerView.ViewHolder(binding.root) {
+     *  待办：senderType=SYSTEM 时（ORCHESTRATOR 缺失降级）展示"系统"，不读 senderId/Agent 详情。
+     *  可点击：待确认 Diff 时点击弹确认详情（onTaskStatusClick，由 Fragment 提供）。 */
+    class TaskStatusVH(
+        private val binding: ItemMessageTaskStatusBinding,
+        private val onTaskStatusClick: ((ChatMessage) -> Unit)?
+    ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: ChatMessage) {
             // senderType=SYSTEM：系统降级消息，标识"系统"（不读 senderId/头像/Agent 详情）
             val isSystem = message.senderType == "SYSTEM"
@@ -131,6 +143,8 @@ class ChatMessageAdapter(
             if (!isSystem) message.taskNode?.let { binding.tvTaskNode.text = it }
             binding.tvTaskMessage.isVisible = message.content.isNotBlank()
             binding.tvTaskMessage.text = message.content
+            // 点击卡片 → 查看任务状态/Diff 确认详情
+            binding.root.setOnClickListener { onTaskStatusClick?.invoke(message) }
         }
     }
 
@@ -140,7 +154,8 @@ class ChatMessageAdapter(
         private val onImageClick: ((String) -> Unit)?,
         private val onFileClick: ((ChatMessage) -> Unit)?,
         private val onMessageLongClick: ((View, ChatMessage) -> Unit)?,
-        private val onMessageClick: ((ChatMessage) -> Unit)? = null
+        private val onMessageClick: ((ChatMessage) -> Unit)? = null,
+        private val onSendFailedClick: ((ChatMessage) -> Unit)? = null
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(message: ChatMessage, isSelected: Boolean, multiSelect: Boolean) {
@@ -199,6 +214,11 @@ class ChatMessageAdapter(
                 onAvatarLongClick?.invoke(message.senderName)
                 true
             }
+            // 发送状态：仅自己发送的消息显示（发送中 → 小加载标；失败 → 红色感叹号，点击重发/删除）
+            val sendState = if (mine) message.sendState else null
+            binding.pbSendLoading.isVisible = sendState == SendState.SENDING
+            binding.tvSendFailed.isVisible = sendState == SendState.FAILED
+            binding.tvSendFailed.setOnClickListener { onSendFailedClick?.invoke(message) }
             // 长按整行 → 引用/复制/多选菜单（系统提示行除外，由 viewType 隔离）
             binding.root.setOnLongClickListener {
                 onMessageLongClick?.invoke(it, message)
@@ -221,7 +241,7 @@ class ChatMessageAdapter(
             )
         }
 
-        /** 图片消息：宽为屏幕宽度的一半，高度按宽高比自适应，完整显示 */
+        /** 图片消息：宽为屏幕宽度的一半，高度按宽高比自适应，完整显示；加载中显示居中加载态 */
         private fun bindImage(uri: String) {
             val view = binding.ivBubbleImage
             // 清掉复用残留的旧图
@@ -232,10 +252,37 @@ class ChatMessageAdapter(
             lp.width = halfScreenW
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
             view.layoutParams = lp
-            // content.url 是后端鉴权接口，Glide 需带 Bearer 头才能下载；adjustViewBounds 按比例自动算高
-            Glide.with(view).load(authedGlideUrl(uri)).into(view)
+            // 加载中显示居中小加载标，加载完成/失败后隐藏
+            val loading = binding.pbImageLoading
+            loading.isVisible = true
+            val loader = if (isLocalUri(uri)) {
+                // 本地 content:// URI（发送中的乐观占位图）直接加载，无需鉴权头
+                Glide.with(view).load(uri)
+            } else {
+                // content.url 是后端鉴权接口，Glide 需带 Bearer 头才能下载
+                Glide.with(view).load(authedGlideUrl(uri))
+            }
+            loader
+                .placeholder(R.drawable.bg_chat_image_placeholder)
+                .into(object : CustomTarget<Drawable>() {
+                    override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
+                        loading.isVisible = false
+                        view.setImageDrawable(resource)
+                    }
+
+                    override fun onLoadCleared(placeholder: Drawable?) {
+                        loading.isVisible = false
+                    }
+
+                    override fun onLoadFailed(errorDrawable: Drawable?) {
+                        loading.isVisible = false
+                    }
+                })
             view.setOnClickListener { onImageClick?.invoke(uri) }
         }
+
+        private fun isLocalUri(uri: String): Boolean =
+            uri.startsWith("content://") || uri.startsWith("file://")
 
         private fun authedGlideUrl(uri: String): GlideUrl {
             val token = SessionStore.accessToken()

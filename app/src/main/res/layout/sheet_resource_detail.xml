@@ -76,4 +76,16 @@
             app:backgroundTint="@color/mint" />
     </LinearLayout>
 
+    <!-- 删除（仅已共享资源且提供删除回调时显示） -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnDelete"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="@string/resource_delete"
+        android:textColor="@color/red_danger"
+        android:visibility="gone"
+        app:strokeColor="@color/red_danger" />
+
 </LinearLayout>

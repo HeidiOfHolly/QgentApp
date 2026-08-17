@@ -3,7 +3,6 @@ package com.example.qgent.data.repository
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.GroupMessageDto
-import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 
 /**
@@ -20,5 +19,6 @@ interface ChatRepository {
     suspend fun getMembers(projectId: String, groupId: String): Result<List<GroupMemberDto>>
     suspend fun leaveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<Unit>
     suspend fun getMessages(projectId: String, groupId: String, cursor: String? = null, limit: Int = 30): Result<List<GroupMessageDto>>
-    suspend fun sendMessage(projectId: String, groupId: String, type: String, content: MessageContentDto, clientMessageId: String? = null, mentions: List<MentionDto>? = null, replyToId: String? = null, idempotencyKey: String): Result<GroupMessageDto>
+    // 契约 §7：消息体不再携带 mentions；@Agent 触发任务改为发消息成功后调 trigger-task
+    suspend fun sendMessage(projectId: String, groupId: String, type: String, content: MessageContentDto, clientMessageId: String? = null, replyToId: String? = null, idempotencyKey: String): Result<GroupMessageDto>
 }

@@ -3,6 +3,8 @@ package com.example.qgent.data.repository
 import com.example.qgent.data.model.DiffFileDto
 import com.example.qgent.data.model.DiffHunkDto
 import com.example.qgent.data.model.DiffHunkLineDto
+import com.example.qgent.data.model.DiffReviewBatchDto
+import com.google.gson.JsonPrimitive
 
 /**
  * mock Diff 仓库（保底用，真实接口测试完成后删除）。
@@ -35,4 +37,37 @@ class MockDiffRepository : DiffRepository {
                 )
             )
         )
+
+    override suspend fun acceptDiff(projectId: String, diffId: String, reason: String?, idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
+
+    override suspend fun rejectDiff(projectId: String, diffId: String, reason: String?, idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
+
+    override suspend fun getTaskDiffReview(projectId: String, taskId: String): Result<DiffReviewBatchDto?> =
+        Result.success(
+            DiffReviewBatchDto(
+                id = "mock-batch-1",
+                taskId = taskId,
+                reviewStatus = "PENDING_CONFIRMATION",
+                deliveryStatus = null,
+                repositoryCount = 1,
+                filesChanged = 1,
+                additions = 3,
+                deletions = 1,
+                diffs = emptyList()
+            )
+        )
+
+    override suspend fun getDiffReviewPatch(projectId: String, taskId: String, diffId: String): Result<com.google.gson.JsonElement> =
+        Result.success(JsonPrimitive("mock patch"))
+
+    override suspend fun confirmDiffReview(projectId: String, taskId: String, idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
+
+    override suspend fun rejectDiffReview(projectId: String, taskId: String, reason: String?, idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
+
+    override suspend fun retryDiffDelivery(projectId: String, taskId: String, idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
 }

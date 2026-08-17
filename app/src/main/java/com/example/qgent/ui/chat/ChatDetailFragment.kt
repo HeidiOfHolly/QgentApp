@@ -1,6 +1,7 @@
 package com.example.qgent.ui.chat
 import android.app.Dialog
 import android.content.Intent
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import android.widget.EditText
@@ -34,6 +35,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
@@ -43,6 +46,7 @@ import com.example.qgent.data.model.CreateMemoryRequest
 import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 import com.example.qgent.data.model.TaskCreateRequest
+import com.example.qgent.data.model.TaskTriggerRequest
 import com.example.qgent.data.model.toChatMessage
 import com.example.qgent.data.model.toDiffFile
 import com.example.qgent.data.model.toGroupMember
@@ -59,6 +63,7 @@ import com.example.qgent.model.GroupMember
 import com.example.qgent.model.GroupType
 import com.example.qgent.model.MemberType
 import com.example.qgent.model.MessageType
+import com.example.qgent.model.SendState
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -107,6 +112,9 @@ class ChatDetailFragment : Fragment() {
     /** 当前引用的目标消息（非空时输入框上方显示引用条，发送时带 replyToId） */
     private var quoteTarget: ChatMessage? = null
 
+    /** taskId → diffId 缓存（SSE diff 事件填充；后端任务详情可能不返回 diffId） */
+    private val taskDiffIdMap = mutableMapOf<String, String>()
+
     /** 多选模式：长按消息选「多选」进入，点击消息切换选中，用于生成 Memory 草稿 */
     private var multiSelectMode = false
     private val selectedMessageIds = mutableSetOf<String>()
@@ -135,8 +143,6 @@ class ChatDetailFragment : Fragment() {
 
     /** 原始群成员（不含 Agent），供 agents 加载后动态合并 */
     private var baseGroupMembers = emptyList<GroupMember>()
-    private var baseMemberNamesById: Map<String, String> = emptyMap()
-    private var baseMemberById: Map<String, GroupMember> = emptyMap()
 
     private val mentionWatcher = object : TextWatcher {
         private var lastAtPos = -1
@@ -204,7 +210,9 @@ class ChatDetailFragment : Fragment() {
             onFileClick = { message -> openFile(message) },
             onMessageLongClick = { anchor, message -> showMessageLongPressMenu(anchor, message) },
             onLoadDiff = { diffId, onLoaded -> loadDiff(diffId, onLoaded) },
-            onMessageClick = { message -> onMessageRowClick(message) }
+            onMessageClick = { message -> onMessageRowClick(message) },
+            onSendFailedClick = { message -> showResendDialog(message) },
+            onTaskStatusClick = { message -> onTaskStatusCardClick(message) }
         )
         binding.rvMessages.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMessages.adapter = adapter
@@ -227,8 +235,11 @@ class ChatDetailFragment : Fragment() {
     private fun sendTextMessage() {
         val text = binding.etInput.text.toString().trim()
         if (text.isEmpty()) return
+        // 契约 §7：消息体不再携带 mentions；仅客户端解析 @Agent 用于发送成功后弹「触发任务」弹窗
         val mentions = extractMentions(text)
+        val agentMentioned = mentions.any { it.type == "AGENT" }
         val replyToId = quoteTarget?.id
+        val replyToSummary = quoteTarget?.let { "${it.senderName}：${it.displayContent()}" }
         Log.d("SendMsg", "send text=$text mentions=$mentions replyToId=$replyToId memberNamesById=$memberNamesById")
         binding.etInput.text.clear()
         clearQuote()
@@ -237,25 +248,43 @@ class ChatDetailFragment : Fragment() {
         val groupId = arguments?.getString("groupId").orEmpty()
 
         if (projectId != null && groupId.isNotEmpty()) {
+            // 乐观插入本地消息（发送中：旁边显示小加载标），成功后替换为服务端消息，失败标记红色感叹号
+            val local = ChatMessage(
+                id = LOCAL_ID_PREFIX + UUID.randomUUID(),
+                senderName = "我",
+                content = text,
+                type = MessageType.TEXT,
+                timestamp = System.currentTimeMillis(),
+                isMine = true,
+                sequence = 0,
+                replyToId = replyToId,
+                replyToSummary = replyToSummary,
+                sendState = SendState.SENDING
+            )
+            appendMessage(local)
             viewLifecycleOwner.lifecycleScope.launch {
                 // Idempotency-Key 后端强制要求，防重复提交；每次发送都是全新消息，生成新 UUID
-                chatRepo.sendMessage(projectId, groupId, "TEXT", MessageContentDto(text = text), mentions = mentions, replyToId = replyToId, idempotencyKey = UUID.randomUUID().toString())
+                chatRepo.sendMessage(projectId, groupId, "TEXT", MessageContentDto(text = text), replyToId = replyToId, idempotencyKey = UUID.randomUUID().toString())
                     .onSuccess { dto ->
                         Log.d("SendMsg", "send success id=${dto.id} senderId=${dto.senderId} mentions=${dto.mentions} replyTo=${dto.replyToId}")
-                        appendMessage(dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
-                        // @ 了 Agent → 自动弹发起任务（预填消息内容为需求，用户确认后创建任务让 Agent 干活）
-                        if (mentions.any { it.type == "AGENT" }) {
-                            showCreateTaskDialog(prefillTitle = text.take(30), prefillRequirement = text)
+                        replaceLocalMessage(local.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
+                        // @ 了 Agent → 发送成功后弹「发起任务」弹窗，确认后调 trigger-task（契约 §7）
+                        if (agentMentioned) {
+                            showCreateTaskDialog(
+                                prefillTitle = text.take(30),
+                                prefillRequirement = text,
+                                messageId = dto.id
+                            )
                         }
                     }
                     .onFailure { e ->
                         Log.e("SendMsg", "send FAILED: ${e::class.simpleName} message=${e.message}", e)
-                        Toast.makeText(requireContext(), "发送失败，仅自己可见", Toast.LENGTH_SHORT).show()
-                        appendLocalMessage(text)
+                        markSendFailed(local.id, e.message)
                     }
             }
         } else {
             Log.d("SendMsg", "no projectId/groupId → local fallback. projectId=$projectId groupId=$groupId")
+            // 无项目/群：本地兜底消息直接标记发送失败（红色感叹号，可点击删除），不再提示“仅自己可见”
             appendLocalMessage(text)
         }
     }
@@ -263,18 +292,27 @@ class ChatDetailFragment : Fragment() {
     /**
      * 解析输入文本中的 @成员名，反查成员 id 组装结构化 mentions（后端据此实现 @ 通知）。
      * 按成员类型生成 mention：普通用户 → USER，Agent → AGENT（文档 §7）。
+     *
+     * Agent 判定以团队 Agent 名单（getAgents）为准：即使群成员条目的类型因后端改名、
+     * 缺 memberType 被启发式误判为 HUMAN，只要 id/名字命中 Agent 名单仍按 AGENT 发送，
+     * 避免后端因 mention 类型错误（USER 却指向 agentId）拒绝消息。
      */
     private fun extractMentions(text: String): List<MentionDto> {
         Log.d("Mention", "extract from '$text', memberById=${memberById.map { "${it.value.name}:${it.value.type}" }}")
         if (memberById.isEmpty()) return emptyList()
+        val activeAgents = mainViewModel.agents.value.orEmpty()
+            .filter { it.status.name != "ARCHIVED" }
+        val agentIds = activeAgents.map { it.id }.toSet()
+        val agentNames = activeAgents.map { it.name }.toSet()
         val mentions = mutableListOf<MentionDto>()
         // 成员名可含空格（如 "开发 Agent"）：按名字长度降序，优先匹配最长的成员名
         val sortedMembers = memberById.entries.sortedByDescending { it.value.name.length }
         sortedMembers.forEach { (id, member) ->
             if (Regex("@" + Regex.escape(member.name) + "(?=\\s|$)").containsMatchIn(text)) {
+                val isAgent = member.type == MemberType.AGENT || id in agentIds || member.name in agentNames
                 mentions.add(
                     MentionDto(
-                        type = if (member.type == MemberType.AGENT) "AGENT" else "USER",
+                        type = if (isAgent) "AGENT" else "USER",
                         id = id
                     )
                 )
@@ -283,7 +321,7 @@ class ChatDetailFragment : Fragment() {
         return mentions.distinct()
     }
 
-    /** 上传附件 → 发送 IMAGE/FILE 消息 */
+    /** 上传附件 → 发送 IMAGE/FILE 消息：先乐观插入本地消息（发送中：小加载标），成功后替换为服务端消息，失败标记红色感叹号 */
     private fun sendMediaMessage(type: String, uri: Uri) {
         val projectId = mainViewModel.currentProjectId()
         val groupId = arguments?.getString("groupId").orEmpty()
@@ -291,13 +329,26 @@ class ChatDetailFragment : Fragment() {
             Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
             return
         }
+        val meta = readFileMeta(uri)
+        // 乐观占位消息：图片/文件气泡先展示本地内容（content=本地 uri），发送成功后替换
+        val local = ChatMessage(
+            id = LOCAL_ID_PREFIX + UUID.randomUUID(),
+            senderName = "我",
+            content = uri.toString(),
+            type = if (type == "IMAGE") MessageType.IMAGE else MessageType.FILE,
+            timestamp = System.currentTimeMillis(),
+            isMine = true,
+            sequence = 0,
+            fileName = if (type == "FILE") meta.fileName else null,
+            fileSize = if (type == "FILE") meta.sizeBytes else null,
+            sendState = SendState.SENDING
+        )
+        appendMessage(local)
 
         viewLifecycleOwner.lifecycleScope.launch {
-            Toast.makeText(requireContext(), "正在上传…", Toast.LENGTH_SHORT).show()
-            val meta = readFileMeta(uri)
             val bytes = readBytes(uri)
             if (bytes == null) {
-                Toast.makeText(requireContext(), "读取文件失败", Toast.LENGTH_SHORT).show()
+                markSendFailed(local.id, "读取文件失败")
                 return@launch
             }
             // 部分 provider 读不到 SIZE，用实际字节数兜底，避免 sizeBytes=0 被后端拒绝
@@ -316,14 +367,16 @@ class ChatDetailFragment : Fragment() {
                     chatRepo.sendMessage(projectId, groupId, type, content, replyToId = quoteTarget?.id, idempotencyKey = UUID.randomUUID().toString())
                         .onSuccess { dto ->
                             clearQuote()
-                            appendMessage(dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
+                            replaceLocalMessage(local.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
                         }
                         .onFailure { e ->
-                            Toast.makeText(requireContext(), "发送失败：${e.message}", Toast.LENGTH_LONG).show()
+                            Log.e("SendMsg", "media send FAILED: ${e.message}", e)
+                            markSendFailed(local.id, e.message)
                         }
                 }
                 .onFailure { e ->
-                    Toast.makeText(requireContext(), "上传失败：${e.message}", Toast.LENGTH_LONG).show()
+                    Log.e("SendMsg", "media upload FAILED: ${e.message}", e)
+                    markSendFailed(local.id, e.message)
                 }
         }
     }
@@ -351,8 +404,7 @@ class ChatDetailFragment : Fragment() {
         }.getOrNull()
     }
 
-    /** 发送失败时的本地兜底消息：id 加 local- 前缀标记，
-     *  仅在本次会话内展示，不写入缓存、不与网络消息混淆（修复幽灵 @ 消息残留） */
+    /** 无项目/群时的本地兜底消息：标记发送失败（红色感叹号，可点击删除），不落缓存、不与网络消息混淆 */
     private fun appendLocalMessage(text: String) {
         appendMessage(
             ChatMessage(
@@ -361,7 +413,9 @@ class ChatDetailFragment : Fragment() {
                 text,
                 MessageType.TEXT,
                 System.currentTimeMillis(),
-                true
+                true,
+                sequence = 0,
+                sendState = SendState.FAILED
             )
         )
     }
@@ -423,7 +477,7 @@ class ChatDetailFragment : Fragment() {
         binding.tvMultiSelectCount.text = getString(R.string.multi_select_count, selectedMessageIds.size)
     }
 
-    /** 生成 Memory 草稿：先让用户填标题/简介，再拼接选中消息为内容，POST /memories 提交审核 */
+    /** 生成 Memory 草稿：让用户填标题，内容固定为选中消息拼接，POST /memories 提交审核 */
     private fun createMemoryDraftFromSelection() {
         if (selectedMessageIds.isEmpty()) {
             Toast.makeText(requireContext(), R.string.memory_draft_empty, Toast.LENGTH_SHORT).show()
@@ -441,7 +495,7 @@ class ChatDetailFragment : Fragment() {
             return
         }
 
-        // 弹窗：输入 Memory 标题 + 简介（简介留空时用选中消息拼接）
+        // 弹窗：仅输入 Memory 标题，内容固定为选中消息拼接（不提供简介输入，避免覆盖聊天记录）
         val container = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 16, 48, 8)
@@ -450,14 +504,7 @@ class ChatDetailFragment : Fragment() {
             hint = getString(R.string.memory_draft_title_hint)
             textSize = 14f
         }
-        val etSummary = EditText(requireContext()).apply {
-            hint = getString(R.string.memory_draft_summary_hint)
-            textSize = 14f
-            minLines = 2
-            gravity = android.view.Gravity.TOP
-        }
         container.addView(etTitle)
-        container.addView(etSummary)
 
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.memory_draft_title)
@@ -469,13 +516,8 @@ class ChatDetailFragment : Fragment() {
                     Toast.makeText(requireContext(), R.string.memory_draft_title_required, Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
-                // 简介为空时拼接选中消息；否则用用户输入的简介
-                val summary = etSummary.text.toString().trim()
-                val content = if (summary.isNotEmpty()) {
-                    summary
-                } else {
-                    selected.joinToString("\n") { "${it.senderName}：${it.displayContent()}" }
-                }
+                // 内容固定为选中消息拼接，不再允许用简介覆盖聊天记录
+                val content = selected.joinToString("\n") { "${it.senderName}：${it.displayContent()}" }
                 submitMemoryDraft(projectId, title, content)
             }
             .show()
@@ -550,7 +592,7 @@ class ChatDetailFragment : Fragment() {
         dialog.show()
     }
 
-    /** 点击图片：全屏预览放大后的原图，点击任意处关闭 */
+    /** 点击图片：全屏预览放大后的原图，点击任意处关闭；加载中显示居中加载态 */
     private fun showImagePreview(uri: String) {
         val dialog = Dialog(requireContext())
         val previewBinding = DialogImagePreviewBinding.inflate(layoutInflater)
@@ -560,13 +602,33 @@ class ChatDetailFragment : Fragment() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT
         )
-        val token = SessionStore.accessToken()
-        val headers = LazyHeaders.Builder().apply {
-            if (!token.isNullOrEmpty()) addHeader("Authorization", "Bearer $token")
-        }.build()
-        Glide.with(previewBinding.ivPreview)
-            .load(GlideUrl(RetrofitClient.resolveMediaUrl(uri), headers))
-            .into(previewBinding.ivPreview)
+        val loading = previewBinding.pbPreviewLoading
+        loading.isVisible = true
+        val loader = if (uri.startsWith("content://") || uri.startsWith("file://")) {
+            // 本地 content:// URI（发送中的乐观占位图）直接加载，无需鉴权头
+            Glide.with(previewBinding.ivPreview).load(uri)
+        } else {
+            val token = SessionStore.accessToken()
+            val headers = LazyHeaders.Builder().apply {
+                if (!token.isNullOrEmpty()) addHeader("Authorization", "Bearer $token")
+            }.build()
+            Glide.with(previewBinding.ivPreview)
+                .load(GlideUrl(RetrofitClient.resolveMediaUrl(uri), headers))
+        }
+        loader.placeholder(android.R.color.transparent).into(object : CustomTarget<Drawable>() {
+            override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
+                loading.isVisible = false
+                previewBinding.ivPreview.setImageDrawable(resource)
+            }
+
+            override fun onLoadCleared(placeholder: Drawable?) {
+                loading.isVisible = false
+            }
+
+            override fun onLoadFailed(errorDrawable: Drawable?) {
+                loading.isVisible = false
+            }
+        })
         previewBinding.ivPreview.onSingleTap = { dialog.dismiss() }
         dialog.show()
     }
@@ -680,10 +742,15 @@ class ChatDetailFragment : Fragment() {
     }
 
     /**
-     * 发起任务弹窗：标题 + 需求描述 + 选项目绑定仓库，调 POST /tasks 创建 → Agent 开始干活。
-     * 需求群 id = 当前群（文档 §11.3：requirementGroupId 必须指向当前项目 ACTIVE 的 REQUIREMENT 群）。
+     * 发起任务弹窗：标题 + 需求描述 + 选项目绑定仓库。
+     * 从群消息 @Agent 触发（[messageId] 非空，契约 §7）→ 调 trigger-task；
+     * 从「+ 菜单」进入（[messageId] 为空）→ 调 POST /tasks 创建（requirementGroupId=当前群）。
      */
-    private fun showCreateTaskDialog(prefillTitle: String = "", prefillRequirement: String = "") {
+    private fun showCreateTaskDialog(
+        prefillTitle: String = "",
+        prefillRequirement: String = "",
+        messageId: String? = null
+    ) {
         val projectId = mainViewModel.currentProjectId() ?: return
         val groupId = arguments?.getString("groupId").orEmpty()
         if (groupId.isEmpty()) return
@@ -750,6 +817,7 @@ class ChatDetailFragment : Fragment() {
                     title.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_name_required, Toast.LENGTH_SHORT).show()
                     requirement.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_requirement_required, Toast.LENGTH_SHORT).show()
                     repoIds.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_repo_required, Toast.LENGTH_SHORT).show()
+                    messageId != null -> triggerTaskFromMessage(projectId, groupId, messageId, title, requirement, repoIds, baseRef)
                     else -> createTask(projectId, groupId, title, requirement, repoIds, baseRef)
                 }
             }
@@ -769,6 +837,39 @@ class ChatDetailFragment : Fragment() {
                 projectId,
                 TaskCreateRequest(
                     requirementGroupId = groupId,
+                    title = title,
+                    requirement = requirement,
+                    repositoryIds = repoIds,
+                    baseRef = baseRef
+                ),
+                UUID.randomUUID().toString()
+            ).onSuccess {
+                Toast.makeText(requireContext(), R.string.start_task_success, Toast.LENGTH_LONG).show()
+            }.onFailure { e ->
+                val rid = if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("HTTP_500")) {
+                    e.requestId?.let { "\nrequestId: $it" }.orEmpty()
+                } else {
+                    ""
+                }
+                Toast.makeText(requireContext(), "${getString(R.string.start_task_failed)}：${e.message}$rid", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    /** 契约 §7：从已发送的群消息显式触发 Task（POST .../messages/{messageId}/trigger-task） */
+    private fun triggerTaskFromMessage(
+        projectId: String,
+        groupId: String,
+        messageId: String,
+        title: String,
+        requirement: String,
+        repoIds: List<String>,
+        baseRef: String?
+    ) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepo().triggerTask(
+                projectId, groupId, messageId,
+                TaskTriggerRequest(
                     title = title,
                     requirement = requirement,
                     repositoryIds = repoIds,
@@ -824,13 +925,158 @@ class ChatDetailFragment : Fragment() {
         rows.add(ChatRow.Message(resolved))
         adapter.notifyItemRangeInserted(start, rows.size - start)
         scrollToBottom()
-        // 发送后立即落缓存，避免退出重进后新消息丢失；
-        // 本地兜底消息（发送失败）不落缓存，防止幽灵消息持久化残留
+        saveCache()
+    }
+
+    /** 立即落缓存（本地兜底/乐观消息不落缓存，防止幽灵消息持久化残留） */
+    private fun saveCache() {
         val groupId = arguments?.getString("groupId").orEmpty()
         if (groupId.isNotEmpty()) {
             viewLifecycleOwner.lifecycleScope.launch {
                 messageCache.save(groupId, messages.filterNot { it.id.startsWith(LOCAL_ID_PREFIX) })
             }
+        }
+    }
+
+    /** 刷新消息行（与 messages 重新对齐）并滚动到底部 */
+    private fun refreshRows() {
+        rows.clear()
+        rows.addAll(buildRows(messages))
+        adapter.notifyDataSetChanged()
+        scrollToBottom()
+    }
+
+    /** 发送成功后用服务端确认消息替换本地乐观消息（并落缓存） */
+    private fun replaceLocalMessage(localId: String, network: ChatMessage) {
+        val idx = messages.indexOfFirst { it.id == localId }
+        if (idx >= 0) {
+            messages[idx] = network
+            refreshRows()
+            saveCache()
+        } else {
+            appendMessage(network)
+        }
+    }
+
+    /** 设置本地消息发送状态并刷新（SENDING → 小加载标；FAILED → 红色感叹号） */
+    private fun markSendState(localId: String, state: SendState, error: String? = null) {
+        val idx = messages.indexOfFirst { it.id == localId }
+        if (idx >= 0) {
+            messages[idx] = messages[idx].copy(sendState = state, sendError = error)
+            refreshRows()
+        }
+    }
+
+    /** 发送失败：标记红色感叹号（不再提示“仅自己可见”），可携带后端错误原因用于弹窗展示 */
+    private fun markSendFailed(localId: String, error: String? = null) =
+        markSendState(localId, SendState.FAILED, error)
+
+    /** 删除本地失败消息（不落缓存） */
+    private fun removeLocalMessage(localId: String) {
+        val idx = messages.indexOfFirst { it.id == localId }
+        if (idx >= 0) {
+            messages.removeAt(idx)
+            refreshRows()
+        }
+    }
+
+    /** 点击红色感叹号：弹窗选择重新发送或删除（展示失败原因便于排查） */
+    private fun showResendDialog(message: ChatMessage) {
+        val reason = message.sendError?.takeIf { it.isNotBlank() }?.let { "\n\n失败原因：$it" }.orEmpty()
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.chat_send_failed_title)
+            .setMessage(getString(R.string.chat_send_failed_resend) + reason)
+            .setPositiveButton(R.string.chat_resend) { _, _ -> resendMessage(message) }
+            .setNegativeButton(R.string.chat_delete_failed) { _, _ -> removeLocalMessage(message.id) }
+            .show()
+    }
+
+    /** 重新发送失败消息：恢复为发送中状态后再次走发送流程 */
+    private fun resendMessage(message: ChatMessage) {
+        markSendState(message.id, SendState.SENDING)
+        val projectId = mainViewModel.currentProjectId()
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (projectId == null || groupId.isEmpty()) {
+            markSendFailed(message.id)
+            return
+        }
+        when (message.type) {
+            MessageType.TEXT -> resendText(message, projectId, groupId)
+            MessageType.IMAGE, MessageType.FILE -> resendMedia(message, projectId, groupId)
+            else -> removeLocalMessage(message.id) // 其他类型不支持重发，直接移除
+        }
+    }
+
+    private fun resendText(message: ChatMessage, projectId: String, groupId: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            // 契约 §7：消息体不再携带 mentions；仅客户端解析 @Agent 决定是否弹「触发任务」
+            val agentMentioned = extractMentions(message.content).any { it.type == "AGENT" }
+            chatRepo.sendMessage(
+                projectId, groupId, "TEXT",
+                MessageContentDto(text = message.content),
+                replyToId = message.replyToId,
+                idempotencyKey = UUID.randomUUID().toString()
+            )
+                .onSuccess { dto ->
+                    replaceLocalMessage(message.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
+                    if (agentMentioned) {
+                        showCreateTaskDialog(
+                            prefillTitle = message.content.take(30),
+                            prefillRequirement = message.content,
+                            messageId = dto.id
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    Log.e("SendMsg", "resend text FAILED: ${e.message}", e)
+                    markSendFailed(message.id, e.message)
+                }
+        }
+    }
+
+    private fun resendMedia(message: ChatMessage, projectId: String, groupId: String) {
+        val uri = runCatching { Uri.parse(message.content) }.getOrNull()
+        if (uri == null) {
+            markSendFailed(message.id)
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            val meta = readFileMeta(uri)
+            val bytes = readBytes(uri)
+            if (bytes == null) {
+                markSendFailed(message.id)
+                return@launch
+            }
+            val size = if (meta.sizeBytes > 0) meta.sizeBytes else bytes.size.toLong()
+            attachmentUploader.upload(projectId, meta.fileName, meta.mimeType, size, bytes)
+                .onSuccess { url ->
+                    val content = if (message.type == MessageType.IMAGE) {
+                        MessageContentDto(text = null, url = url)
+                    } else {
+                        MessageContentDto(
+                            text = null, url = url,
+                            name = meta.fileName, size = size, mimeType = meta.mimeType
+                        )
+                    }
+                    chatRepo.sendMessage(
+                        projectId, groupId,
+                        if (message.type == MessageType.IMAGE) "IMAGE" else "FILE",
+                        content,
+                        replyToId = message.replyToId,
+                        idempotencyKey = UUID.randomUUID().toString()
+                    )
+                        .onSuccess { dto ->
+                            replaceLocalMessage(message.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
+                        }
+                        .onFailure { e ->
+                            Log.e("SendMsg", "resend media FAILED: ${e.message}", e)
+                            markSendFailed(message.id, e.message)
+                        }
+                }
+                .onFailure { e ->
+                    Log.e("SendMsg", "resend media upload FAILED: ${e.message}", e)
+                    markSendFailed(message.id, e.message)
+                }
         }
     }
 
@@ -858,6 +1104,225 @@ class ChatDetailFragment : Fragment() {
                 .getOrNull().orEmpty()
                 .map { it.toDiffFile() }
             onLoaded(files)
+        }
+    }
+
+    /**
+     * TASK_STATUS 卡片点击：任务处于"待确认 Diff"时，拉任务详情 → 解析 diffReviewSummary
+     * → 弹 Diff Review 确认对话框。
+     *
+     * 确认/拒绝走 Task 级最终 Diff Review 批次接口（§12.3）：
+     * 批次内 Diff 禁止用单 Diff accept/reject（409 DIFF_BATCH_REVIEW_REQUIRED），
+     * 因此这里只依赖 taskId，diffId 仅用于展示首个 Diff 的文件内容。
+     */
+    private fun onTaskStatusCardClick(message: ChatMessage) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val taskId = message.taskId ?: run {
+            Toast.makeText(requireContext(), "任务状态：${message.content}", Toast.LENGTH_SHORT).show()
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepo().getTaskDetail(projectId, taskId)
+                .onSuccess { detail ->
+                    val diffSummary = detail.diffReviewSummary
+                    // 从 JsonElement 解析 diffId：仅用于展示首个 Diff 内容；解析不到仍可确认整个批次
+                    val diffId = extractDiffId(diffSummary) ?: taskDiffIdMap[taskId]
+                    // reviewStatus：仅 PENDING_CONFIRMATION 显示确认/拒绝按钮，其余只读展示
+                    val reviewStatus = extractStringField(diffSummary, "reviewStatus")
+                    // 后端能力位优先（可确认/可拒绝/可重试交付），缺省按 reviewStatus 兜底。
+                    // MR_FIRST（自动交付）由系统授权，不展示 Diff 确认/拒绝操作（文档 §15.2）
+                    val caps = detail.capabilities
+                    val mrFirst = detail.deliveryMode == "MR_FIRST"
+                    val canDecide = !mrFirst && (caps?.canConfirmDiffReview
+                        ?: (reviewStatus == "PENDING_CONFIRMATION" || reviewStatus.isNullOrBlank()))
+                    val canRetry = caps?.canRetryDelivery == true
+                    showDiffConfirmDialog(
+                        projectId, taskId, diffId, detail.title, detail.status,
+                        canDecide = canDecide,
+                        canRetry = canRetry,
+                        deliveryMode = detail.deliveryMode
+                    )
+                }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), "加载任务失败：${e.message}", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    /** 从 diffReviewSummary JsonElement 解析 diffId（兼容 diffId/reviewId/resourceId 等字段名） */
+    private fun extractDiffId(diffSummary: com.google.gson.JsonElement?): String? {
+        if (diffSummary == null || !diffSummary.isJsonObject) return null
+        val obj = diffSummary.asJsonObject
+        val candidates = listOf("diffId", "reviewId", "resourceId", "id")
+        for (key in candidates) {
+            val v = obj.get(key)
+            if (v != null && !v.isJsonNull) {
+                val s = v.asString
+                if (s.isNotBlank()) return s
+            }
+        }
+        return null
+    }
+
+    /** 从 JsonElement 读取指定字符串字段（无则 null） */
+    private fun extractStringField(json: com.google.gson.JsonElement?, key: String): String? {
+        if (json == null || !json.isJsonObject) return null
+        val v = json.asJsonObject.get(key)
+        return if (v != null && !v.isJsonNull) v.asString else null
+    }
+
+    /** 是否为"无 Diff Review 批次"的 404：FINAL_DIFF_EMPTY 后查询 Diff Review 属正常业务，不报错（文档 §15.6.4） */
+    private fun isDiffReviewNotFound(e: Throwable): Boolean =
+        e is com.example.qgent.data.model.ApiException &&
+            (e.code == "DIFF_REVIEW_NOT_FOUND" || e.code == "HTTP_404")
+
+    /**
+     * Diff Review 确认对话框（§12.3）：
+     * - 内容区：批次摘要（仓库数/文件数/增删行）+ 首个 Diff 的文件内容（有 diffId 时）
+     * - 按钮：确认 Diff / 拒绝 Diff 走 Task 级批次接口（confirm/reject，带 Idempotency-Key）；
+     *   canRetry 时追加"重试交付"（交付失败后重试）
+     * - 非待确认状态（canDecide=false）只读展示
+     */
+    private fun showDiffConfirmDialog(
+        projectId: String,
+        taskId: String,
+        diffId: String?,
+        taskTitle: String,
+        taskStatus: String,
+        canDecide: Boolean = true,
+        canRetry: Boolean = false,
+        deliveryMode: String? = null
+    ) {
+        val container = ScrollView(requireContext())
+        val tv = TextView(requireContext()).apply {
+            textSize = 13f
+            setTextIsSelectable(true)
+            setPadding(48, 40, 48, 40)
+        }
+        container.addView(tv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        // 拉取批次摘要 + 首个 Diff 文件内容（DTO → UI DiffFile 再渲染）
+        viewLifecycleOwner.lifecycleScope.launch {
+            val sb = StringBuilder("任务状态：").append(taskStatus).append("\n\n")
+            // MR_FIRST：系统按规则自动授权交付，不展示为"用户已确认"（文档 §15.2）
+            if (deliveryMode == "MR_FIRST") sb.append("⚡ 自动交付（系统授权）\n\n")
+            diffRepo.getTaskDiffReview(projectId, taskId)
+                .onSuccess { batch ->
+                    if (batch != null) {
+                        sb.append("📦 Diff Review 批次：\n")
+                        if (!batch.deliveryStatus.isNullOrBlank()) {
+                            sb.append("交付状态：").append(batch.deliveryStatus).append("\n")
+                        }
+                        sb.append("仓库 ").append(batch.repositoryCount)
+                            .append(" 个 · 文件 ").append(batch.filesChanged)
+                            .append(" 个 · +").append(batch.additions)
+                            .append(" -").append(batch.deletions).append("\n")
+                        batch.diffs?.forEach { d ->
+                            val stats = d.changeStats
+                            sb.append("• ").append(d.repositoryName ?: d.repositoryId ?: d.id ?: "未知仓库")
+                                .append("  +${stats?.additions ?: 0} -${stats?.deletions ?: 0}").append("\n")
+                        }
+                        sb.append("\n")
+                    }
+                }
+                .onFailure { e ->
+                    // 无代码变更（FINAL_DIFF_EMPTY）：任务 SUCCEEDED 但无 DiffReviewBatch，
+                    // 查询返回 404 是正常业务结果，不得显示为系统错误/交付失败/重试入口（文档 §15.6.4/§20.3）
+                    if (isDiffReviewNotFound(e)) {
+                        sb.append(getString(R.string.task_no_code_change)).append("\n\n")
+                    } else {
+                        Log.w("DiffReview", "批次摘要加载失败: ${e.message}")
+                    }
+                }
+            if (!diffId.isNullOrBlank()) {
+                val files = diffRepo.getDiffFiles(projectId, diffId).getOrNull().orEmpty().map { it.toDiffFile() }
+                files.forEach { file ->
+                    sb.append("📄 ").append(file.fileName).append("  (+${file.additions} -${file.deletions})").append("\n")
+                    file.lines.forEach { line ->
+                        val marker = when (line.type) {
+                            com.example.qgent.model.DiffLineType.ADD -> "+"
+                            com.example.qgent.model.DiffLineType.DELETE -> "-"
+                            else -> " "
+                        }
+                        sb.append(marker).append(" ").append(line.text).append("\n")
+                    }
+                    sb.append("\n")
+                }
+                if (files.isEmpty()) sb.append("（该 Diff 无文件内容）\n")
+            }
+            tv.text = if (sb.isBlank()) "暂无 Diff 内容" else sb.toString()
+        }
+
+        // 标题：MR_FIRST=自动交付（只读）/ 待确认 Diff / 普通只读
+        val dialogTitle = when {
+            deliveryMode == "MR_FIRST" -> getString(R.string.task_delivery_auto_title, taskTitle)
+            canDecide -> "待确认 Diff · $taskTitle"
+            else -> "Diff · $taskTitle"
+        }
+        val dialogBuilder = MaterialAlertDialogBuilder(requireContext())
+            .setTitle(dialogTitle)
+            .setView(container)
+        if (canDecide) {
+            dialogBuilder
+                .setNegativeButton(R.string.reject_diff) { _, _ -> rejectDiffReview(projectId, taskId) }
+                .setPositiveButton(R.string.confirm_diff) { _, _ -> confirmDiffReview(projectId, taskId) }
+        } else {
+            dialogBuilder.setPositiveButton(R.string.close, null)
+        }
+        if (canRetry) {
+            dialogBuilder.setNeutralButton(R.string.retry_delivery) { _, _ -> retryDiffDelivery(projectId, taskId) }
+        }
+        dialogBuilder.show()
+    }
+
+    /** 确认整个最终 Diff 批次（POST .../tasks/{taskId}/diff-review/confirm，§12.3；Idempotency-Key 必填） */
+    private fun confirmDiffReview(projectId: String, taskId: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            diffRepo.confirmDiffReview(projectId, taskId, UUID.randomUUID().toString())
+                .onSuccess {
+                    Toast.makeText(requireContext(), "已确认 Diff，Agent 提交 MR 等待审核", Toast.LENGTH_LONG).show()
+                }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), "确认失败：${e.message}", Toast.LENGTH_LONG).show()
+                }
+        }
+    }
+
+    /** 拒绝整个最终 Diff 批次（POST .../tasks/{taskId}/diff-review/reject，§12.3；Idempotency-Key 必填） */
+    private fun rejectDiffReview(projectId: String, taskId: String) {
+        // 拒绝可填原因
+        val input = EditText(requireContext())
+        input.hint = "拒绝原因（可选）"
+        input.setPadding(48, 32, 48, 32)
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.reject_diff)
+            .setView(input)
+            .setPositiveButton(R.string.confirm) { _, _ ->
+                val reason = input.text.toString().trim().ifEmpty { null }
+                viewLifecycleOwner.lifecycleScope.launch {
+                    diffRepo.rejectDiffReview(projectId, taskId, reason, UUID.randomUUID().toString())
+                        .onSuccess {
+                            Toast.makeText(requireContext(), "已拒绝 Diff，Agent 重新修改", Toast.LENGTH_LONG).show()
+                        }
+                        .onFailure { e ->
+                            Toast.makeText(requireContext(), "拒绝失败：${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** 重试逐仓库交付（POST .../tasks/{taskId}/diff-review/retry-delivery，§12.3；Idempotency-Key 必填） */
+    private fun retryDiffDelivery(projectId: String, taskId: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            diffRepo.retryDiffDelivery(projectId, taskId, UUID.randomUUID().toString())
+                .onSuccess {
+                    Toast.makeText(requireContext(), "已重试交付", Toast.LENGTH_LONG).show()
+                }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), "重试交付失败：${e.message}", Toast.LENGTH_LONG).show()
+                }
         }
     }
 
@@ -906,8 +1371,6 @@ class ChatDetailFragment : Fragment() {
                 Log.d("Mention", "getMembers success: ${dtos.map { "${it.id}:${it.resolvedName}:${it.memberType}" }}")
                 // 保存原始群成员；Agent 合并由 rebuildMemberMaps 统一处理（agents 可能异步后加载）
                 baseGroupMembers = dtos.map { it.toGroupMember() }
-                baseMemberNamesById = dtos.associate { it.id to it.resolvedName }
-                baseMemberById = dtos.associate { it.id to it.toGroupMember() }
                 rebuildMemberMaps()
             }.onFailure {
                 Log.e("Mention", "getMembers FAILED: ${it::class.simpleName} ${it.message}")
@@ -933,6 +1396,11 @@ class ChatDetailFragment : Fragment() {
     /**
      * 重建成员映射：原始群成员 + 团队 Agent（Agent 是团队级 @ 渠道）。
      * 仅需求群合并 Agent；项目总群（PROJECT_MAIN）是纯人类聊天页面，不合并（产品约定）。
+     *
+     * Agent 身份以团队 Agent 名单（getAgents）为准，按 id 去重合并：
+     * 群成员列表中同 id 的 Agent 条目丢弃（避免 @ 弹窗重复、mention 发重复 id）；
+     * 名单里没有的 Agent 成员（如名单加载失败）保留兜底。
+     * 这样后端改名后不再依赖「名字以 Agent 开头」的启发式判断 Agent 类型。
      */
     private fun rebuildMemberMaps() {
         val isMainGroup = mainViewModel.groups.value.orEmpty()
@@ -945,9 +1413,12 @@ class ChatDetailFragment : Fragment() {
                 .filter { it.status.name != "ARCHIVED" }
                 .map { GroupMember(id = it.id, name = it.name, type = MemberType.AGENT) }
         }
-        groupMembers = baseGroupMembers + teamAgents
-        memberNamesById = baseMemberNamesById + teamAgents.associate { it.id to it.name }
-        memberById = baseMemberById + teamAgents.associate { it.id to it }
+        val agentIds = teamAgents.map { it.id }.toSet()
+        // 群成员列表中与 Agent 名单同 id 的条目以名单为准；其余（真人 + 名单缺失的 Agent）保留
+        val mergedMembers = baseGroupMembers.filter { it.id !in agentIds } + teamAgents
+        groupMembers = mergedMembers
+        memberNamesById = mergedMembers.associate { it.id to it.name }
+        memberById = mergedMembers.associate { it.id to it }
     }
 
     /** 前台轮询新消息：后端暂无聊天 SSE，用定时 getMessages 兜底实现「别人发消息实时显示」 */
@@ -1069,15 +1540,32 @@ class ChatDetailFragment : Fragment() {
         if (eventStreamJob == null) {
             eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
                 eventStream.events.collect { event ->
-                    // 只处理消息事件：当前群有新消息 → 立即拉取一次
-                    if (event.type == SseEventType.MESSAGE_CREATED) {
-                        val targetGroup = parseGroupId(event.data)
-                        if (targetGroup == groupId) {
-                            pollMessages(projectId, groupId)
+                    when (event.type) {
+                        // 消息事件：当前群有新消息 → 立即拉取一次
+                        SseEventType.MESSAGE_CREATED -> {
+                            val targetGroup = parseGroupId(event.data)
+                            if (targetGroup == groupId) {
+                                pollMessages(projectId, groupId)
+                            }
                         }
+                        // Diff 相关事件：缓存 taskId → diffId 映射，供 TASK_STATUS 卡片点击确认用
+                        SseEventType.DIFF_CREATED,
+                        SseEventType.DIFF_REVIEW_CREATED,
+                        SseEventType.TASK_AWAITING_DIFF_CONFIRMATION -> cacheTaskDiffId(event.data)
+                        else -> Unit
                     }
                 }
             }
+        }
+    }
+
+    /** 缓存事件 payload 中的 taskId → diffId 映射（后端任务详情可能不返回 diffId） */
+    private fun cacheTaskDiffId(data: String) {
+        runCatching {
+            val obj = org.json.JSONObject(data)
+            val taskId = obj.optString("taskId").takeIf { it.isNotBlank() }
+            val diffId = obj.optString("diffId").takeIf { it.isNotBlank() }
+            if (taskId != null && diffId != null) taskDiffIdMap[taskId] = diffId
         }
     }
 

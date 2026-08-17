@@ -41,6 +41,7 @@ fun GroupMemberDto.toGroupMember(): GroupMember = GroupMember(
  *  TASK_STATUS 消息 content 无 text，从 JSON 解析 taskId/status/node/message 拼可读摘要。 */
 fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String, String>): ChatMessage {
     val parsedType = runCatching { MessageType.valueOf(type) }.getOrDefault(MessageType.TEXT)
+    android.util.Log.d("MsgRaw", "type=$type senderType=$senderType content=${content?.let { com.google.gson.Gson().toJson(it) }}")
     val displayContent = when {
         parsedType == MessageType.IMAGE || parsedType == MessageType.FILE -> content?.url ?: ""
         parsedType == MessageType.TASK_STATUS -> taskStatusSummary()
@@ -61,6 +62,7 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
         senderType = senderType,
         taskStatus = if (parsedType == MessageType.TASK_STATUS) content?.status else null,
         taskNode = if (parsedType == MessageType.TASK_STATUS) content?.node else null,
+        taskId = if (parsedType == MessageType.TASK_STATUS) content?.taskId else null,
         diffId = if (parsedType == MessageType.DIFF) content?.diffId else null
     )
 }

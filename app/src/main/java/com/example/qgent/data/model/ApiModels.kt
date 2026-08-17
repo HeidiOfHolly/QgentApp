@@ -29,12 +29,16 @@ data class PageInfo(
 class ApiException(
     val code: String,
     override val message: String,
-    val requestId: String? = null
-) : Exception("[$code] $message")
+    val requestId: String? = null,
+    val details: List<String>? = null
+) : Exception(buildString {
+    append("[$code] ").append(message)
+    if (!details.isNullOrEmpty()) append(" | ").append(details.joinToString("; "))
+})
 
 /** 解析统一响应：优先抛服务端错误，其次要求 data 非空 */
 fun <T> ApiResponse<T>.requireData(): T {
-    error?.let { throw ApiException(it.code, it.message, requestId) }
+    error?.let { throw ApiException(it.code, it.message, requestId, it.details) }
     return data ?: throw ApiException("EMPTY_RESPONSE", "响应为空", requestId)
 }
 
@@ -61,7 +65,8 @@ private fun Response<*>.throwHttpError(): Nothing {
     throw ApiException(
         code = e?.code ?: "HTTP_${code()}",
         message = e?.message ?: "请求失败 (${code()})",
-        requestId = httpErrorRequestId()
+        requestId = httpErrorRequestId(),
+        details = e?.details
     )
 }
 
@@ -69,8 +74,16 @@ private fun Response<*>.throwHttpError(): Nothing {
 fun <T> Response<ApiResponse<T>>.toDataOrThrow(): T {
     if (!isSuccessful) throwHttpError()
     val body = body()
-    body?.error?.let { throw ApiException(it.code, it.message, body.requestId) }
+    body?.error?.let { throw ApiException(it.code, it.message, body.requestId, it.details) }
     return body?.data ?: throw ApiException("EMPTY_RESPONSE", "响应为空", body?.requestId)
+}
+
+/** data 可空响应：仅校验 HTTP 成功与业务错误，允许 data 为 null（如"暂无 Diff Review 批次"） */
+fun <T> Response<ApiResponse<T>>.toDataOrNull(): T? {
+    if (!isSuccessful) throwHttpError()
+    val body = body()
+    body?.error?.let { throw ApiException(it.code, it.message, body.requestId, it.details) }
+    return body?.data
 }
 
 /** 空 body / 204 响应：仅校验成功，无返回值 */
@@ -336,9 +349,17 @@ data class UpdateGroupRequest(
 data class SendMessageRequest(
     val type: String,
     val content: MessageContentDto,
-    val mentions: List<MentionDto>? = null,
     @SerializedName("replyToId") val replyToId: String? = null,
     @SerializedName("clientMessageId") val clientMessageId: String? = null
+)
+
+/** 契约 §7：从群消息显式触发 Task（POST .../messages/{messageId}/trigger-task）。
+ *  title 必填；repositoryIds 缺省用群关联仓库；baseRef 可选公共基线分支。 */
+data class TaskTriggerRequest(
+    val title: String,
+    val requirement: String? = null,
+    @SerializedName("repositoryIds") val repositoryIds: List<String>? = null,
+    @SerializedName("baseRef") val baseRef: String? = null
 )
 
 // ── Agent（§11）──
@@ -550,6 +571,70 @@ data class DiffHunkLineDto(
     @SerializedName("newLineNo") val newLineNo: Int? = null,
     val text: String
 )
+
+/** Diff 确认/拒绝请求体（§15.3：POST /diffs/{diffId}/accept|reject，reason 可选） */
+data class DiffDecisionRequest(
+    val reason: String? = null
+)
+
+// ── Task 级 Diff Review 批次（§12.3） ──
+
+/**
+ * Task 级最终 Diff Review 批次（GET /projects/{projectId}/tasks/{taskId}/diff-review）。
+ * 对应任务详情里的 diffReviewSummary：批次可跨多个仓库，确认/拒绝必须走批次接口
+ * （POST .../diff-review/confirm|reject），单 Diff 的 accept/reject 对批次内 Diff 会返回
+ * 409 DIFF_BATCH_REVIEW_REQUIRED。
+ */
+data class DiffReviewBatchDto(
+    val id: String? = null,
+    @SerializedName("taskId") val taskId: String? = null,
+    /** PENDING_CONFIRMATION / CONFIRMED / REJECTED / DELIVERING / DELIVERED / DELIVERY_FAILED 等 */
+    @SerializedName("reviewStatus") val reviewStatus: String? = null,
+    @SerializedName("deliveryStatus") val deliveryStatus: String? = null,
+    /** 交付授权来源（§15.2）：USER=用户确认 / SYSTEM=MR_FIRST 自动授权；前端不得展示为"用户已确认" */
+    @SerializedName("confirmationSource") val confirmationSource: String? = null,
+    @SerializedName("repositoryCount") val repositoryCount: Int = 0,
+    @SerializedName("filesChanged") val filesChanged: Int = 0,
+    val additions: Int = 0,
+    val deletions: Int = 0,
+    /** 批次内各仓库 Diff 列表（按 project_repository_id 升序，与发送 Diff 卡片顺序一致） */
+    val diffs: List<DiffListItemResponse>? = null
+)
+
+/** 批次内单个 Diff 列表项（§12.3 DiffListItemResponse） */
+data class DiffListItemResponse(
+    val id: String? = null,
+    @SerializedName("projectId") val projectId: String? = null,
+    @SerializedName("taskId") val taskId: String? = null,
+    @SerializedName("taskRunId") val taskRunId: String? = null,
+    @SerializedName("taskStepId") val taskStepId: String? = null,
+    @SerializedName("requirementGroupId") val requirementGroupId: String? = null,
+    @SerializedName("workspaceId") val workspaceId: String? = null,
+    @SerializedName("repositoryId") val repositoryId: String? = null,
+    @SerializedName("repositoryName") val repositoryName: String? = null,
+    @SerializedName("baseCommit") val baseCommit: String? = null,
+    @SerializedName("sourceBranch") val sourceBranch: String? = null,
+    @SerializedName("headCommit") val headCommit: String? = null,
+    val status: String? = null,
+    @SerializedName("changeStats") val changeStats: DiffChangeStatsDto? = null,
+    @SerializedName("createdAt") val createdAt: String? = null
+)
+
+/** Diff 变更统计（changeStats） */
+data class DiffChangeStatsDto(
+    val files: Int = 0,
+    val additions: Int = 0,
+    val deletions: Int = 0
+)
+
+/** 确认整个最终 Diff 批次（POST .../tasks/{taskId}/diff-review/confirm，§12.3；body 传空对象 {}） */
+class DiffReviewConfirmRequest
+
+/** 拒绝整个最终 Diff 批次（POST .../tasks/{taskId}/diff-review/reject，§12.3；body {"reason":"..."}） */
+data class DiffReviewRejectRequest(
+    val reason: String? = null
+)
+
 // ── 任务（§16 任务列表 / 任务卡片） ──
 
 /** 需求群摘要（任务列表项的 requirementGroup 字段） */
@@ -611,6 +696,7 @@ data class TaskListItemDto(
     val status: String,
     val priority: String? = null,
     @SerializedName("deliveryMode") val deliveryMode: String,
+    @SerializedName("deliveryReason") val deliveryReason: String? = null,
     @SerializedName("requirementGroup") val requirementGroup: TaskRequirementGroupDto?,
     @SerializedName("createdByUser") val createdByUser: TaskUserSummaryDto?,
     val repositories: List<TaskRepositoryDto>?,
@@ -631,12 +717,44 @@ data class TaskDetailDto(
     @SerializedName("requirementSummary") val requirementSummary: String?,
     val status: String,
     @SerializedName("deliveryMode") val deliveryMode: String,
+    @SerializedName("deliveryReason") val deliveryReason: String? = null,
     @SerializedName("requirementGroup") val requirementGroup: TaskRequirementGroupDto?,
     @SerializedName("createdByUser") val createdByUser: TaskUserSummaryDto?,
     val repositories: List<TaskRepositoryDto>?,
     @SerializedName("executionSummary") val executionSummary: TaskExecutionSummaryDto?,
+    /** diffReviewSummary 后端结构可能变化，用 JsonElement 兼容（解析见 ChatDetailFragment） */
+    @SerializedName("diffReviewSummary") val diffReviewSummary: com.google.gson.JsonElement?,
+    val capabilities: TaskCapabilitiesDto?,
     @SerializedName("createdAt") val createdAt: String,
     @SerializedName("updatedAt") val updatedAt: String
+)
+
+/** Diff 审查摘要（任务详情 §16.2 / §20.4）：待确认 Diff 时 available=true。
+ *  diffId 字段名后端可能变化（diffId/reviewId/resourceId），由 ChatDetailFragment 从 JsonElement 解析。 */
+data class TaskDiffReviewSummaryDto(
+    val available: Boolean = false,
+    @SerializedName("reviewStatus") val reviewStatus: String?,
+    @SerializedName("deliveryStatus") val deliveryStatus: String?,
+    @SerializedName("repositoryCount") val repositoryCount: Int = 0,
+    @SerializedName("filesChanged") val filesChanged: Int = 0,
+    val additions: Int = 0,
+    val deletions: Int = 0,
+    /** 待确认 Diff 的 diffId（字段名可能为 diffId/reviewId/resourceId，解析见 ChatDetailFragment） */
+    val diffId: String?
+)
+
+/** 任务能力位（§15.6/§16.2）：canConfirmDiffReview 等控制 App 端按钮可用性 */
+data class TaskCapabilitiesDto(
+    @SerializedName("canCancel") val canCancel: Boolean = false,
+    @SerializedName("cancelDisabledReason") val cancelDisabledReason: String?,
+    @SerializedName("canReplacePendingStepAgent") val canReplacePendingStepAgent: Boolean = false,
+    @SerializedName("replacePendingStepAgentDisabledReason") val replacePendingStepAgentDisabledReason: String?,
+    @SerializedName("canConfirmDiffReview") val canConfirmDiffReview: Boolean = false,
+    @SerializedName("confirmDiffReviewDisabledReason") val confirmDiffReviewDisabledReason: String?,
+    @SerializedName("canRejectDiffReview") val canRejectDiffReview: Boolean = false,
+    @SerializedName("rejectDiffReviewDisabledReason") val rejectDiffReviewDisabledReason: String?,
+    @SerializedName("canRetryDelivery") val canRetryDelivery: Boolean = false,
+    @SerializedName("retryDeliveryDisabledReason") val retryDeliveryDisabledReason: String?
 )
 
 // ── 任务步骤 / 任务运行（§16.3 / §16.4） ──

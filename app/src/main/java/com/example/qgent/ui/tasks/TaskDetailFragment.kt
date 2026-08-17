@@ -48,6 +48,9 @@ class TaskDetailFragment : Fragment() {
     private var eventStreamJob: Job? = null
     private var pollingJob: Job? = null
 
+    /** 收到 diff-review.skipped（reason=FINAL_DIFF_EMPTY）的任务：展示"已完成，无代码变更"空态（文档 §15.6.4/§20.3） */
+    private val noCodeChangeTaskIds = mutableSetOf<String>()
+
     /** 加载中指示器引用计数：detail/steps/runs 三个请求全部结束后隐藏 */
     private var loadingCount = 0
 
@@ -112,7 +115,17 @@ class TaskDetailFragment : Fragment() {
                         com.example.qgent.data.sse.SseEventType.DIFF_CREATED,
                         com.example.qgent.data.sse.SseEventType.DELIVERY_REPOSITORY_UPDATED,
                         com.example.qgent.data.sse.SseEventType.DELIVERY_FAILED,
-                        com.example.qgent.data.sse.SseEventType.DELIVERY_COMPLETED -> loadDetail()
+                        com.example.qgent.data.sse.SseEventType.DELIVERY_COMPLETED,
+                        com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SKIPPED -> {
+                            // 无代码变更（FINAL_DIFF_EMPTY）：记录当前任务，详情页展示空态
+                            if (event.type == com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SKIPPED) {
+                                val taskIdFromEvent = runCatching {
+                                    org.json.JSONObject(event.data).optString("taskId")
+                                }.getOrNull()
+                                if (taskIdFromEvent == taskId) noCodeChangeTaskIds.add(taskId)
+                            }
+                            loadDetail()
+                        }
                         else -> Unit
                     }
                 }
@@ -309,6 +322,19 @@ class TaskDetailFragment : Fragment() {
             R.string.task_detail_repo,
             detail.repositories?.joinToString { it.fullName.ifEmpty { it.name } }.orEmpty()
         )
+        // 交付模式：MR_FIRST=自动交付 / DIFF_FIRST=代码交付（文档 §15），deliveryReason 作为副文案
+        val mrFirst = detail.deliveryMode == "MR_FIRST"
+        binding.tvDeliveryMode.isVisible = mrFirst || detail.deliveryMode == "DIFF_FIRST"
+        binding.tvDeliveryMode.text = when {
+            mrFirst -> getString(R.string.task_delivery_auto)
+            detail.deliveryMode == "DIFF_FIRST" -> getString(R.string.task_delivery_code)
+            else -> ""
+        }
+        if (mrFirst && !detail.deliveryReason.isNullOrBlank()) {
+            binding.tvDeliveryMode.text = "${binding.tvDeliveryMode.text}（${detail.deliveryReason}）"
+        }
+        // 无代码变更空态：仅当收到 diff-review.skipped（FINAL_DIFF_EMPTY）且任务已完成时展示（文档 §20.3）
+        binding.tvNoCodeChange.isVisible = detail.status == "SUCCEEDED" && taskId in noCodeChangeTaskIds
     }
 
     /** 替换步骤执行 Agent：弹出可选 Agent 列表（当前团队 Agent），选中后调用替换接口 */

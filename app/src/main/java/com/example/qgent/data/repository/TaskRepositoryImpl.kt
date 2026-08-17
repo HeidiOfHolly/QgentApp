@@ -13,6 +13,7 @@ import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskRunListItemDto
 import com.example.qgent.data.model.TaskRunLogEntryDto
 import com.example.qgent.data.model.TaskStepListItemDto
+import com.example.qgent.data.model.TaskTriggerRequest
 import com.example.qgent.data.model.toDataOrThrow
 import com.example.qgent.data.model.toUnitOrThrow
 
@@ -24,6 +25,17 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
         idempotencyKey: String
     ): Result<TaskListItemDto> = apiCall {
         service.createTask(projectId, idempotencyKey, request).toDataOrThrow()
+    }
+
+    override suspend fun triggerTask(
+        projectId: String,
+        groupId: String,
+        messageId: String,
+        request: TaskTriggerRequest,
+        idempotencyKey: String
+    ): Result<Unit> = apiCall {
+        // 响应 data 恒为 null，成功以 HTTP 200 为准
+        service.triggerTask(projectId, groupId, messageId, idempotencyKey, request).toUnitOrThrow()
     }
 
     override suspend fun getTasks(
