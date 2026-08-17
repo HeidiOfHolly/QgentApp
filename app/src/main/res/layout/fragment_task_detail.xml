@@ -5,7 +5,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/off_white"
+    android:background="@color/light_gray"
     android:orientation="vertical"
     tools:context=".ui.tasks.TaskDetailFragment">
 
@@ -40,10 +40,14 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <ScrollView
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_weight="1">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
         android:fillViewport="true">
 
         <LinearLayout
@@ -128,7 +132,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:text="✅️ 任务步骤"
+                android:text="✔️ 任务步骤"
                 android:textColor="@color/text_primary"
                 android:textSize="18sp"
                 android:textStyle="bold" />
@@ -198,4 +202,13 @@
                 app:cornerRadius="18dp" />
         </LinearLayout>
     </ScrollView>
+
+        <!-- 加载中指示器：数据加载期间显示 -->
+        <ProgressBar
+            android:id="@+id/loading"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone" />
+    </FrameLayout>
 </LinearLayout>

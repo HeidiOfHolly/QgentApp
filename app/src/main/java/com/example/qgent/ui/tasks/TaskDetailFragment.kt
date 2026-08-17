@@ -48,6 +48,9 @@ class TaskDetailFragment : Fragment() {
     private var eventStreamJob: Job? = null
     private var pollingJob: Job? = null
 
+    /** 加载中指示器引用计数：detail/steps/runs 三个请求全部结束后隐藏 */
+    private var loadingCount = 0
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -61,7 +64,8 @@ class TaskDetailFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
         binding.btnCancelTask.setOnClickListener { confirmCancelTask() }
-        loadDetail()
+        // 仅首次进入界面时显示加载指示器
+        loadDetail(showIndicator = true)
     }
 
     override fun onResume() {
@@ -122,6 +126,21 @@ class TaskDetailFragment : Fragment() {
         (requireActivity().application as QgentApp).container.projectEventStream.stop()
     }
 
+    /** 显示加载中指示器（引用计数，重复调用只增加计数） */
+    private fun showLoading() {
+        loadingCount++
+        if (loadingCount == 1) binding.loading.isVisible = true
+    }
+
+    /** 隐藏加载中指示器：全部请求结束后才真正隐藏 */
+    private fun hideLoading() {
+        loadingCount--
+        if (loadingCount <= 0) {
+            loadingCount = 0
+            binding.loading.isVisible = false
+        }
+    }
+
     /** 取消任务确认弹窗 */
     private fun confirmCancelTask() {
         AlertDialog.Builder(requireContext())
@@ -153,56 +172,73 @@ class TaskDetailFragment : Fragment() {
         }
     }
 
-    private fun loadDetail() {
+    /**
+     * 加载任务详情。
+     * @param showIndicator true 时显示加载指示器（仅首次进入界面）；轮询/SSE 刷新传 false 不打扰。
+     */
+    private fun loadDetail(showIndicator: Boolean = false) {
         if (projectId.isEmpty() || taskId.isEmpty()) return
+        if (showIndicator) showLoading()
         viewLifecycleOwner.lifecycleScope.launch {
             taskRepository.getTaskDetail(projectId, taskId)
-                .onSuccess { detail -> bind(detail) }
+                .onSuccess { detail ->
+                    bind(detail)
+                    if (showIndicator) hideLoading()
+                }
                 .onFailure { e ->
+                    if (showIndicator) hideLoading()
                     Toast.makeText(requireContext(), e.message ?: "加载任务详情失败", Toast.LENGTH_SHORT).show()
                 }
         }
-        loadSteps()
-        loadRuns()
+        loadSteps(showIndicator)
+        loadRuns(showIndicator)
     }
 
     /** 加载任务步骤列表（§16.3）并填充 */
-    private fun loadSteps() {
+    private fun loadSteps(showIndicator: Boolean = false) {
+        if (showIndicator) showLoading()
         viewLifecycleOwner.lifecycleScope.launch {
             taskRepository.getTaskSteps(projectId, taskId)
                 .onSuccess { steps ->
+                    if (showIndicator) hideLoading()
                     binding.tvStepsEmpty.isVisible = steps.isEmpty()
                     fillLinearLayout(binding.rvSteps, steps, R.layout.item_task_step) { view, step ->
                         val item = ItemTaskStepBinding.bind(view)
                         item.tvStepTitle.text = step.title.ifEmpty { step.role }
                         item.tvStepStatus.text = stepStatusLabel(step.status)
+                        item.tvStepStatus.setTextColor(view.context.getColor(taskStatusColorRes(step.status)))
                         // 仅 PENDING 步骤可替换 Agent（§11.3）
                         item.btnReplaceAgent.isVisible = step.status == "PENDING"
                         item.btnReplaceAgent.setOnClickListener { showReplaceAgentDialog(step) }
                     }
                 }
                 .onFailure { e ->
+                    if (showIndicator) hideLoading()
                     Toast.makeText(requireContext(), "加载任务步骤失败：${e.message}", Toast.LENGTH_SHORT).show()
                 }
         }
     }
 
     /** 加载任务运行列表（§16.4）并填充 */
-    private fun loadRuns() {
+    private fun loadRuns(showIndicator: Boolean = false) {
+        if (showIndicator) showLoading()
         viewLifecycleOwner.lifecycleScope.launch {
             taskRepository.getTaskRunsOfTask(projectId, taskId)
                 .onSuccess { runs ->
+                    if (showIndicator) hideLoading()
                     binding.tvRunsEmpty.isVisible = runs.isEmpty()
                     fillLinearLayout(binding.rvRuns, runs, R.layout.item_task_run) { view, run ->
                         val item = ItemTaskRunBinding.bind(view)
                         item.tvRunTitle.text = run.taskStepTitle ?: run.role
                         item.tvRunStatus.text = run.statusSummary ?: runStatusLabel(run.status)
+                        item.tvRunStatus.setTextColor(view.context.getColor(taskStatusColorRes(run.status)))
                         item.tvRunAgent.text = run.agent?.name ?: run.agentId
                         // 查看执行日志：失败/完成的运行可看具体执行过程（§12.2）
                         item.tvViewLogs.setOnClickListener { showRunLogs(run) }
                     }
                 }
                 .onFailure { e ->
+                    if (showIndicator) hideLoading()
                     Toast.makeText(requireContext(), "加载任务运行失败：${e.message}", Toast.LENGTH_SHORT).show()
                 }
         }

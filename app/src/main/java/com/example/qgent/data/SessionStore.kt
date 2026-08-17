@@ -28,7 +28,7 @@ object SessionStore {
     private fun requirePrefs(): SharedPreferences =
         prefs ?: throw IllegalStateException("SessionStore 未初始化，请先在 Application.onCreate 调用 init")
 
-    /** 保存登录会话（拦截器直接读 SharedPreferences，无需手工同步） */
+    /** 保存登录会话（拦截器直接读 SharedPreferences，无需手工同步）；新会话复位过期通知 */
     fun saveSession(session: AuthSessionDto) {
         requirePrefs().edit()
             .putString(KEY_ACCESS_TOKEN, session.accessToken)
@@ -37,6 +37,7 @@ object SessionStore {
             .putString(KEY_USER_EMAIL, session.user.email)
             .putString(KEY_USER_DISPLAY_NAME, session.user.displayName)
             .apply()
+        SessionExpiryNotifier.reset()
     }
 
     fun clear() {

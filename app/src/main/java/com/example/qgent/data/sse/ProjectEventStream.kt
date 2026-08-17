@@ -1,6 +1,7 @@
 package com.example.qgent.data.sse
 
 import android.util.Log
+import com.example.qgent.data.SessionExpiryNotifier
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -140,7 +141,8 @@ class ProjectEventStream(
                             Outcome.CURSOR_EXPIRED
                         }
                         response.code == 401 -> {
-                            // TokenAuthenticator 已尝试刷新；仍 401 → 停止（避免无限重试）
+                            // TokenAuthenticator 已尝试刷新；仍 401 → 会话过期，触发自动退出登录
+                            SessionExpiryNotifier.notifyExpired()
                             Outcome.UNAUTHORIZED
                         }
                         !response.isSuccessful -> {

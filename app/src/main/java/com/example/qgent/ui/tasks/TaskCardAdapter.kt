@@ -44,9 +44,10 @@ class TaskCardAdapter(
             binding.tvTaskName.text = task.displayCode + " " + task.title
             binding.tvTaskInformation.text = task.requirementSummary ?: task.title
             binding.tvTaskStatus.text = statusText(context, task.status)
+            binding.tvTaskStatus.setTextColor(context.getColor(taskStatusColorRes(task.status)))
             val progress = progressOf(task)
             binding.pbTask.progress = progress
-            binding.tvTaskPrgress.text = "$progress%"
+            binding.tvTaskProgress.text = "$progress%"
             // 任务卡在中间态（PLANNING/RUNNING）且久未更新 → 显示任务 ID 便于排查（清单四）
             val stuck = task.status in STUCK_STATUSES && isStuck(task.updatedAt)
             binding.tvTaskId.isVisible = stuck

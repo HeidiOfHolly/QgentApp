@@ -45,6 +45,12 @@
         <action
             android:id="@+id/action_tasks_to_mrList"
             app:destination="@id/mergeRequestListFragment" />
+        <action
+            android:id="@+id/action_tasks_to_taskDetail"
+            app:destination="@id/taskDetailFragment" />
+        <action
+            android:id="@+id/action_tasks_to_mrDetail"
+            app:destination="@id/mergeRequestDetailFragment" />
     </fragment>
 
     <fragment

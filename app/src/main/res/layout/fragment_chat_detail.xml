@@ -164,22 +164,22 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="8dp"
         android:paddingTop="10dp"
-        android:paddingEnd="8dp"
+        android:paddingHorizontal="10dp"
         android:paddingBottom="8dp"
         android:background="@color/navy_light">
 
         <EditText
             android:id="@+id/etInput"
-            android:layout_width="0dp"
-            android:layout_height="30dp"
-            android:layout_weight="1"
+            android:layout_width="250dp"
+            android:layout_height="35dp"
             android:background="@drawable/bg_search_box"
             android:hint="@string/chat_input_hint"
             android:imeOptions="actionSend"
             android:inputType="text"
             android:maxLines="4"
+            android:layout_marginVertical="8dp"
+            android:layout_marginStart="10dp"
             android:paddingStart="14dp"
             android:paddingEnd="8dp"
             android:textColor="?android:attr/textColorPrimary"
@@ -187,9 +187,9 @@
 
         <ImageButton
             android:id="@+id/btnPlus"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:layout_marginStart="4dp"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginHorizontal="5dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:backgroundTint="@color/off_white"
             app:tint="@color/off_white"
@@ -202,8 +202,8 @@
             android:layout_height="40dp"
             android:layout_marginStart="4dp"
             android:minWidth="0dp"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
+            android:paddingStart="15dp"
+            android:paddingEnd="15dp"
             android:text="@string/send" />
     </LinearLayout>
 
