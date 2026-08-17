@@ -4,6 +4,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
+import com.example.qgent.R
 import com.example.qgent.data.model.MergeRequestDto
 import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.data.repository.TaskRepository
@@ -80,18 +81,23 @@ class TaskListViewModel(private val repo: TaskRepository) : ViewModel() {
         }
     }
 
-    /** 任务卡片列表页：加载任务（可带筛选）；任务页 load 亦复用 */
-    fun loadTasks(projectId: String?, filter: TaskFilter = TaskFilter()) {
+    /**
+     * 加载任务。
+     * @param filter 显式传入时应用新筛选（applyFilter）；为 null 时保留当前筛选
+     *（轮询 / onResume 刷新不清除用户已选条件）。
+     */
+    fun loadTasks(projectId: String?, filter: TaskFilter? = null) {
         if (projectId == null) return
         loadedProjectId = projectId
-        _uiState.value = _uiState.value.copy(loading = true, filter = filter)
+        val effective = filter ?: _uiState.value.filter
+        _uiState.value = _uiState.value.copy(loading = true, filter = effective)
         viewModelScope.launch {
             repo.getTasks(
                 projectId,
-                groupId = filter.groupId,
-                status = filter.status,
-                createdBy = filter.createdBy,
-                repositoryId = filter.repositoryId
+                groupId = effective.groupId,
+                status = effective.status,
+                createdBy = effective.createdBy,
+                repositoryId = effective.repositoryId
             )
                 .onSuccess { tasks ->
                     android.util.Log.d("TaskPoll", "getTasks success: ${tasks.map { "${it.title}:${it.status}" }}")
@@ -165,4 +171,15 @@ class TaskListViewModel(private val repo: TaskRepository) : ViewModel() {
     fun consumeError() {
         _uiState.value = _uiState.value.copy(error = null)
     }
+}
+
+/**
+ * 任务状态文字颜色（卡片/步骤/运行共用）：
+ * 已完成保持默认色（teal）；失败与交付失败红色；已取消灰色；其余进行中类状态黄色。
+ */
+fun taskStatusColorRes(status: String): Int = when (status) {
+    "FAILED", "DELIVERY_FAILED" -> R.color.exit_red
+    "CANCELLED" -> R.color.gray
+    "SUCCEEDED" -> R.color.teal
+    else -> R.color.status_yellow
 }

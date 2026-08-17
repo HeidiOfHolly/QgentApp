@@ -33,9 +33,25 @@ class TasksFragment : Fragment() {
     private val githubRepository: GitHubRepository
         get() = (requireActivity().application as QgentApp).container.githubRepository
 
-    private val taskAdapter = TaskCardAdapter { }
+    private val taskAdapter = TaskCardAdapter { task ->
+        findNavController().navigate(
+            R.id.action_tasks_to_taskDetail,
+            Bundle().apply {
+                putString(TaskDetailFragment.ARG_TASK_ID, task.id)
+                putString(TaskDetailFragment.ARG_PROJECT_ID, task.projectId)
+            }
+        )
+    }
     private val activityAdapter = ActivityAdapter()
-    private val mrAdapter = MergeRequestAdapter()
+    private val mrAdapter = MergeRequestAdapter { mr ->
+        findNavController().navigate(
+            R.id.action_tasks_to_mrDetail,
+            Bundle().apply {
+                putString(MergeRequestDetailFragment.ARG_MR_ID, mr.id)
+                putString(MergeRequestDetailFragment.ARG_PROJECT_ID, mainViewModel.currentProjectId().orEmpty())
+            }
+        )
+    }
 
     private var pollingJob: Job? = null
 
@@ -91,6 +107,10 @@ class TasksFragment : Fragment() {
             taskAdapter.submitList(state.tasks.take(TaskListViewModel.MAX_MY_TASKS))
             activityAdapter.submitList(state.agentRuns)
             mrAdapter.submitList(state.mergeRequests.take(TaskListViewModel.MAX_MR))
+            // 空状态：列表为空时展示提示，非空时隐藏
+            binding.tvTaskEmpty.isVisible = state.tasks.isEmpty()
+            binding.tvAgentEmpty.isVisible = state.agentRuns.isEmpty()
+            binding.tvMREmpty.isVisible = state.mergeRequests.isEmpty()
             state.error?.let {
                 taskListViewModel.consumeError()
             }

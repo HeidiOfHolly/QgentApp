@@ -54,10 +54,12 @@ class MergeRequestDetailFragment : Fragment() {
 
     private fun loadDetail() {
         if (projectId.isEmpty() || mergeRequestId.isEmpty()) return
+        binding.loading.isVisible = true
         viewLifecycleOwner.lifecycleScope.launch {
             taskRepository.getMergeRequestDetail(projectId, mergeRequestId)
                 .onSuccess { detail -> bindDetail(detail) }
                 .onFailure { e ->
+                    binding.loading.isVisible = false
                     Toast.makeText(requireContext(), e.message ?: "加载 MR 详情失败", Toast.LENGTH_SHORT).show()
                 }
         }
@@ -79,6 +81,7 @@ class MergeRequestDetailFragment : Fragment() {
         val diffId = detail.diffId
         if (diffId.isNullOrEmpty()) {
             binding.tvDiffEmpty.isVisible = true
+            binding.loading.isVisible = false
             return
         }
         loadDiffFiles(diffId)
@@ -88,12 +91,14 @@ class MergeRequestDetailFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             taskRepository.getDiffFiles(projectId, diffId)
                 .onSuccess { files ->
+                    binding.loading.isVisible = false
                     binding.tvDiffEmpty.isVisible = files.isEmpty()
                     fillLinearLayout(binding.containerDiffFiles, files, R.layout.item_mr_diff_file) { view, file ->
                         bindDiffFile(view, file)
                     }
                 }
                 .onFailure { e ->
+                    binding.loading.isVisible = false
                     binding.tvDiffEmpty.isVisible = true
                     Toast.makeText(requireContext(), "加载代码变更失败：${e.message}", Toast.LENGTH_SHORT).show()
                 }

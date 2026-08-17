@@ -1,5 +1,6 @@
 package com.example.qgent.data.api
 
+import com.example.qgent.data.SessionExpiryNotifier
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.model.RefreshRequest
 import com.example.qgent.data.model.toDataOrThrow
@@ -8,6 +9,7 @@ import okhttp3.Authenticator
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
+import java.io.IOException
 
 /**
  * 收到 401 时用 refresh token 换新 access token 并重试原请求。
@@ -36,14 +38,19 @@ class TokenAuthenticator(
                     .build()
             }
 
-            val newSession = runBlocking {
+            val result = runBlocking {
                 runCatching { refreshService.refresh(RefreshRequest(refreshToken)).toDataOrThrow() }
-                    .getOrNull()
             }
-            val newAccess = newSession?.accessToken
-            if (newAccess.isNullOrEmpty()) return null
-
-            SessionStore.updateTokens(newAccess, newSession.refreshToken)
+            val newAccess = result.getOrNull()?.accessToken
+            if (newAccess.isNullOrEmpty()) {
+                // refresh 失败：网络异常（IO）不视为过期，静默等待下次重试；
+                // 其余（401 / refresh token 失效 / 服务端拒绝）判定会话过期，触发自动退出登录
+                if (result.exceptionOrNull() !is IOException) {
+                    SessionExpiryNotifier.notifyExpired()
+                }
+                return null
+            }
+            SessionStore.updateTokens(newAccess, result.getOrNull()?.refreshToken)
             return response.request.newBuilder()
                 .header("Authorization", "Bearer $newAccess")
                 .build()

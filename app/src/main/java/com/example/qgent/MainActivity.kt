@@ -111,6 +111,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // 会话过期兜底：token 失效触发自动登出后，本页可能仍存活在返回栈中，
+        // resume 时发现未登录则强制回登录页（防后台 Activity 启动被系统拦截后停在旧界面）
+        if (!SessionStore.isLoggedIn()) {
+            startActivity(
+                Intent(this, LoginActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                }
+            )
+            finish()
+        }
+    }
+
     /**
      * 处理 GitHub 安装回调的 App Link（后端 302 回跳）：
      * https://mobile.qgents.dpdns.org/app/integrations/github?teamId=...&installed=1

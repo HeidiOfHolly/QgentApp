@@ -101,6 +101,7 @@
     <string name="user_name_placeholder">用户昵称</string>
     <string name="team_name_placeholder">所在团队</string>
     <string name="chat_list_empty">暂无群聊，点击右上角 + 创建</string>
+    <string name="session_expired">登录已过期，请重新登录</string>
 
     <string name="action_create_group">创建群聊</string>
     <string name="action_add_member">添加成员</string>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 任务中心：顶栏 + 状态筛选 + 任务列表 -->
+<!-- 任务中心：顶栏（固定）+ 内容区（ScrollView > LinearLayout，三个列表整体滚动） -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -10,6 +10,7 @@
     android:backgroundTint="@color/light_gray"
     tools:context=".ui.tasks.TasksFragment">
 
+    <!-- 顶栏：固定不动 -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/title"
         android:layout_width="match_parent"
@@ -90,123 +91,191 @@
             android:padding="4dp"
             android:src="@drawable/ic_add" />
     </androidx.constraintlayout.widget.ConstraintLayout>
-    <ImageView
-        android:id="@+id/ivTask"
-        android:src="@drawable/ic_task"
-        app:tint="@color/navy_light"
-        app:layout_constraintTop_toTopOf="@+id/tvMyTask"
-        app:layout_constraintBottom_toBottomOf="@+id/tvMyTask"
-        android:layout_marginLeft="16dp"
-        app:layout_constraintLeft_toLeftOf="parent"
-        android:layout_width="28dp"
-        android:layout_height="28dp"/>
-    <TextView
-        android:id="@+id/tvMyTask"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="任务列表"
-        android:textColor="@color/text_primary"
-        android:layout_marginStart="5dp"
-        android:layout_marginTop="10dp"
-        android:textSize="28sp"
-        android:textStyle="bold"
-        app:layout_constraintLeft_toRightOf="@+id/ivTask"
+
+    <!-- 内容区：整页滚动 -->
+    <ScrollView
+        android:id="@+id/scrollContent"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:fillViewport="true"
+        android:scrollbars="none"
         app:layout_constraintTop_toBottomOf="@+id/title"
-/>
-    <TextView
-        android:id="@+id/tvTaskMore"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="更多任务 ▶ "
-        android:textColor="@color/teal"
-        android:layout_marginTop="15dp"
-        android:textSize="18sp"
-        android:layout_marginRight="20dp"
-        app:layout_constraintTop_toBottomOf="@+id/title"
-        app:layout_constraintRight_toRightOf="parent"/>
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvTaskList"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:clipToPadding="false"
-            android:paddingTop="4dp"
-            android:paddingStart="5dp"
-            android:layout_marginEnd="10dp"
-            android:paddingBottom="5dp"
-            app:layout_constraintTop_toBottomOf="@+id/tvMyTask"/>
-    <ImageView
-        android:id="@+id/ivDone"
-        android:src="@drawable/ic_done"
-        app:tint="@color/navy_light"
-        app:layout_constraintTop_toTopOf="@+id/tvAgent"
-        app:layout_constraintBottom_toBottomOf="@+id/tvAgent"
-        android:layout_marginLeft="16dp"
-        app:layout_constraintLeft_toLeftOf="parent"
-        android:layout_width="25dp"
-        android:layout_height="25dp"/>
-    <TextView
-        android:id="@+id/tvAgent"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:text="最近动态"
-        android:textSize="20dp"
-        android:textStyle="bold"
-        android:paddingStart="5dp"
-        android:layout_marginTop="10dp"
-        app:layout_constraintLeft_toRightOf="@+id/ivDone"
-        app:layout_constraintTop_toBottomOf="@+id/rvTaskList"
-        android:textColor="@color/charcoal" />
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvAgentTaskList"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:clipToPadding="false"
-        android:paddingTop="4dp"
-        android:paddingStart="16dp"
-        android:layout_marginEnd="10dp"
-        app:layout_constraintTop_toBottomOf="@+id/tvAgent"/>
-    <ImageView
-        android:id="@+id/ivMR"
-        android:src="@drawable/ic_mr"
-        app:tint="@color/navy_light"
-        app:layout_constraintTop_toTopOf="@+id/tvMR"
-        app:layout_constraintBottom_toBottomOf="@+id/tvMR"
-        android:layout_marginLeft="16dp"
-        app:layout_constraintLeft_toLeftOf="parent"
-        android:layout_width="28dp"
-        android:layout_height="28dp"/>
-    <TextView
-        android:id="@+id/tvMR"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="MR查看"
-        android:paddingStart="5dp"
-        android:textColor="@color/text_primary"
-        android:layout_marginTop="10dp"
-        android:textSize="28sp"
-        android:textStyle="bold"
-        app:layout_constraintTop_toBottomOf="@+id/rvAgentTaskList"
-        app:layout_constraintLeft_toRightOf="@id/ivMR"/>
-    <TextView
-        android:id="@+id/tvMRMore"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="更多MR ▶ "
-        android:textColor="@color/teal"
-        android:layout_marginTop="15dp"
-        android:textSize="18sp"
-        app:layout_constraintTop_toBottomOf="@+id/rvAgentTaskList"
-        app:layout_constraintLeft_toLeftOf="@+id/tvTaskMore"/>
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvMRList"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:clipToPadding="false"
-        android:paddingTop="4dp"
-        android:paddingStart="16dp"
-        android:layout_marginEnd="10dp"
-        app:layout_constraintTop_toBottomOf="@+id/tvMR"/>
+            android:orientation="vertical"
+            android:paddingBottom="16dp">
+
+            <!-- ── 任务列表区块 ── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="16dp"
+                android:paddingEnd="20dp"
+                android:paddingTop="10dp">
+
+                <ImageView
+                    android:id="@+id/ivTask"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@drawable/ic_task"
+                    app:tint="@color/navy_light" />
+
+                <TextView
+                    android:id="@+id/tvMyTask"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:text="任务列表"
+                    android:textColor="@color/text_primary"
+                    android:textSize="28sp"
+                    android:textStyle="bold" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+
+                <TextView
+                    android:id="@+id/tvTaskMore"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="更多任务 ▶ "
+                    android:textColor="@color/teal"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tvTaskEmpty"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="20dp"
+                android:layout_marginVertical="20dp"
+                android:text="💻 暂无任务"
+                android:textSize="18dp"
+                android:textColor="@color/text_secondary"
+                 />
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvTaskList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipToPadding="false"
+                android:nestedScrollingEnabled="false"
+                android:paddingStart="5dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="5dp"/>
 
 
+            <!-- ── 最近动态区块 ── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="16dp"
+                android:paddingTop="10dp">
+
+                <ImageView
+                    android:id="@+id/ivDone"
+                    android:layout_width="25dp"
+                    android:layout_height="25dp"
+                    android:src="@drawable/ic_done"
+                    app:tint="@color/navy_light" />
+
+                <TextView
+                    android:id="@+id/tvAgent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="5dp"
+                    android:text="最近动态"
+                    android:textColor="@color/charcoal"
+                    android:textSize="20dp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+            <TextView
+                android:id="@+id/tvAgentEmpty"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="20dp"
+                android:layout_marginVertical="15dp"
+                android:text="🤖 暂无最近动态"
+                android:textSize="15dp"
+                android:textColor="@color/text_secondary" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvAgentTaskList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipToPadding="false"
+                android:nestedScrollingEnabled="false"
+                android:paddingTop="4dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="10dp" />
+
+
+            <!-- ── MR查看区块 ── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="16dp"
+                android:paddingEnd="20dp"
+                android:paddingTop="10dp">
+
+                <ImageView
+                    android:id="@+id/ivMR"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@drawable/ic_mr"
+                    app:tint="@color/navy_light" />
+
+                <TextView
+                    android:id="@+id/tvMR"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="5dp"
+                    android:text="MR查看"
+                    android:textColor="@color/text_primary"
+                    android:textSize="28sp"
+                    android:textStyle="bold" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+
+                <TextView
+                    android:id="@+id/tvMRMore"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="更多MR ▶ "
+                    android:textColor="@color/teal"
+                    android:textSize="15sp" />
+            </LinearLayout>
+            <TextView
+                android:id="@+id/tvMREmpty"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginVertical="20dp"
+                android:layout_marginStart="16dp"
+                android:text="📒 暂无 MR"
+                android:textSize="18sp"
+                android:textColor="@color/text_secondary" />
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvMRList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipToPadding="false"
+                android:nestedScrollingEnabled="false"
+                android:paddingTop="4dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="10dp" />
+
+        </LinearLayout>
+    </ScrollView>
 </androidx.constraintlayout.widget.ConstraintLayout>

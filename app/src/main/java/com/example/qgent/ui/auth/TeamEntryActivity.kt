@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.qgent.MainActivity
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.SessionStore
 import com.example.qgent.databinding.ActivityTeamEntryBinding
 import com.example.qgent.databinding.DialogJoinTeamBinding
 import com.example.qgent.databinding.DialogNewTewmBinding
@@ -30,6 +31,19 @@ class TeamEntryActivity : AppCompatActivity() {
 
         binding.btnCreateTeam.setOnClickListener { showCreateTeamDialog() }
         binding.btnJoinTeam.setOnClickListener { showJoinTeamDialog() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 会话过期兜底：token 失效自动登出后，本页若仍存活则强制回登录页
+        if (!SessionStore.isLoggedIn()) {
+            startActivity(
+                Intent(this, LoginActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                }
+            )
+            finish()
+        }
     }
 
     /** 加入团队：输入邀请码后调用接受邀请接口，成功后进入主界面 */

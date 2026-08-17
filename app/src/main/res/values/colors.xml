@@ -14,6 +14,9 @@
     <color name="teal">#056684</color>
     <color name="green">#0B7D92</color>
 
+    <!-- 任务状态文字色：进行中类状态用黄 -->
+    <color name="status_yellow">#D97706</color>
+
     <!-- 中性色 -->
     <color name="off_white">#F6F8FB</color>
     <color name="blue_tint">#D6E2F5</color>
