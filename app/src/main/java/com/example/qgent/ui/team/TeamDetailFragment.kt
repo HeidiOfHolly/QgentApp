@@ -147,22 +147,24 @@ class TeamDetailFragment : Fragment() {
     private fun loadAuthorizedRepositories(teamId: String) {
         viewLifecycleOwner.lifecycleScope.launch {
             val repos = githubRepository.getGithubRepositories(teamId).getOrNull().orEmpty()
-            // 授权仓库 → 项目绑定列表（repositoryId = github_repositories.id，即 GitHubRepositoryDto.id）
+            // 授权仓库 → 项目绑定列表：文档 §6 对 ProjectRepository.repositoryId 的语义与示例冲突
+            //（§6.612 示例为 github_repositories.id，§6.440 通用规则又要求下游 repositoryId 表示绑定 id），
+            // 改用两边都含的 providerRepositoryId（GitHub 仓库全局唯一数字 ID）关联，规避语义歧义导致的绑定状态错乱
             val bindingsByRepository = userRepository.getProjects(teamId).getOrNull().orEmpty()
                 .flatMap { project ->
                     githubRepository.getProjectRepositories(project.id).getOrNull().orEmpty()
-                        .map { it.repositoryId to (project.id to it.id) }
+                        .map { it.providerRepositoryId to (project.id to it.id) }
                 }
                 .groupBy({ it.first }, { it.second })
             // 展示集：AUTHORIZED 全部展示；REVOKED 仅展示仍被项目绑定的死绑定（未绑定的已无意义，不展示）
             val displayRepos = repos.filter {
                 it.authorizationStatus == "AUTHORIZED" ||
-                    (it.authorizationStatus == "REVOKED" && bindingsByRepository[it.id].orEmpty().isNotEmpty())
+                    (it.authorizationStatus == "REVOKED" && bindingsByRepository[it.providerRepositoryId].orEmpty().isNotEmpty())
             }
             fillLinearLayout(binding.rvRepository, displayRepos, R.layout.item_repository) { view, repo ->
                 val item = ItemRepositoryBinding.bind(view)
                 item.tvRepositoryName.text = repo.fullName
-                val bindings = bindingsByRepository[repo.id].orEmpty()
+                val bindings = bindingsByRepository[repo.providerRepositoryId].orEmpty()
                 val bound = bindings.isNotEmpty()
                 val revoked = repo.authorizationStatus == "REVOKED"
                 item.tvBoundStatus.text = getString(

@@ -17,7 +17,12 @@ import java.util.UUID
  * GitHub 集成 ViewModel：发起安装链接、刷新 Installation/Repository 列表。
  * 幂等键由每次用户操作生成一次 UUID，同次操作重试复用、重新点击生成新键（符合接口契约）。
  */
-class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
+class GithubViewModel(
+    private val repo: GitHubRepository
+) : ViewModel() {
+
+    /** 解除安装被 409（仍有仓库绑定）拦截后的确认请求 */
+    data class UninstallConfirm(val teamId: String)
 
     data class GithubUiState(
         val loading: Boolean = false,
@@ -27,6 +32,7 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
         val repoCounts: Map<String, Int> = emptyMap(),
         val installed: Boolean = false,
         val uninstallDone: Boolean = false,
+        val uninstallConfirm: UninstallConfirm? = null,
         val error: String? = null
     )
 
@@ -183,13 +189,14 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
     }
 
     /**
-     * 解除团队的全部 GitHub 安装：拉取安装列表逐个删除，遇到第一个失败即终止。
-     * 安装仍被项目仓库绑定引用时后端返回 409 GITHUB_INSTALLATION_IN_USE，给专门提示。
-     * 全部成功后置 uninstallDone 一次性事件并刷新安装/仓库列表。
+     * 解除团队的全部 GitHub 安装：拉取安装列表逐个删除。
+     * 后端对仍被仓库绑定的安装返回 409 GITHUB_INSTALLATION_IN_USE，但实际已解除安装：
+     * 首次 409 → 置 uninstallConfirm 弹确认框提示用户仍有绑定；用户确认后 force=true 重试，
+     * 此时不再收集绑定列表，直接按成功收尾（刷新安装/仓库列表 + 置 uninstallDone 一次性事件）。
      */
-    fun uninstallTeam(teamId: String) {
+    fun uninstallTeam(teamId: String, force: Boolean = false) {
         if (_uiState.value.loading) return
-        _uiState.value = _uiState.value.copy(loading = true, error = null)
+        _uiState.value = _uiState.value.copy(loading = true, error = null, uninstallConfirm = null)
         viewModelScope.launch {
             repo.getInstallations(teamId)
                 .onSuccess { installations ->
@@ -202,20 +209,27 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
                             }
                         if (failed != null) break
                     }
-                    failed?.let {
-                        _uiState.value = _uiState.value.copy(
-                            loading = false,
-                            error = if (it is ApiException && it.code == "GITHUB_INSTALLATION_IN_USE") {
-                                "该安装仍被项目仓库绑定引用，无法解除，请先解绑相关仓库"
+                    failed?.let { e ->
+                        if (e is ApiException && e.code == "GITHUB_INSTALLATION_IN_USE") {
+                            if (force) {
+                                // 用户已确认强制卸载：后端 409 但实际已解除，按成功收尾
+                                finishUninstall(teamId)
                             } else {
-                                it.message ?: "解除安装失败，请稍后重试"
+                                // 首次拦截：弹确认框提示仍有仓库绑定
+                                _uiState.value = _uiState.value.copy(
+                                    loading = false,
+                                    uninstallConfirm = UninstallConfirm(teamId)
+                                )
                             }
-                        )
+                        } else {
+                            _uiState.value = _uiState.value.copy(
+                                loading = false,
+                                error = e.message ?: "解除安装失败，请稍后重试"
+                            )
+                        }
                         return@launch
                     }
-                    _uiState.value = _uiState.value.copy(loading = false, uninstallDone = true)
-                    refreshInstallations(teamId)
-                    loadRepositories(teamId)
+                    finishUninstall(teamId)
                 }
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(
@@ -224,6 +238,24 @@ class GithubViewModel(private val repo: GitHubRepository) : ViewModel() {
                     )
                 }
         }
+    }
+
+    /** 用户确认强制卸载（仍有仓库绑定）：重试解除安装，409 时直接按成功处理 */
+    fun confirmForceUninstall(confirm: UninstallConfirm) {
+        if (_uiState.value.loading) return
+        uninstallTeam(confirm.teamId, force = true)
+    }
+
+    /** 卸载成功收尾：置 uninstallDone 一次性事件并刷新安装/仓库列表 */
+    private fun finishUninstall(teamId: String) {
+        _uiState.value = _uiState.value.copy(loading = false, uninstallDone = true)
+        refreshInstallations(teamId)
+        loadRepositories(teamId)
+    }
+
+    /** 取消强制卸载确认：仅清空待确认状态 */
+    fun cancelUninstall() {
+        _uiState.value = _uiState.value.copy(uninstallConfirm = null)
     }
 
     fun consumeInstalled() {

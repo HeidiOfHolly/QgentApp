@@ -158,6 +158,9 @@
     <string name="github_uninstall_confirm_message">确定解除该团队的全部 GitHub 安装吗？解除后该团队将无法继续访问已绑定的 GitHub 仓库。</string>
     <string name="github_uninstall_success">已解除 GitHub 安装</string>
     <string name="github_uninstall_failed">解除安装失败，请稍后重试</string>
+    <string name="github_uninstall_bind_title">仍有仓库绑定，确认解除安装？</string>
+    <string name="github_uninstall_bind_message">该团队仍有项目仓库绑定。确认后将解除 GitHub 安装，相关项目将无法继续访问这些仓库。</string>
+    <string name="github_uninstall_bind_confirm">确认解除</string>
     <string name="github_repo_bound">已绑定项目</string>
     <string name="github_repo_unbound">未绑定项目</string>
     <string name="github_repo_delete">删除仓库</string>
@@ -192,6 +195,16 @@
     <string name="manage_members">管理成员</string>
     <string name="manage_projects">管理项目</string>
     <string name="manage_repositories">管理仓库</string>
+
+    <!-- 项目详情页 -->
+    <string name="project_detail_title">项目详情</string>
+    <string name="project_avatar">项目头像</string>
+    <string name="project_members">成员</string>
+    <string name="project_members_empty">暂无成员</string>
+    <string name="project_repositories">已绑定仓库</string>
+    <string name="project_repositories_empty">暂无绑定仓库</string>
+    <string name="member_unknown">成员</string>
+    <string name="project_desc_missing">该项目暂无简介</string>
     <string name="repo_status_revoked">授权已撤销</string>
     <string name="repo_revoked_hint">该仓库已被项目绑定，但 GitHub 授权已撤销，请前往 GitHub 重新授权或联系管理员解绑</string>
     <string name="add_member">＋ 增加成员</string>
