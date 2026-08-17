@@ -86,6 +86,7 @@ class MockUserRepository : UserRepository {
         teamId: String,
         name: String,
         description: String?,
+        newRepository: com.example.qgent.data.model.NewRepositoryRequest?,
         idempotencyKey: String
     ): Result<ProjectDto> = Result.success(
         ProjectDto("mock-project-${System.currentTimeMillis()}", teamId, name, description, "ACTIVE")

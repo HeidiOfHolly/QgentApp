@@ -332,19 +332,22 @@ class ChatListFragment : Fragment() {
             sheetBinding.btnSelectAll.text = getString(if (allSelected) R.string.cancel_select_all else R.string.select_all)
         }
 
-        // 加载项目成员（关联团队成员显示名字）
+        // 加载项目成员（关联团队成员显示名字）+ 团队 Agent（需求群自动带 Agent，默认勾选）
         viewLifecycleOwner.lifecycleScope.launch {
             val teamId = mainViewModel.currentTeamId()
-            val memberDtos = if (teamId != null) {
+            val picks = mutableListOf<GroupMemberPick>()
+            if (teamId != null) {
                 val teamMembers = userRepository.getTeamMembers(teamId).getOrNull().orEmpty()
                 val nameById = teamMembers.associate { it.userId to it.displayName }
-                userRepository.getProjectMembers(projectId).getOrNull().orEmpty().map {
-                    GroupMemberPick(it.userId, nameById[it.userId] ?: "成员", it.role)
+                userRepository.getProjectMembers(projectId).getOrNull().orEmpty().forEach {
+                    picks.add(GroupMemberPick(it.userId, nameById[it.userId] ?: "成员", it.role))
                 }
-            } else {
-                emptyList()
+                // 团队 Agent 并入（isAgent 标记，默认勾选 = 自动加入需求群）
+                agentRepository().getAgents(teamId).getOrNull().orEmpty()
+                    .filter { it.status == "ACTIVE" }
+                    .forEach { picks.add(GroupMemberPick(it.id, it.name, "AGENT", checked = true, isAgent = true)) }
             }
-            memberAdapter.submitList(memberDtos)
+            memberAdapter.submitList(picks)
         }
 
         sheetBinding.btnSend.setOnClickListener {
@@ -354,7 +357,8 @@ class ChatListFragment : Fragment() {
                 return@setOnClickListener
             }
             val description = sheetBinding.etGroupDescription.text?.toString()?.trim().orEmpty().ifEmpty { null }
-            val memberIds = memberAdapter.checkedIds()
+            // 只提交真实用户（Agent 是团队级，入群靠 sendAsAgent 回消息，不随创建群提交）
+            val memberIds = memberAdapter.checkedUserIds()
             dialog.dismiss()
             createGroup(projectId, name, description, memberIds)
         }
@@ -379,6 +383,9 @@ class ChatListFragment : Fragment() {
 
     private fun chatRepository(): ChatRepository =
         (requireActivity().application as QgentApp).container.chatRepository
+
+    private fun agentRepository(): com.example.qgent.data.repository.AgentRepository =
+        (requireActivity().application as QgentApp).container.agentRepository
 
     override fun onDestroyView() {
         super.onDestroyView()

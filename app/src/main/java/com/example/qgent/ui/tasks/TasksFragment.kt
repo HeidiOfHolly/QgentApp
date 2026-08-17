@@ -15,6 +15,8 @@ import com.example.qgent.R
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.databinding.FragmentTasksBinding
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class TasksFragment : Fragment() {
@@ -34,6 +36,8 @@ class TasksFragment : Fragment() {
     private val taskAdapter = TaskCardAdapter { }
     private val activityAdapter = ActivityAdapter()
     private val mrAdapter = MergeRequestAdapter()
+
+    private var pollingJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -98,8 +102,34 @@ class TasksFragment : Fragment() {
         mainViewModel.refreshUnreadTaskNotifications()
         val projectId = mainViewModel.currentProjectId()
         val teamId = mainViewModel.currentTeamId()
-        taskListViewModel.load(projectId, teamId, mainViewModel.agents.value.orEmpty())
+        // load() 内部对同项目防重复跳过，这里先强制刷新一次再启动轮询
+        taskListViewModel.loadTasks(projectId)
+        taskListViewModel.loadMergeRequestsForList(projectId)
         loadRepoNameMap(projectId)
+        startPolling()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopPolling()
+    }
+
+    /** 轮询：任务页 Tab 停留时每 3 秒刷新任务/MR（后端任务执行进度实时可见） */
+    private fun startPolling() {
+        if (pollingJob?.isActive == true) return
+        val projectId = mainViewModel.currentProjectId() ?: return
+        pollingJob = viewLifecycleOwner.lifecycleScope.launch {
+            while (true) {
+                delay(POLL_INTERVAL_MS)
+                taskListViewModel.loadTasks(projectId)
+                taskListViewModel.loadMergeRequestsForList(projectId)
+            }
+        }
+    }
+
+    private fun stopPolling() {
+        pollingJob?.cancel()
+        pollingJob = null
     }
 
     /** 拉取项目绑定仓库，建立 repositoryId → 仓库名 映射供 MR 卡片展示 */
@@ -116,5 +146,9 @@ class TasksFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    companion object {
+        private const val POLL_INTERVAL_MS = 3_000L
     }
 }

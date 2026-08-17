@@ -130,6 +130,66 @@
                     app:tint="@color/deep_blue" />
             </LinearLayout>
 
+            <!-- 自动新建仓库入口（与绑定已有仓库二选一，清单一） -->
+            <LinearLayout
+                android:id="@+id/layoutNewRepo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_card"
+                android:backgroundTint="@color/white"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="16dp"
+                android:paddingTop="14dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="14dp">
+
+                <ImageView
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_oval"
+                    android:backgroundTint="@color/charcoal"
+                    android:contentDescription="@string/new_repo_create"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_add"
+                    app:tint="@color/white" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:text="@string/new_repo_create"
+                    android:textColor="@color/charcoal"
+                    android:textSize="18sp" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/swNewRepo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/new_repo_create" />
+            </LinearLayout>
+
+            <!-- 自动建仓仓库名输入（开关打开时显示） -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/newRepoLayout"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="@string/new_repo_name_hint"
+                android:visibility="gone"
+                app:boxStrokeWidthFocused="2dp">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etNewRepoName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:imeOptions="actionNext"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+
             <!-- 绑定仓库入口 -->
             <LinearLayout
                 android:id="@+id/layoutBindRepos"

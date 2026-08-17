@@ -6,15 +6,25 @@ import com.example.qgent.data.model.DiffFileResponseDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
 import com.example.qgent.data.model.ReplaceAgentRequest
+import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskRunListItemDto
+import com.example.qgent.data.model.TaskRunLogEntryDto
 import com.example.qgent.data.model.TaskStepListItemDto
 import com.example.qgent.data.model.toDataOrThrow
 import com.example.qgent.data.model.toUnitOrThrow
 
 class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
+
+    override suspend fun createTask(
+        projectId: String,
+        request: TaskCreateRequest,
+        idempotencyKey: String
+    ): Result<TaskListItemDto> = apiCall {
+        service.createTask(projectId, idempotencyKey, request).toDataOrThrow()
+    }
 
     override suspend fun getTasks(
         projectId: String,
@@ -54,6 +64,9 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
 
     override suspend fun getTaskRunsOfTask(projectId: String, taskId: String): Result<List<TaskRunDetailListItemDto>> =
         apiCall { service.getTaskRunsOfTask(projectId, taskId).toDataOrThrow() }
+
+    override suspend fun getTaskRunLogs(projectId: String, taskRunId: String, cursor: String?, limit: Int): Result<List<TaskRunLogEntryDto>> =
+        apiCall { service.getTaskRunLogs(projectId, taskRunId, cursor, limit).toDataOrThrow() }
 
     override suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String): Result<MergeRequestDetailDto> =
         apiCall { service.getMergeRequestDetail(projectId, mergeRequestId).toDataOrThrow() }

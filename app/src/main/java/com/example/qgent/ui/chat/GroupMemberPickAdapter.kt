@@ -60,6 +60,9 @@ class GroupMemberPickAdapter(
     /** 当前勾选的成员 userId 列表 */
     fun checkedIds(): List<String> = items.filter { it.checked }.map { it.userId }
 
+    /** 当前勾选的「真实用户」id（排除 Agent：Agent 是团队级，入群靠 sendAsAgent 回消息，不随创建群提交） */
+    fun checkedUserIds(): List<String> = items.filter { it.checked && !it.isAgent }.map { it.userId }
+
     /** 当前各成员的期望身份（userId → PROJECT_MEMBER / PROJECT_ADMIN） */
     fun roleById(): Map<String, String> = items.associate { it.userId to it.role }
 

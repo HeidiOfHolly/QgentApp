@@ -120,12 +120,15 @@ class ChatMessageAdapter(
         }
     }
 
-    /** 任务状态卡片行：状态标签 + 执行节点 + 说明（Agent 任务进度） */
+    /** 任务状态卡片行：状态标签 + 执行节点 + 说明（Agent 任务进度）。
+     *  待办：senderType=SYSTEM 时（ORCHESTRATOR 缺失降级）展示"系统"，不读 senderId/Agent 详情。 */
     class TaskStatusVH(private val binding: ItemMessageTaskStatusBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(message: ChatMessage) {
-            binding.tvTaskStatus.text = message.taskStatus ?: "运行中"
-            binding.tvTaskNode.isVisible = !message.taskNode.isNullOrBlank()
-            message.taskNode?.let { binding.tvTaskNode.text = it }
+            // senderType=SYSTEM：系统降级消息，标识"系统"（不读 senderId/头像/Agent 详情）
+            val isSystem = message.senderType == "SYSTEM"
+            binding.tvTaskStatus.text = if (isSystem) "系统" else (message.taskStatus ?: "运行中")
+            binding.tvTaskNode.isVisible = !isSystem && !message.taskNode.isNullOrBlank()
+            if (!isSystem) message.taskNode?.let { binding.tvTaskNode.text = it }
             binding.tvTaskMessage.isVisible = message.content.isNotBlank()
             binding.tvTaskMessage.text = message.content
         }

@@ -42,6 +42,10 @@ abstract class BaseMessageListFragment : Fragment() {
     /** 通知过滤规则，默认展示全部；子类可在加载前修改以限定子集 */
     protected var notificationsFilter: (NotificationDto) -> Boolean = { true }
 
+    /** TASK_FAILED 通知点击跳任务详情的导航动作（子类覆盖为各自的 action） */
+    protected open val taskDetailActionRes: Int
+        get() = R.id.action_messageList_to_taskDetail
+
     private var _binding: FragmentMessageListBinding? = null
     protected val binding get() = _binding!!
 
@@ -114,12 +118,28 @@ abstract class BaseMessageListFragment : Fragment() {
         mainViewModel.refreshUnreadTaskNotifications()
     }
 
-    /** 通知点击：团队邀请 → 待处理则弹窗选择是否接受；其余 → 群聊属于当前项目时进入群聊 */
+    /** 通知点击：团队邀请 → 待处理则弹窗选择是否接受；TASK_FAILED → 跳任务详情；
+     *  其余 → 群聊属于当前项目时进入群聊 */
     private fun onNotificationClick(notification: NotificationDto, position: Int) {
         markOneRead(notification, position)
         if (notification.kind == "INVITED") {
             handleInvitation(notification)
             return
+        }
+        // TASK_FAILED：resourceId = taskId，跳任务详情（前端待办：任务失败提醒跳既有任务详情）
+        if (notification.kind == "TASK_FAILED") {
+            val taskId = notification.resourceId.orEmpty()
+            val projectId = notification.projectId.orEmpty()
+            if (taskId.isNotEmpty() && projectId.isNotEmpty()) {
+                findNavController().navigate(
+                    taskDetailActionRes,
+                    Bundle().apply {
+                        putString(com.example.qgent.ui.tasks.TaskDetailFragment.ARG_TASK_ID, taskId)
+                        putString(com.example.qgent.ui.tasks.TaskDetailFragment.ARG_PROJECT_ID, projectId)
+                    }
+                )
+                return
+            }
         }
         val groupId = notification.groupId.orEmpty()
         val projectId = notification.projectId.orEmpty()

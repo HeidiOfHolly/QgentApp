@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.os.bundleOf
+import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -13,6 +14,7 @@ import androidx.navigation.fragment.findNavController
 import androidx.navigation.navOptions
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.model.NewRepositoryRequest
 import com.example.qgent.databinding.FragmentNewProjectBinding
 import com.example.qgent.viewmodel.CreateProjectState
 import com.example.qgent.viewmodel.MainViewModel
@@ -67,6 +69,15 @@ class NewProjectFragment : Fragment() {
             findNavController().navigate(R.id.projectSelectionFragment, bundleOf(ProjectSelectionFragment.ARG_MODE to ProjectSelectionFragment.MODE_REPOS))
         }
 
+        // 自动建仓开关：打开时显示仓库名输入，并清空已选仓库（二选一，清单一）
+        binding.swNewRepo.setOnCheckedChangeListener { _, checked ->
+            binding.newRepoLayout.isVisible = checked
+            if (checked) {
+                newProjectViewModel.setSelectedRepos(emptyList())
+                binding.tvBindRepos.text = getString(R.string.bind_repos)
+            }
+        }
+
         binding.bnCreate.setOnClickListener { createProject() }
 
         newProjectViewModel.draft.observe(viewLifecycleOwner) { d ->
@@ -103,12 +114,38 @@ class NewProjectFragment : Fragment() {
         val draft = newProjectViewModel.draft.value ?: return
         val rawDescription = binding.etDescription.text?.toString()?.trim().orEmpty()
         val description = if (rawDescription.isEmpty()) null else rawDescription
-        mainViewModel.createProject(
-            name = name,
-            description = description,
-            memberIds = draft.selectedMembers.map { it.userId },
-            repos = draft.selectedRepos
-        )
+
+        // 自动建仓 vs 绑定已有仓库二选一（清单一）
+        if (binding.swNewRepo.isChecked) {
+            val repoName = binding.etNewRepoName.text?.toString()?.trim().orEmpty()
+            if (repoName.isEmpty()) {
+                binding.newRepoLayout.error = getString(R.string.new_repo_name_required)
+                return
+            }
+            if (!Regex("^[a-z0-9._-]+$").matches(repoName)) {
+                binding.newRepoLayout.error = getString(R.string.new_repo_name_invalid)
+                return
+            }
+            mainViewModel.createProject(
+                name = name,
+                description = description,
+                memberIds = draft.selectedMembers.map { it.userId },
+                repos = emptyList(),
+                newRepository = NewRepositoryRequest(
+                    name = repoName,
+                    description = description,
+                    isPrivate = true,
+                    displayName = name
+                )
+            )
+        } else {
+            mainViewModel.createProject(
+                name = name,
+                description = description,
+                memberIds = draft.selectedMembers.map { it.userId },
+                repos = draft.selectedRepos
+            )
+        }
     }
 
     override fun onDestroyView() {

@@ -5,6 +5,8 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ScrollView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
@@ -15,6 +17,7 @@ import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.TaskDetailDto
+import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskStepListItemDto
 import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.databinding.FragmentTaskDetailBinding
@@ -22,6 +25,8 @@ import com.example.qgent.databinding.ItemTaskRunBinding
 import com.example.qgent.databinding.ItemTaskStepBinding
 import com.example.qgent.ui.personal.fillLinearLayout
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -40,6 +45,9 @@ class TaskDetailFragment : Fragment() {
     private val taskId: String by lazy { arguments?.getString(ARG_TASK_ID).orEmpty() }
     private val projectId: String by lazy { arguments?.getString(ARG_PROJECT_ID).orEmpty() }
 
+    private var eventStreamJob: Job? = null
+    private var pollingJob: Job? = null
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -54,6 +62,64 @@ class TaskDetailFragment : Fragment() {
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
         binding.btnCancelTask.setOnClickListener { confirmCancelTask() }
         loadDetail()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        startEventStream()
+        startPolling()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopEventStream()
+        stopPolling()
+    }
+
+    /** 轮询兜底：SSE 偶发断连时任务进度仍能刷新（3s 一次） */
+    private fun startPolling() {
+        if (pollingJob?.isActive == true) return
+        pollingJob = viewLifecycleOwner.lifecycleScope.launch {
+            while (true) {
+                delay(POLL_INTERVAL_MS)
+                loadDetail()
+            }
+        }
+    }
+
+    private fun stopPolling() {
+        pollingJob?.cancel()
+        pollingJob = null
+    }
+
+    /** 项目级 SSE：任务状态/步骤/运行/Diff 事件到达 → 刷新详情（进度实时可见） */
+    private fun startEventStream() {
+        if (projectId.isEmpty()) return
+        val stream = (requireActivity().application as QgentApp).container.projectEventStream
+        stream.startProject(projectId)
+        if (eventStreamJob == null) {
+            eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
+                stream.events.collect { event ->
+                    when (event.type) {
+                        com.example.qgent.data.sse.SseEventType.TASK_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.TASK_STEP_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.TASK_RUN_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.TASK_RUN_STEP_PROGRESS,
+                        com.example.qgent.data.sse.SseEventType.DIFF_CREATED,
+                        com.example.qgent.data.sse.SseEventType.DELIVERY_REPOSITORY_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.DELIVERY_FAILED,
+                        com.example.qgent.data.sse.SseEventType.DELIVERY_COMPLETED -> loadDetail()
+                        else -> Unit
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopEventStream() {
+        eventStreamJob?.cancel()
+        eventStreamJob = null
+        (requireActivity().application as QgentApp).container.projectEventStream.stop()
     }
 
     /** 取消任务确认弹窗 */
@@ -132,10 +198,48 @@ class TaskDetailFragment : Fragment() {
                         item.tvRunTitle.text = run.taskStepTitle ?: run.role
                         item.tvRunStatus.text = run.statusSummary ?: runStatusLabel(run.status)
                         item.tvRunAgent.text = run.agent?.name ?: run.agentId
+                        // 查看执行日志：失败/完成的运行可看具体执行过程（§12.2）
+                        item.tvViewLogs.setOnClickListener { showRunLogs(run) }
                     }
                 }
                 .onFailure { e ->
                     Toast.makeText(requireContext(), "加载任务运行失败：${e.message}", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    /** 查看任务运行执行日志：拉取后弹窗展示（后端日志接口 §12.2，可定位失败原因） */
+    private fun showRunLogs(run: TaskRunDetailListItemDto) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepository.getTaskRunLogs(projectId, run.id)
+                .onSuccess { logs ->
+                    if (logs.isEmpty()) {
+                        Toast.makeText(requireContext(), R.string.task_run_logs_empty, Toast.LENGTH_SHORT).show()
+                        return@onSuccess
+                    }
+                    val sb = StringBuilder()
+                    logs.forEach { entry ->
+                        sb.append(entry.timestamp).append("  ").append(entry.content).append("\n")
+                    }
+                    val scroll = ScrollView(requireContext())
+                    val tv = TextView(requireContext()).apply {
+                        text = sb.toString()
+                        textSize = 12f
+                        setTextIsSelectable(true)
+                        setPadding(48, 40, 48, 40)
+                    }
+                    scroll.addView(
+                        tv,
+                        ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    )
+                    AlertDialog.Builder(requireContext())
+                        .setTitle(R.string.task_run_logs_title)
+                        .setView(scroll)
+                        .setPositiveButton(R.string.close, null)
+                        .show()
+                }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), "加载日志失败：${e.message}", Toast.LENGTH_SHORT).show()
                 }
         }
     }
@@ -214,5 +318,6 @@ class TaskDetailFragment : Fragment() {
     companion object {
         const val ARG_TASK_ID = "taskId"
         const val ARG_PROJECT_ID = "projectId"
+        private const val POLL_INTERVAL_MS = 3_000L
     }
 }

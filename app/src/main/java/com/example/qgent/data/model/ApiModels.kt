@@ -25,23 +25,24 @@ data class PageInfo(
     val hasMore: Boolean
 )
 
-/** API 异常：包含服务端返回的错误码与提示 */
+/** API 异常：包含服务端返回的错误码、提示与 requestId（500 等内部错误时展示 requestId 便于后端排查） */
 class ApiException(
     val code: String,
-    override val message: String
+    override val message: String,
+    val requestId: String? = null
 ) : Exception("[$code] $message")
 
 /** 解析统一响应：优先抛服务端错误，其次要求 data 非空 */
 fun <T> ApiResponse<T>.requireData(): T {
-    error?.let { throw ApiException(it.code, it.message) }
-    return data ?: throw ApiException("EMPTY_RESPONSE", "响应为空")
+    error?.let { throw ApiException(it.code, it.message, requestId) }
+    return data ?: throw ApiException("EMPTY_RESPONSE", "响应为空", requestId)
 }
 
 // ── retrofit2.Response 解析（错误契约：非 2xx / error 分支统一转 ApiException） ──
 
 private val errorGson = Gson()
 
-private data class ErrorEnvelope(val error: ApiError?)
+private data class ErrorEnvelope(val error: ApiError?, val requestId: String?)
 
 private fun Response<*>.httpError(): ApiError? = try {
     errorBody()?.string()?.let { errorGson.fromJson(it, ErrorEnvelope::class.java)?.error }
@@ -49,17 +50,27 @@ private fun Response<*>.httpError(): ApiError? = try {
     null
 }
 
+private fun Response<*>.httpErrorRequestId(): String? = try {
+    errorBody()?.string()?.let { errorGson.fromJson(it, ErrorEnvelope::class.java)?.requestId }
+} catch (_: Exception) {
+    null
+}
+
 private fun Response<*>.throwHttpError(): Nothing {
     val e = httpError()
-    throw ApiException(e?.code ?: "HTTP_${code()}", e?.message ?: "请求失败 (${code()})")
+    throw ApiException(
+        code = e?.code ?: "HTTP_${code()}",
+        message = e?.message ?: "请求失败 (${code()})",
+        requestId = httpErrorRequestId()
+    )
 }
 
 /** 非空 data 响应：成功且 data 非空时返回 data，否则抛 [ApiException] */
 fun <T> Response<ApiResponse<T>>.toDataOrThrow(): T {
     if (!isSuccessful) throwHttpError()
     val body = body()
-    body?.error?.let { throw ApiException(it.code, it.message) }
-    return body?.data ?: throw ApiException("EMPTY_RESPONSE", "响应为空")
+    body?.error?.let { throw ApiException(it.code, it.message, body.requestId) }
+    return body?.data ?: throw ApiException("EMPTY_RESPONSE", "响应为空", body?.requestId)
 }
 
 /** 空 body / 204 响应：仅校验成功，无返回值 */
@@ -163,10 +174,21 @@ data class CreateTeamRequest(
     val description: String? = null
 )
 
-/** 创建项目（POST /teams/{teamId}/projects）；成员通过 API-069 逐个加入 */
+/** 创建项目（POST /teams/{teamId}/projects）；成员通过 API-069 逐个加入。
+ *  newRepository 与 repositoryIds 互斥：传 newRepository 时后端自动建仓并绑定。 */
 data class CreateProjectRequest(
     val name: String,
-    val description: String? = null
+    val description: String? = null,
+    @SerializedName("newRepository") val newRepository: NewRepositoryRequest? = null
+)
+
+/** 创建项目时自动新建 GitHub 仓库（§22.5 前端清单一） */
+data class NewRepositoryRequest(
+    val name: String,
+    val description: String? = null,
+    @SerializedName("isPrivate") val isPrivate: Boolean = true,
+    @SerializedName("installationId") val installationId: String? = null,
+    @SerializedName("displayName") val displayName: String? = null
 )
 
 /** 将团队现有成员加入项目（POST /projects/{projectId}/members），初始 PROJECT_MEMBER */
@@ -572,6 +594,14 @@ data class TaskExecutionSummaryDto(
 )
 
 /** 任务列表项（GET /projects/{projectId}/tasks，§16.1）。priority 后端恒为 null，不展示。 */
+data class TaskCreateRequest(
+    @SerializedName("requirementGroupId") val requirementGroupId: String,
+    @SerializedName("triggerMessageId") val triggerMessageId: String? = null,
+    val title: String,
+    val requirement: String,
+    @SerializedName("repositoryIds") val repositoryIds: List<String>,
+    @SerializedName("baseRef") val baseRef: String? = null
+)
 data class TaskListItemDto(
     val id: String,
     @SerializedName("displayCode") val displayCode: String,
@@ -585,7 +615,8 @@ data class TaskListItemDto(
     @SerializedName("createdByUser") val createdByUser: TaskUserSummaryDto?,
     val repositories: List<TaskRepositoryDto>?,
     @SerializedName("executionSummary") val executionSummary: TaskExecutionSummaryDto?,
-    val attention: String?,
+    /** attention 后端返回对象（B07 扩展，非字符串）；当前 App 不展示，用 JsonElement 兼容任意结构 */
+    val attention: com.google.gson.JsonElement?,
     @SerializedName("createdAt") val createdAt: String,
     @SerializedName("updatedAt") val updatedAt: String
 )
@@ -686,6 +717,14 @@ data class TaskRunDetailListItemDto(
     @SerializedName("durationMs") val durationMs: Long?,
     @SerializedName("createdAt") val createdAt: String,
     @SerializedName("updatedAt") val updatedAt: String
+)
+
+/** 任务运行日志条目（GET /task-runs/{taskRunId}/logs，§12.2） */
+data class TaskRunLogEntryDto(
+    val id: String,
+    val sequence: Long,
+    val content: String,
+    val timestamp: String
 )
 
 // ── 团队最近动态（§19.4） ──

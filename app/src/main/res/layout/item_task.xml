@@ -71,4 +71,17 @@
         tools:text="0%"
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toTopOf="parent"/>
+
+    <!-- 任务 ID：卡在中间态（PLANNING/RUNNING 久未更新）时显示，便于排查（清单四） -->
+    <TextView
+        android:id="@+id/tvTaskId"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp"
+        app:layout_constraintTop_toBottomOf="@+id/pbTask"
+        tools:text="任务ID: 01a0..." />
 </androidx.constraintlayout.widget.ConstraintLayout>

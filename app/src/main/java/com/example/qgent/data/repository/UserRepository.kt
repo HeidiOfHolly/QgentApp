@@ -21,7 +21,7 @@ interface UserRepository {
     suspend fun acceptTeamInvitation(reference: String, idempotencyKey: String): Result<TeamMemberDto>
     suspend fun getReceivedInvitations(): Result<List<ReceivedInvitationDto>>
     suspend fun getProjects(teamId: String): Result<List<ProjectDto>>
-    suspend fun createProject(teamId: String, name: String, description: String?, idempotencyKey: String): Result<ProjectDto>
+    suspend fun createProject(teamId: String, name: String, description: String?, newRepository: com.example.qgent.data.model.NewRepositoryRequest? = null, idempotencyKey: String): Result<ProjectDto>
     suspend fun addProjectMember(projectId: String, userId: String, idempotencyKey: String): Result<ProjectMemberDto>
     /** 调整项目成员角色（§5.2）：PROJECT_MEMBER / PROJECT_ADMIN */
     suspend fun updateProjectMemberRole(projectId: String, userId: String, role: String, idempotencyKey: String): Result<ProjectMemberDto>

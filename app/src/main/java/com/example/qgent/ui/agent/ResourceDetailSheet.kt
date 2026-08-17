@@ -12,25 +12,23 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.isVisible
 import androidx.fragment.app.DialogFragment
-import androidx.fragment.app.activityViewModels
-import com.example.qgent.QgentApp
-import com.example.qgent.R
 import com.example.qgent.databinding.SheetResourceDetailBinding
-import com.example.qgent.viewmodel.MainViewModel
 
+/**
+ * Memory/Skill 详情弹窗：展示内容（类型标签 + 标题 + 全文）。
+ * 待审核条目且传入 [onApprove]/[onReject] 回调时，卡片右上角显示 通过/拒绝 按钮；
+ * 已共享条目只读展示。
+ */
 class ResourceDetailSheet(
     private val name: String,
     private val description: String,
     private val isPending: Boolean,
-    private val approveText: String = "已通过",
-    private val rejectText: String = "已驳回"
+    private val onApprove: (() -> Unit)? = null,
+    private val onReject: (() -> Unit)? = null
 ) : DialogFragment() {
 
     private var _binding: SheetResourceDetailBinding? = null
     private val binding get() = _binding!!
-    private val mainViewModel: MainViewModel by activityViewModels {
-        (requireActivity().application as QgentApp).container.mainViewModelFactory
-    }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val dialog = super.onCreateDialog(savedInstanceState)
@@ -61,43 +59,40 @@ class ResourceDetailSheet(
         binding.tvDetailName.text = name
         binding.tvDetailDesc.text = description
 
-        if (isPending) {
-            binding.tvResourceType.isVisible = true
-            binding.tvResourceType.text = "待审核"
+        binding.tvResourceType.isVisible = true
+        binding.tvResourceType.text = if (isPending) "待审核" else "已共享"
 
-            // 仅 owner 可操作审核
-            if (mainViewModel.isProjectAdmin) {
-                binding.reviewActions.isVisible = true
-                binding.btnApprove.setOnClickListener { doApprove() }
-                binding.btnReject.setOnClickListener { doReject() }
-            }
-        }
-    }
-
-    private fun doApprove() {
-        Toast.makeText(requireContext(), approveText, Toast.LENGTH_SHORT).show()
-        dismiss()
-    }
-
-    private fun doReject() {
-        val input = EditText(requireContext())
-        input.hint = "请输入驳回原因"
-        input.setPadding(48, 32, 48, 32)
-
-        AlertDialog.Builder(requireContext())
-            .setTitle("驳回草稿")
-            .setView(input)
-            .setPositiveButton("确认") { _, _ ->
-                val reason = input.text.toString().trim()
-                Toast.makeText(
-                    requireContext(),
-                    if (reason.isEmpty()) rejectText else "已驳回：$reason",
-                    Toast.LENGTH_SHORT
-                ).show()
+        // 待审核 + 提供审核回调 → 右上角显示 通过/拒绝
+        if (isPending && onApprove != null && onReject != null) {
+            binding.reviewActions.isVisible = true
+            binding.btnApprove.setOnClickListener {
+                onApprove()
                 dismiss()
             }
-            .setNegativeButton("取消", null)
-            .show()
+            binding.btnReject.setOnClickListener {
+                // 驳回前询问原因（可留空）
+                val input = EditText(requireContext())
+                input.hint = "请输入驳回原因（可选）"
+                input.setPadding(48, 32, 48, 32)
+                AlertDialog.Builder(requireContext())
+                    .setTitle("驳回")
+                    .setView(input)
+                    .setPositiveButton("确认驳回") { _, _ ->
+                        val reason = input.text.toString().trim()
+                        Toast.makeText(
+                            requireContext(),
+                            if (reason.isEmpty()) "已驳回" else "已驳回：$reason",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        onReject()
+                        dismiss()
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+        } else {
+            binding.reviewActions.isVisible = false
+        }
     }
 
     override fun onDestroyView() {

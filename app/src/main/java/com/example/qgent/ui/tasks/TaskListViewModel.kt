@@ -94,9 +94,11 @@ class TaskListViewModel(private val repo: TaskRepository) : ViewModel() {
                 repositoryId = filter.repositoryId
             )
                 .onSuccess { tasks ->
+                    android.util.Log.d("TaskPoll", "getTasks success: ${tasks.map { "${it.title}:${it.status}" }}")
                     _uiState.value = _uiState.value.copy(loading = false, tasks = tasks)
                 }
                 .onFailure { e ->
+                    android.util.Log.e("TaskPoll", "getTasks FAILED: ${e.message}")
                     _uiState.value = _uiState.value.copy(loading = false, error = e.message ?: "加载任务失败")
                 }
         }

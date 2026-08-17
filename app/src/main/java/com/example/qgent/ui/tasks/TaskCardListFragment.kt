@@ -18,6 +18,8 @@ import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.databinding.FragmentTaskCardListBinding
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** 任务卡片列表页：展示当前项目的任务（§16），顶部横向筛选（需求群/状态/发起人/仓库） */
@@ -25,6 +27,9 @@ class TaskCardListFragment : Fragment() {
 
     private var _binding: FragmentTaskCardListBinding? = null
     private val binding get() = _binding!!
+
+    private var eventStreamJob: Job? = null
+    private var pollingJob: Job? = null
 
     private val mainViewModel: MainViewModel by activityViewModels {
         (requireActivity().application as QgentApp).container.mainViewModelFactory
@@ -89,6 +94,66 @@ class TaskCardListFragment : Fragment() {
         val projectId = mainViewModel.currentProjectId() ?: return
         loadCandidates(projectId)
         taskListViewModel.loadTasks(projectId)
+        startEventStream()
+        startPolling()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopEventStream()
+        stopPolling()
+    }
+
+    /** 轮询兜底：SSE 偶发断连时任务进度仍能刷新（3s 一次） */
+    private fun startPolling() {
+        if (pollingJob?.isActive == true) return
+        val projectId = mainViewModel.currentProjectId() ?: return
+        pollingJob = viewLifecycleOwner.lifecycleScope.launch {
+            while (true) {
+                delay(POLL_INTERVAL_MS)
+                taskListViewModel.loadTasks(projectId)
+            }
+        }
+    }
+
+    private fun stopPolling() {
+        pollingJob?.cancel()
+        pollingJob = null
+    }
+
+    /**
+     * 项目级 SSE：收到任务相关事件（task.updated / task-run.* / diff.* / delivery.*）→ 刷新任务列表，
+     * 让任务进度（规划中 → 执行中 → 完成）实时可见。ProjectEventStream 已由 AppContainer 装配。
+     */
+    private fun startEventStream() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val stream = (requireActivity().application as QgentApp).container.projectEventStream
+        stream.startProject(projectId)
+        if (eventStreamJob == null) {
+            eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
+                stream.events.collect { event ->
+                    when (event.type) {
+                        com.example.qgent.data.sse.SseEventType.TASK_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.TASK_STEP_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.TASK_RUN_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.TASK_RUN_STEP_PROGRESS,
+                        com.example.qgent.data.sse.SseEventType.DIFF_CREATED,
+                        com.example.qgent.data.sse.SseEventType.DELIVERY_REPOSITORY_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.DELIVERY_FAILED,
+                        com.example.qgent.data.sse.SseEventType.DELIVERY_COMPLETED -> {
+                            taskListViewModel.loadTasks(projectId)
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopEventStream() {
+        eventStreamJob?.cancel()
+        eventStreamJob = null
+        (requireActivity().application as QgentApp).container.projectEventStream.stop()
     }
 
     /** 加载需求群 / 仓库候选（发起人候选在刷新筛选行时从任务列表提取） */
@@ -186,5 +251,9 @@ class TaskCardListFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    companion object {
+        private const val POLL_INTERVAL_MS = 3_000L
     }
 }
