@@ -200,13 +200,21 @@
         android:id="@+id/messageListFragment"
         android:name="com.example.qgent.ui.message.MessageListFragment"
         android:label="@string/message_list"
-        tools:layout="@layout/fragment_message_list" />
+        tools:layout="@layout/fragment_message_list">
+        <action
+            android:id="@+id/action_messageList_to_taskDetail"
+            app:destination="@id/taskDetailFragment" />
+    </fragment>
 
     <fragment
         android:id="@+id/taskMessageListFragment"
         android:name="com.example.qgent.ui.message.TaskMessageListFragment"
         android:label="@string/message_list"
-        tools:layout="@layout/fragment_message_list" />
+        tools:layout="@layout/fragment_message_list">
+        <action
+            android:id="@+id/action_taskMessageList_to_taskDetail"
+            app:destination="@id/taskDetailFragment" />
+    </fragment>
 
     <fragment
         android:id="@+id/newProjectFragment"

@@ -2,6 +2,7 @@ package com.example.qgent.ui.tasks
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.databinding.ItemTaskBinding
@@ -12,6 +13,12 @@ class TaskCardAdapter(
 ) : RecyclerView.Adapter<TaskCardAdapter.VH>() {
 
     private val items = mutableListOf<TaskListItemDto>()
+
+    companion object {
+        /** 可能卡死的中间态（任务 ID 提示用，清单四） */
+        private val STUCK_STATUSES = setOf("PLANNING", "PENDING", "RUNNING")
+        private const val STUCK_THRESHOLD_MS = 5 * 60 * 1000L
+    }
 
     fun submitList(newItems: List<TaskListItemDto>) {
         items.clear()
@@ -40,7 +47,17 @@ class TaskCardAdapter(
             val progress = progressOf(task)
             binding.pbTask.progress = progress
             binding.tvTaskPrgress.text = "$progress%"
+            // 任务卡在中间态（PLANNING/RUNNING）且久未更新 → 显示任务 ID 便于排查（清单四）
+            val stuck = task.status in STUCK_STATUSES && isStuck(task.updatedAt)
+            binding.tvTaskId.isVisible = stuck
+            if (stuck) binding.tvTaskId.text = "任务ID: ${task.id}"
             binding.root.setOnClickListener { onItemClick(task) }
+        }
+
+        /** 中间态是否超时未更新（> 5 分钟视为可能卡死） */
+        private fun isStuck(updatedAt: String): Boolean {
+            val ts = com.example.qgent.data.model.parseRfc3339(updatedAt)
+            return System.currentTimeMillis() - ts > STUCK_THRESHOLD_MS
         }
 
         private fun statusText(context: android.content.Context, status: String): String = when (status) {

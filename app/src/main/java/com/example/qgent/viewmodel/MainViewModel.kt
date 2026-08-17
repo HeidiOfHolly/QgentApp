@@ -9,6 +9,7 @@ import com.example.qgent.data.SessionStore
 import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.model.GroupDto
+import com.example.qgent.data.model.NewRepositoryRequest
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.formatGroupTime
 import com.example.qgent.data.model.parseRfc3339
@@ -375,13 +376,15 @@ class MainViewModel(
     /**
      * 创建项目：POST /teams/{teamId}/projects，随后逐条绑定已选仓库，
      * 成功后刷新项目列表、选中新项目并拉取群聊（总群由后端自动生成）。
+     * [newRepository] 非空时后端自动建仓（与 [repos] 二选一，清单一）。
      * 绑定仓库失败不阻断创建。
      */
     fun createProject(
         name: String,
         description: String?,
         memberIds: List<String>,
-        repos: List<GitHubRepositoryDto>
+        repos: List<GitHubRepositoryDto>,
+        newRepository: NewRepositoryRequest? = null
     ) {
         val teamName = _currentTeam.value
         val teamId = teamNameToId[teamName] ?: run {
@@ -391,7 +394,7 @@ class MainViewModel(
         if (_createProjectState.value == CreateProjectState.Loading) return
         _createProjectState.value = CreateProjectState.Loading
         viewModelScope.launch {
-            userRepo.createProject(teamId, name, description, UUID.randomUUID().toString())
+            userRepo.createProject(teamId, name, description, newRepository, UUID.randomUUID().toString())
                 .onSuccess { project ->
                     // 选中的成员逐个加入项目（初始 PROJECT_MEMBER），失败不阻断创建
                     memberIds.forEach { userId ->

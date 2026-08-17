@@ -715,6 +715,8 @@ class ChatDetailFragment : Fragment() {
         container.addView(tvRepoLabel)
 
         // 加载项目绑定仓库（文档 §6 ProjectRepository），失败时提示
+        // repositoryIds 必须用 getProjectRepositories 返回的 id（project_repositories.id，清单二）
+        val repoBranchMap = mutableMapOf<String, String>()   // repoId -> defaultBranch
         viewLifecycleOwner.lifecycleScope.launch {
             val repos = githubRepo().getProjectRepositories(projectId).getOrNull().orEmpty()
             if (repos.isEmpty()) {
@@ -728,6 +730,7 @@ class ChatDetailFragment : Fragment() {
                     tag = repo.id
                     isChecked = repos.size == 1
                 }
+                repoBranchMap[repo.id] = repo.defaultBranch
                 repoChecks.add(cb)
                 container.addView(cb)
             }
@@ -741,17 +744,26 @@ class ChatDetailFragment : Fragment() {
                 val title = etTitle.text.toString().trim()
                 val requirement = etRequirement.text.toString().trim()
                 val repoIds = repoChecks.filter { it.isChecked }.map { it.tag as String }
+                // baseRef 取仓库默认分支（清单二：不要写死或留空）
+                val baseRef = repoIds.firstOrNull()?.let { repoBranchMap[it] }
                 when {
                     title.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_name_required, Toast.LENGTH_SHORT).show()
                     requirement.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_requirement_required, Toast.LENGTH_SHORT).show()
                     repoIds.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_repo_required, Toast.LENGTH_SHORT).show()
-                    else -> createTask(projectId, groupId, title, requirement, repoIds)
+                    else -> createTask(projectId, groupId, title, requirement, repoIds, baseRef)
                 }
             }
             .show()
     }
 
-    private fun createTask(projectId: String, groupId: String, title: String, requirement: String, repoIds: List<String>) {
+    private fun createTask(
+        projectId: String,
+        groupId: String,
+        title: String,
+        requirement: String,
+        repoIds: List<String>,
+        baseRef: String?
+    ) {
         viewLifecycleOwner.lifecycleScope.launch {
             taskRepo().createTask(
                 projectId,
@@ -759,13 +771,19 @@ class ChatDetailFragment : Fragment() {
                     requirementGroupId = groupId,
                     title = title,
                     requirement = requirement,
-                    repositoryIds = repoIds
+                    repositoryIds = repoIds,
+                    baseRef = baseRef
                 ),
                 UUID.randomUUID().toString()
             ).onSuccess {
                 Toast.makeText(requireContext(), R.string.start_task_success, Toast.LENGTH_LONG).show()
             }.onFailure { e ->
-                Toast.makeText(requireContext(), "${getString(R.string.start_task_failed)}：${e.message}", Toast.LENGTH_LONG).show()
+                val rid = if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("HTTP_500")) {
+                    e.requestId?.let { "\nrequestId: $it" }.orEmpty()
+                } else {
+                    ""
+                }
+                Toast.makeText(requireContext(), "${getString(R.string.start_task_failed)}：${e.message}$rid", Toast.LENGTH_LONG).show()
             }
         }
     }

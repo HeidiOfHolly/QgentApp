@@ -9,6 +9,7 @@ import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskRunListItemDto
+import com.example.qgent.data.model.TaskRunLogEntryDto
 import com.example.qgent.data.model.TaskStepListItemDto
 
 /** 任务/动态/MR 仓库：任务页三列表查询（§16 任务 / §19.4 动态 / §13 MR） */
@@ -61,6 +62,9 @@ interface TaskRepository {
 
     /** 任务运行列表（§16.4，每次执行的 TaskRun） */
     suspend fun getTaskRunsOfTask(projectId: String, taskId: String): Result<List<TaskRunDetailListItemDto>>
+
+    /** 任务运行执行日志（§12.2） */
+    suspend fun getTaskRunLogs(projectId: String, taskRunId: String, cursor: String? = null, limit: Int = 100): Result<List<TaskRunLogEntryDto>>
 
     /** MR 详情（§13，含 diffId） */
     suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String): Result<MergeRequestDetailDto>

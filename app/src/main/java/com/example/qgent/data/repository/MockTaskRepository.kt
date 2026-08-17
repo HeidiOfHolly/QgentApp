@@ -9,6 +9,7 @@ import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskRunListItemDto
+import com.example.qgent.data.model.TaskRunLogEntryDto
 import com.example.qgent.data.model.TaskStepListItemDto
 
 /** mock 任务/动态/MR：返回空列表，任务页展示空态 */
@@ -65,6 +66,9 @@ class MockTaskRepository : TaskRepository {
 
     override suspend fun getTaskRunsOfTask(projectId: String, taskId: String): Result<List<TaskRunDetailListItemDto>> =
         Result.success(emptyList())
+
+    override suspend fun getTaskRunLogs(projectId: String, taskRunId: String, cursor: String?, limit: Int): Result<List<TaskRunLogEntryDto>> =
+        Result.failure(UnsupportedOperationException("mock 不支持运行日志"))
 
     override suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String): Result<MergeRequestDetailDto> =
         Result.failure(UnsupportedOperationException("mock 不支持 MR 详情"))

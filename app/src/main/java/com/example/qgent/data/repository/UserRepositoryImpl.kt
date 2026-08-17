@@ -70,9 +70,13 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
         teamId: String,
         name: String,
         description: String?,
+        newRepository: com.example.qgent.data.model.NewRepositoryRequest?,
         idempotencyKey: String
     ): Result<ProjectDto> = apiCall {
-        service.createProject(teamId, idempotencyKey, CreateProjectRequest(name, description)).toDataOrThrow()
+        service.createProject(
+            teamId, idempotencyKey,
+            CreateProjectRequest(name, description, newRepository)
+        ).toDataOrThrow()
     }
 
     override suspend fun addProjectMember(

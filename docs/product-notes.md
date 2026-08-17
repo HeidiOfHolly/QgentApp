@@ -3,6 +3,34 @@
 > 本文件记录开发过程中确认的产品逻辑与契约决策，供任何新会话读取，
 > 避免依赖对话记忆。修改时同步更新。
 
+## 编排助手与任务启动失败（2026-08-17 后端待办完成）
+
+- **TASK_STATUS 卡片**：不假设发送者是 Developer/Tester/Reviewer（正常来自 ORCHESTRATOR Agent）。
+  `senderType=SYSTEM` 时（ORCHESTRATOR 缺失降级）状态标签显示"系统"，不读 senderId/头像/Agent 详情
+  （TaskStatusVH 已按 senderType 区分）。
+- **message.created**：收到后仍以消息列表接口为准刷新（ChatDetailFragment pollMessages，不依赖 SSE payload）。
+- **task.updated status=FAILED**：任务卡片显示失败状态；TASK_STATUS 卡片展示后端 content.message。
+- **notification.created kind=TASK_FAILED**：通知点击 → 跳任务详情（resourceId=taskId，projectId=notification.projectId）。
+  BaseMessageListFragment 加 taskDetailActionRes（子类覆盖各自 action）；导航图给 messageList/taskMessageList 加 action。
+- **不调用 orchestrate/start 等推进接口**：App 只展示后端状态，客户端不推进任务。
+- **日志为空原因**：Planner 启动阶段（LLM/Worker acquire）失败时 execution_logs 无记录，TaskRun 日志接口返回空——
+  后端行为，非 App 问题。
+
+## 前端待办清单 v1.9.4（2026-08-17 完成）
+
+- **清单一（自动建仓）**：创建项目表单加「自动新建 GitHub 仓库」开关（SwitchMaterial）+ 仓库名输入。
+  newRepository（name/description/isPrivate/installationId/displayName）与绑定已有仓库二选一：
+  开自动建仓时清空已选仓库；提交传 `NewRepositoryRequest` 给 POST /projects（后端自动建仓绑定）。
+  仓库名校验：`^[a-z0-9._-]+$`。错误码 409 GITHUB_REPOSITORY_CREATE_CONFLICT（改名）、
+  422 GITHUB_INSTALLATION_REQUIRED（多安装需指定 installationId，当前不处理）。
+- **清单二（触发任务 repositoryIds）**：repositoryIds 已用 `GET /projects/{id}/repositories` 的 `id`
+  （project_repositories.id，正确）；补充 **baseRef = 仓库 defaultBranch**（不再留空）。
+- **清单三（软解绑）**：App 无解绑 UI（unbindProjectRepository 仅数据层），无需改动；
+  无旧错误码 `PROJECT_REPOSITORY_REFERENCED_BY_*` 文案需清理。
+- **清单四（错误提示）**：`ApiException` 加 `requestId`；500 错误 Toast 追加 requestId 方便后端排查；
+  任务卡片在 PLANNING/PENDING/RUNNING 超 5 分钟未更新时显示「任务ID: xxx」（卡死提示）。
+- 清单五/六为后端说明与确认项，前端无改动。
+
 ## @ Agent 自动触发任务（2026-08-16 实现）
 
 - **机制**：在需求群发消息 @ 了 Agent（mention type=AGENT）→ 消息发送成功后**自动弹「发起任务」弹窗**，

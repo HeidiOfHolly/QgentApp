@@ -38,6 +38,9 @@ class FallbackTaskRepository(
     override suspend fun getTaskRunsOfTask(projectId: String, taskId: String) =
         fb.call { getTaskRunsOfTask(projectId, taskId) }
 
+    override suspend fun getTaskRunLogs(projectId: String, taskRunId: String, cursor: String?, limit: Int) =
+        fb.call { getTaskRunLogs(projectId, taskRunId, cursor, limit) }
+
     override suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String) =
         fb.call { getMergeRequestDetail(projectId, mergeRequestId) }
 

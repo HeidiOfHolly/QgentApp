@@ -5,6 +5,8 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ScrollView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
@@ -15,6 +17,7 @@ import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.TaskDetailDto
+import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskStepListItemDto
 import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.databinding.FragmentTaskDetailBinding
@@ -195,10 +198,48 @@ class TaskDetailFragment : Fragment() {
                         item.tvRunTitle.text = run.taskStepTitle ?: run.role
                         item.tvRunStatus.text = run.statusSummary ?: runStatusLabel(run.status)
                         item.tvRunAgent.text = run.agent?.name ?: run.agentId
+                        // 查看执行日志：失败/完成的运行可看具体执行过程（§12.2）
+                        item.tvViewLogs.setOnClickListener { showRunLogs(run) }
                     }
                 }
                 .onFailure { e ->
                     Toast.makeText(requireContext(), "加载任务运行失败：${e.message}", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    /** 查看任务运行执行日志：拉取后弹窗展示（后端日志接口 §12.2，可定位失败原因） */
+    private fun showRunLogs(run: TaskRunDetailListItemDto) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepository.getTaskRunLogs(projectId, run.id)
+                .onSuccess { logs ->
+                    if (logs.isEmpty()) {
+                        Toast.makeText(requireContext(), R.string.task_run_logs_empty, Toast.LENGTH_SHORT).show()
+                        return@onSuccess
+                    }
+                    val sb = StringBuilder()
+                    logs.forEach { entry ->
+                        sb.append(entry.timestamp).append("  ").append(entry.content).append("\n")
+                    }
+                    val scroll = ScrollView(requireContext())
+                    val tv = TextView(requireContext()).apply {
+                        text = sb.toString()
+                        textSize = 12f
+                        setTextIsSelectable(true)
+                        setPadding(48, 40, 48, 40)
+                    }
+                    scroll.addView(
+                        tv,
+                        ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    )
+                    AlertDialog.Builder(requireContext())
+                        .setTitle(R.string.task_run_logs_title)
+                        .setView(scroll)
+                        .setPositiveButton(R.string.close, null)
+                        .show()
+                }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), "加载日志失败：${e.message}", Toast.LENGTH_SHORT).show()
                 }
         }
     }

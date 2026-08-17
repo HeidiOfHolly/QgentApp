@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.View
 import androidx.fragment.app.activityViewModels
 import com.example.qgent.QgentApp
+import com.example.qgent.R
 import com.example.qgent.viewmodel.MainViewModel
 
 /**
@@ -15,6 +16,10 @@ class TaskMessageListFragment : BaseMessageListFragment() {
     private val mainViewModel: MainViewModel by activityViewModels {
         (requireActivity().application as QgentApp).container.mainViewModelFactory
     }
+
+    /** 任务铃铛页跳任务详情的导航动作（TASK_FAILED 通知） */
+    override val taskDetailActionRes: Int
+        get() = R.id.action_taskMessageList_to_taskDetail
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)

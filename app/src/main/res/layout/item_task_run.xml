@@ -48,4 +48,16 @@
         android:textColor="@color/text_secondary"
         android:textSize="13sp"
         tools:text="Backend Developer Agent" />
+
+    <TextView
+        android:id="@+id/tvViewLogs"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:layout_marginTop="4dp"
+        android:background="?attr/selectableItemBackground"
+        android:padding="4dp"
+        android:text="@string/view_task_run_logs"
+        android:textColor="@color/primary"
+        android:textSize="12sp" />
 </LinearLayout>

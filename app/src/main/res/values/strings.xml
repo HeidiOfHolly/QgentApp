@@ -55,6 +55,13 @@
     <string name="start_task_repo_required">请选择至少一个仓库</string>
     <string name="start_task_success">任务已创建，Agent 开始执行</string>
     <string name="start_task_failed">创建任务失败</string>
+    <string name="view_task_run_logs">查看执行日志</string>
+    <string name="task_run_logs_title">执行日志</string>
+    <string name="task_run_logs_empty">暂无日志</string>
+    <string name="new_repo_create">自动新建 GitHub 仓库</string>
+    <string name="new_repo_name_hint">仓库名（小写字母、数字、-、_、.）</string>
+    <string name="new_repo_name_required">请输入仓库名</string>
+    <string name="new_repo_name_invalid">仓库名仅支持小写字母、数字、-、_、.</string>
     <string name="create_memory_draft">生成 Memory 草稿</string>
     <string name="multi_select_count">已选 %1$d 条</string>
     <string name="memory_draft_created">Memory 草稿已提交审核</string>

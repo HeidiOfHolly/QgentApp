@@ -45,6 +45,7 @@ import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskRunListItemDto
+import com.example.qgent.data.model.TaskRunLogEntryDto
 import com.example.qgent.data.model.TaskStepListItemDto
 import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
@@ -615,6 +616,15 @@ interface QgApiService {
         @Path("projectId") projectId: String,
         @Path("taskId") taskId: String
     ): Response<ApiResponse<List<TaskRunDetailListItemDto>>>
+
+    /** 任务运行执行日志（§12.2） */
+    @GET("projects/{projectId}/task-runs/{taskRunId}/logs")
+    suspend fun getTaskRunLogs(
+        @Path("projectId") projectId: String,
+        @Path("taskRunId") taskRunId: String,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 100
+    ): Response<ApiResponse<List<TaskRunLogEntryDto>>>
 
     // ── 项目级按 Agent 查询 TaskRun（§20.6） ──
 
