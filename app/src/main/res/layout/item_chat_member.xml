@@ -59,5 +59,20 @@
         android:visibility="gone"
         tools:visibility="visible" />
 
+    <!-- 角色标签：项目详情页管理员管理用（管理员/成员），点击切换身份 -->
+    <TextView
+        android:id="@+id/tvMemberRole"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:paddingStart="6dp"
+        android:paddingTop="2dp"
+        android:paddingEnd="6dp"
+        android:paddingBottom="2dp"
+        android:textColor="@color/teal"
+        android:textSize="12sp"
+        android:visibility="gone"
+        tools:text="管理员" />
+
     <!-- 群聊内无角色区分，均为平等 member -->
 </LinearLayout>
