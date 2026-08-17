@@ -28,7 +28,7 @@ class MockTaskRepository : TaskRepository {
             title = request.title,
             requirementSummary = request.requirement.take(50),
             status = "PLANNING",
-            deliveryMode = "STANDARD",
+            deliveryMode = "DIFF_FIRST",
             requirementGroup = null,
             createdByUser = null,
             repositories = null,
@@ -80,7 +80,7 @@ class MockTaskRepository : TaskRepository {
         Result.failure(UnsupportedOperationException("mock 不支持运行日志"))
 
     override suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String): Result<MergeRequestDetailDto> =
-        Result.failure(UnsupportedOperationException("mock 不支持 MR 详情"))
+        Result.failure(UnsupportedOperationException("mock 不支持合并请求详情"))
 
     override suspend fun getDiffFiles(projectId: String, diffId: String): Result<List<DiffFileResponseDto>> =
         Result.failure(UnsupportedOperationException("mock 不支持 diff"))

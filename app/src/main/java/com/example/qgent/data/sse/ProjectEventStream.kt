@@ -150,6 +150,7 @@ class ProjectEventStream(
                             Outcome.ERROR
                         }
                         else -> {
+                            Log.d(TAG, "sse connected: $url")
                             val body = response.body ?: return@use Outcome.ERROR
                             val source = body.source()
                             var eventName: String? = null
@@ -171,6 +172,8 @@ class ProjectEventStream(
                                         if (name != null) {
                                             SseEventType.fromWire(name)?.let { type ->
                                                 if (id != null) lastEventId = id
+                                                // 诊断日志：记录流上收到的每个事件（名称 + id + 原始 payload）
+                                                Log.d(TAG, "sse event: $name id=$id data=${dataLines}")
                                                 _events.tryEmit(SseEvent(id, type, dataLines.toString()))
                                             } ?: Log.d(TAG, "unknown sse event: $name")
                                         }

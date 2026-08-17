@@ -142,7 +142,7 @@ class TaskListViewModel(private val repo: TaskRepository) : ViewModel() {
                     _uiState.value = _uiState.value.copy(mergeRequests = mrs)
                 }
                 .onFailure { e ->
-                    _uiState.value = _uiState.value.copy(error = e.message ?: "加载 MR 失败")
+                    _uiState.value = _uiState.value.copy(error = e.message ?: "加载合并请求失败")
                 }
         }
     }
@@ -158,7 +158,7 @@ class TaskListViewModel(private val repo: TaskRepository) : ViewModel() {
                     _uiState.value = _uiState.value.copy(mergeRequests = mrs)
                 }
                 .onFailure { e ->
-                    _uiState.value = _uiState.value.copy(error = e.message ?: "加载 MR 失败")
+                    _uiState.value = _uiState.value.copy(error = e.message ?: "加载合并请求失败")
                 }
         }
     }

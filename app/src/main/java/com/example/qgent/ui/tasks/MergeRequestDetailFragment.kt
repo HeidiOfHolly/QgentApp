@@ -60,7 +60,7 @@ class MergeRequestDetailFragment : Fragment() {
                 .onSuccess { detail -> bindDetail(detail) }
                 .onFailure { e ->
                     binding.loading.isVisible = false
-                    Toast.makeText(requireContext(), e.message ?: "加载 MR 详情失败", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), e.message ?: "加载合并请求详情失败", Toast.LENGTH_SHORT).show()
                 }
         }
     }

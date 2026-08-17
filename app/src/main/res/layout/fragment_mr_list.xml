@@ -34,7 +34,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="MR 列表"
+            android:text="合并请求"
             android:textAppearance="@style/TextAppearance.Material3.HeadlineSmall"
             android:textColor="@color/blue_tint"
             android:textStyle="bold" />
@@ -46,7 +46,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="48dp"
         android:gravity="center"
-        android:text="暂无 MR"
+        android:text="暂无合并请求"
         android:textColor="@color/text_secondary"
         android:textSize="14sp"
         android:visibility="gone" />

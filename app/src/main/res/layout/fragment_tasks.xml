@@ -239,7 +239,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:paddingStart="5dp"
-                    android:text="MR查看"
+                    android:text="合并请求"
                     android:textColor="@color/text_primary"
                     android:textSize="28sp"
                     android:textStyle="bold" />
@@ -253,7 +253,7 @@
                     android:id="@+id/tvMRMore"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="更多MR ▶ "
+                    android:text="更多合并请求 ▶ "
                     android:textColor="@color/teal"
                     android:textSize="15sp" />
             </LinearLayout>
@@ -263,7 +263,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginVertical="20dp"
                 android:layout_marginStart="16dp"
-                android:text="📒 暂无 MR"
+                android:text="📒 暂无合并请求"
                 android:textSize="18sp"
                 android:textColor="@color/text_secondary" />
             <androidx.recyclerview.widget.RecyclerView

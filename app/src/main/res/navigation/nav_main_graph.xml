@@ -72,7 +72,7 @@
     <fragment
         android:id="@+id/mergeRequestListFragment"
         android:name="com.example.qgent.ui.tasks.MergeRequestListFragment"
-        android:label="MR 列表"
+        android:label="合并请求"
         tools:layout="@layout/fragment_mr_list">
         <action
             android:id="@+id/action_mrList_to_mrDetail"
@@ -82,7 +82,7 @@
     <fragment
         android:id="@+id/mergeRequestDetailFragment"
         android:name="com.example.qgent.ui.tasks.MergeRequestDetailFragment"
-        android:label="MR 详情"
+        android:label="合并请求详情"
         tools:layout="@layout/fragment_mr_detail" />
 
     <fragment

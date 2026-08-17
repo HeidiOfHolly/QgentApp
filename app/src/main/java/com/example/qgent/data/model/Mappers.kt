@@ -63,7 +63,10 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
         taskStatus = if (parsedType == MessageType.TASK_STATUS) content?.status else null,
         taskNode = if (parsedType == MessageType.TASK_STATUS) content?.node else null,
         taskId = if (parsedType == MessageType.TASK_STATUS) content?.taskId else null,
-        diffId = if (parsedType == MessageType.DIFF) content?.diffId else null
+        diffId = if (parsedType == MessageType.DIFF) content?.diffId else null,
+        diffTitle = if (parsedType == MessageType.DIFF) content?.title else null,
+        diffAdditions = if (parsedType == MessageType.DIFF) content?.additions else null,
+        diffDeletions = if (parsedType == MessageType.DIFF) content?.deletions else null
     )
 }
 
@@ -78,29 +81,36 @@ private fun GroupMessageDto.taskStatusSummary(): String {
     }
 }
 
-/** DiffFileDto → UI DiffFile（hunks 行扁平化为 DiffLine） */
+/** DiffFileDto → UI DiffFile（hunks 或 lines 两种形态都支持，行扁平化为 DiffLine） */
 fun DiffFileDto.toDiffFile(): DiffFile = DiffFile(
-    fileName = path,
+    fileName = (path ?: fileName) ?: "未知文件",
     additions = additions,
     deletions = deletions,
-    lines = hunks.orEmpty().flatMap { hunk ->
-        hunk.lines.orEmpty().map { line ->
-            DiffLine(
-                type = runCatching { DiffLineType.valueOf(line.type ?: "CONTEXT") }.getOrDefault(DiffLineType.CONTEXT),
-                oldLineNo = line.oldLineNo,
-                newLineNo = line.newLineNo,
-                text = line.text
-            )
-        }
-    }
+    lines = toDiffLines()
 )
 
-/** 群列表摘要：图片/文件消息显示 [图片]/[文件]，其余显示 text；senderName 为空（如 SYSTEM 消息）时只显示正文。 */
+private fun DiffFileDto.toDiffLines(): List<DiffLine> {
+    val fromHunks = hunks.orEmpty().flatMap { hunk ->
+        hunk.lines.orEmpty().map { it.toDiffLine() }
+    }
+    if (fromHunks.isNotEmpty()) return fromHunks
+    return lines.orEmpty().map { it.toDiffLine() }
+}
+
+private fun DiffHunkLineDto.toDiffLine(): DiffLine = DiffLine(
+    type = runCatching { DiffLineType.valueOf(type ?: "CONTEXT") }.getOrDefault(DiffLineType.CONTEXT),
+    oldLineNo = oldLineNo,
+    newLineNo = newLineNo,
+    text = text
+)
+
+/** 群列表摘要：图片/文件消息显示 [图片]/[文件]，DIFF 卡显示 [Diff 待验收]；senderName 为空（如 SYSTEM 消息）时只显示正文。 */
 fun GroupLatestMessageDto?.toSummary(): String {
     if (this == null) return ""
     val body = when (type) {
         "IMAGE" -> "[图片]"
         "FILE" -> "[文件]"
+        "DIFF" -> "[Diff 待验收]"
         else -> text ?: ""
     }
     return if (senderName.isNullOrBlank()) body else "$senderName：$body"

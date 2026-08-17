@@ -82,6 +82,100 @@
                 android:textSize="16sp"
                 tools:text="执行中" />
 
+            <!-- 交付模式标签（MR_FIRST 自动交付） -->
+            <TextView
+                android:id="@+id/tvDeliveryModeTag"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_status_tag"
+                android:gravity="center"
+                android:paddingStart="8dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="4dp"
+                android:textColor="@color/white"
+                android:textSize="13sp"
+                android:visibility="gone"
+                tools:text="自动交付" />
+
+            <!-- 交付判定理由（deliveryReason，MR_FIRST 时展示） -->
+            <TextView
+                android:id="@+id/tvDeliveryReason"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:lineSpacingExtra="3dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:visibility="gone"
+                tools:text="判定理由：规则命中自动交付" />
+
+            <!-- 交付进度总览（批次级 deliveryStatus 稳定文案） -->
+            <TextView
+                android:id="@+id/tvDeliveryStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                tools:text="部分仓库成功，部分仓库失败" />
+
+            <!-- 逐仓库交付进度（repositoryDeliveries[]） -->
+            <LinearLayout
+                android:id="@+id/rvRepoDeliveries"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="vertical" />
+
+            <!-- Diff 审核入口（diffReviewSummary.available=true 时展示，点击弹审核面板） -->
+            <TextView
+                android:id="@+id/tvDiffReviewEntry"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_status_tag"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="6dp"
+                android:text="📋 查看 Diff 审核"
+                android:textColor="@color/white"
+                android:textSize="14sp"
+                android:visibility="gone" />
+
+            <!-- 交付失败原因（DELIVERY_FAILED 时展示，便于定位交付失败） -->
+            <TextView
+                android:id="@+id/tvDeliveryError"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:lineSpacingExtra="4dp"
+                android:textColor="@color/exit_red"
+                android:textSize="14sp"
+                android:visibility="gone"
+                tools:text="交付失败：GitHub 推送被拒绝" />
+
+            <!-- 重试交付（交付失败后重试） -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRetryDelivery"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:minHeight="36dp"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:text="@string/retry_delivery"
+                android:textColor="@color/white"
+                android:textSize="14sp"
+                android:visibility="gone"
+                app:backgroundTint="@color/navy"
+                app:cornerRadius="18dp" />
+
             <!-- 仓库 -->
             <TextView
                 android:id="@+id/tvRepo"

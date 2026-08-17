@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 逐仓库交付进度条目（MR_FIRST B 方案）：仓库名 + 状态 + 失败原因 + MR 链接 + 更新时间 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="6dp"
+    android:background="@drawable/bg_card"
+    android:elevation="3dp"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tvRepoName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            tools:text="qgents-web" />
+
+        <TextView
+            android:id="@+id/tvRepoStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/status_yellow"
+            android:textSize="13sp"
+            tools:text="已提交代码" />
+    </LinearLayout>
+
+    <!-- 失败原因（仅 FAILED 时展示，后端返回脱敏文本） -->
+    <TextView
+        android:id="@+id/tvRepoError"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:lineSpacingExtra="2dp"
+        android:textColor="@color/exit_red"
+        android:textSize="12sp"
+        android:visibility="gone"
+        tools:text="推送被拒绝：token 无效" />
+
+    <!-- MR 链接（MR_CREATED 且 webUrl 非空时展示，点击用系统浏览器打开） -->
+    <TextView
+        android:id="@+id/tvRepoMrLink"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="@color/teal"
+        android:textSize="13sp"
+        android:visibility="gone"
+        tools:text="查看合并请求 #42 ↗" />
+
+    <!-- 更新时间 -->
+    <TextView
+        android:id="@+id/tvRepoUpdatedAt"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp"
+        android:visibility="gone"
+        tools:text="2026-08-19 10:00" />
+</LinearLayout>

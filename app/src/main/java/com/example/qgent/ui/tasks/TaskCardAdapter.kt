@@ -6,6 +6,7 @@ import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.databinding.ItemTaskBinding
+import com.example.qgent.ui.diffreview.DiffReviewRules
 
 /** 任务卡片列表适配器：复用 item_task 布局，展示任务名/信息/状态/进度 */
 class TaskCardAdapter(
@@ -45,6 +46,10 @@ class TaskCardAdapter(
             binding.tvTaskInformation.text = task.requirementSummary ?: task.title
             binding.tvTaskStatus.text = statusText(context, task.status)
             binding.tvTaskStatus.setTextColor(context.getColor(taskStatusColorRes(task.status)))
+            // 交付模式标签：MR_FIRST 显示「自动交付」（任务列表/卡片统一读取后端 deliveryMode）
+            val mrFirst = DiffReviewRules.isMrFirst(task.deliveryMode)
+            binding.tvDeliveryMode.isVisible = mrFirst
+            if (mrFirst) binding.tvDeliveryMode.text = DiffReviewRules.deliveryModeCaption(task.deliveryMode)
             val progress = progressOf(task)
             binding.pbTask.progress = progress
             binding.tvTaskProgress.text = "$progress%"

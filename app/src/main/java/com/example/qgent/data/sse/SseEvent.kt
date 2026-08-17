@@ -41,6 +41,12 @@ enum class SseEventType(val wire: String) {
     TASK_AWAITING_DIFF_CONFIRMATION("task.awaiting-diff-confirmation"),
     DIFF_REVIEW_CONFIRMED("diff-review.confirmed"),
     DIFF_REVIEW_REJECTED("diff-review.rejected"),
+    /**
+     * 自动交付开始（MR_FIRST B 方案，§v1.10.0）。
+     * payload { projectId, taskId, reviewBatchId, deliveryMode, operationId, reason? }；
+     * 收到后立即刷新 Task + DiffReview（以 taskId+operationId 去重，不把事件当作交付成功）。
+     */
+    DELIVERY_STARTED("delivery.started"),
     DELIVERY_REPOSITORY_UPDATED("delivery.repository.updated"),
     DELIVERY_FAILED("delivery.failed"),
     DELIVERY_COMPLETED("delivery.completed"),

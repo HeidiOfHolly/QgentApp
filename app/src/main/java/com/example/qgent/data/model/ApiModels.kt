@@ -354,12 +354,15 @@ data class SendMessageRequest(
 )
 
 /** 契约 §7：从群消息显式触发 Task（POST .../messages/{messageId}/trigger-task）。
- *  title 必填；repositoryIds 缺省用群关联仓库；baseRef 可选公共基线分支。 */
+ *  title 必填；repositoryIds 缺省用群关联仓库；baseRef 可选公共基线分支。
+ *  引用 DIFF 卡续作时不得传 repositoryIds（服务端复用源 Workspace，否则 409
+ *  WORKSPACE_CONTINUATION_REPOSITORIES_FORBIDDEN）；deliveryMode 可选，不传由后端判定。 */
 data class TaskTriggerRequest(
     val title: String,
     val requirement: String? = null,
     @SerializedName("repositoryIds") val repositoryIds: List<String>? = null,
-    @SerializedName("baseRef") val baseRef: String? = null
+    @SerializedName("baseRef") val baseRef: String? = null,
+    @SerializedName("deliveryMode") val deliveryMode: String? = null
 )
 
 // ── Agent（§11）──
@@ -545,16 +548,21 @@ data class CreateMemoryRequest(
 
 // ── Diff（§12.3，GET /projects/{projectId}/diffs/{diffId}/files） ──
 
-/** Diff 文件项（DIFF 消息卡片内容） */
+/** Diff 文件项（DIFF 消息卡片内容）。
+ *  后端两种返回形态兼容：`hunks`（分块）或 `lines`（平铺行，与 DiffLineResponseDto 同构）；
+ *  路径字段兼容 `path` / `fileName`。 */
 data class DiffFileDto(
     val id: String,
     val sequence: Long? = null,
-    val path: String,
+    val path: String? = null,
+    @SerializedName("fileName") val fileName: String? = null,
     @SerializedName("changeType") val changeType: String? = null,
     val additions: Int = 0,
     val deletions: Int = 0,
     val binary: Boolean? = null,
-    val hunks: List<DiffHunkDto>? = null
+    val hunks: List<DiffHunkDto>? = null,
+    /** 平铺行形态（后端 lines 返回；与 hunks 二选一，优先 hunks） */
+    val lines: List<DiffHunkLineDto>? = null
 )
 
 /** Diff hunks 块：统一以行文本表示（前端解析为 DiffLine） */
@@ -584,19 +592,52 @@ data class DiffDecisionRequest(
  * 对应任务详情里的 diffReviewSummary：批次可跨多个仓库，确认/拒绝必须走批次接口
  * （POST .../diff-review/confirm|reject），单 Diff 的 accept/reject 对批次内 Diff 会返回
  * 409 DIFF_BATCH_REVIEW_REQUIRED。
+ *
+ * MR_FIRST（B 方案）扩展：confirmationSource（USER/SYSTEM）+ repositoryDeliveries 逐仓库交付进度。
  */
 data class DiffReviewBatchDto(
     val id: String? = null,
     @SerializedName("taskId") val taskId: String? = null,
-    /** PENDING_CONFIRMATION / CONFIRMED / REJECTED / DELIVERING / DELIVERED / DELIVERY_FAILED 等 */
+    /** PENDING_CONFIRMATION / ACCEPTED / REJECTED（校准后枚举，§v1.10.0） */
     @SerializedName("reviewStatus") val reviewStatus: String? = null,
+    /** NOT_STARTED / DELIVERING / DELIVERED / PARTIALLY_DELIVERED / FAILED（校准后枚举，§v1.10.0） */
     @SerializedName("deliveryStatus") val deliveryStatus: String? = null,
+    /**
+     * 确认来源：USER（用户确认）/ SYSTEM（后端自动判定交付）。
+     * 只读字段，仅服务端返回，客户端不得提交或修改。
+     */
+    @SerializedName("confirmationSource") val confirmationSource: String? = null,
     @SerializedName("repositoryCount") val repositoryCount: Int = 0,
     @SerializedName("filesChanged") val filesChanged: Int = 0,
     val additions: Int = 0,
     val deletions: Int = 0,
     /** 批次内各仓库 Diff 列表（按 project_repository_id 升序，与发送 Diff 卡片顺序一致） */
-    val diffs: List<DiffListItemResponse>? = null
+    val diffs: List<DiffListItemResponse>? = null,
+    /** 逐仓库交付进度（MR_FIRST B 方案扩展）：每个目标仓库的交付状态、MR、失败原因 */
+    @SerializedName("repositoryDeliveries") val repositoryDeliveries: List<RepositoryDeliveryDto>? = null
+)
+
+/**
+ * 逐仓库交付进度（MR_FIRST B 方案，DiffReviewBatch.repositoryDeliveries[]）。
+ * deliveryStatus：NOT_STARTED / COMMITTED / MR_CREATED / FAILED。
+ * failureCode / failureReason 可空；失败原因仅展示后端返回的脱敏文本。
+ */
+data class RepositoryDeliveryDto(
+    @SerializedName("repositoryId") val repositoryId: String,
+    @SerializedName("repositoryName") val repositoryName: String? = null,
+    @SerializedName("deliveryStatus") val deliveryStatus: String? = null,
+    /** MR 已创建时返回真实链接/编号/标题；webUrl 为空时前端不渲染 MR 链接 */
+    @SerializedName("mergeRequest") val mergeRequest: RepositoryDeliveryMergeRequestDto? = null,
+    @SerializedName("failureCode") val failureCode: String? = null,
+    @SerializedName("failureReason") val failureReason: String? = null,
+    @SerializedName("updatedAt") val updatedAt: String? = null
+)
+
+/** 逐仓库交付产生的合并请求（MR_CREATED 时返回；webUrl 为空不渲染链接） */
+data class RepositoryDeliveryMergeRequestDto(
+    @SerializedName("webUrl") val webUrl: String? = null,
+    val number: Int? = null,
+    val title: String? = null
 )
 
 /** 批次内单个 Diff 列表项（§12.3 DiffListItemResponse） */
@@ -683,7 +724,13 @@ data class TaskCreateRequest(
     val title: String,
     val requirement: String,
     @SerializedName("repositoryIds") val repositoryIds: List<String>,
-    @SerializedName("baseRef") val baseRef: String? = null
+    @SerializedName("baseRef") val baseRef: String? = null,
+    /**
+     * 可选交付模式（DIFF_FIRST / MR_FIRST，MR_FIRST 后端实现已合入 develop）。
+     * 不传时前端不做任何判定，由后端 Planner/规则决定。
+     * 注意：confirmationSource 只能由服务端返回，客户端不得提交或修改该字段。
+     */
+    @SerializedName("deliveryMode") val deliveryMode: String? = null
 )
 data class TaskListItemDto(
     val id: String,
@@ -693,7 +740,10 @@ data class TaskListItemDto(
     @SerializedName("requirementSummary") val requirementSummary: String?,
     val status: String,
     val priority: String? = null,
+    /** 交付模式：DIFF_FIRST / MR_FIRST（MR_FIRST = 自动交付，Reviewer 通过后不等待人工确认） */
     @SerializedName("deliveryMode") val deliveryMode: String,
+    /** 服务端判定的交付模式理由（MR_FIRST 时展示，如"规则命中自动交付"） */
+    @SerializedName("deliveryReason") val deliveryReason: String? = null,
     @SerializedName("requirementGroup") val requirementGroup: TaskRequirementGroupDto?,
     @SerializedName("createdByUser") val createdByUser: TaskUserSummaryDto?,
     val repositories: List<TaskRepositoryDto>?,
@@ -713,7 +763,10 @@ data class TaskDetailDto(
     val requirement: String?,
     @SerializedName("requirementSummary") val requirementSummary: String?,
     val status: String,
+    /** 交付模式：DIFF_FIRST / MR_FIRST（MR_FIRST = 自动交付，Reviewer 通过后不等待人工确认） */
     @SerializedName("deliveryMode") val deliveryMode: String,
+    /** 服务端判定的交付模式理由（MR_FIRST 时展示，如"规则命中自动交付"） */
+    @SerializedName("deliveryReason") val deliveryReason: String? = null,
     @SerializedName("requirementGroup") val requirementGroup: TaskRequirementGroupDto?,
     @SerializedName("createdByUser") val createdByUser: TaskUserSummaryDto?,
     val repositories: List<TaskRepositoryDto>?,

@@ -42,10 +42,12 @@ import com.example.qgent.R
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.local.MessageCache
+import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.CreateMemoryRequest
 import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 import com.example.qgent.data.model.TaskCreateRequest
+import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.TaskTriggerRequest
 import com.example.qgent.data.model.toChatMessage
 import com.example.qgent.data.model.toDiffFile
@@ -64,6 +66,7 @@ import com.example.qgent.model.GroupType
 import com.example.qgent.model.MemberType
 import com.example.qgent.model.MessageType
 import com.example.qgent.model.SendState
+import com.example.qgent.ui.diffreview.DiffReviewRules
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -114,6 +117,12 @@ class ChatDetailFragment : Fragment() {
 
     /** taskId → diffId 缓存（SSE diff 事件填充；后端任务详情可能不返回 diffId） */
     private val taskDiffIdMap = mutableMapOf<String, String>()
+
+    /** diffId → taskId 反向映射（DIFF 卡点击跳转 Diff 审核用；同源事件填充） */
+    private val diffIdToTaskIdMap = mutableMapOf<String, String>()
+
+    /** delivery.started 事件去重（taskId:operationId）：重复/乱序/晚到事件不重复刷新 */
+    private val deliveryStartedSeen = mutableSetOf<String>()
 
     /** 多选模式：长按消息选「多选」进入，点击消息切换选中，用于生成 Memory 草稿 */
     private var multiSelectMode = false
@@ -212,7 +221,9 @@ class ChatDetailFragment : Fragment() {
             onLoadDiff = { diffId, onLoaded -> loadDiff(diffId, onLoaded) },
             onMessageClick = { message -> onMessageRowClick(message) },
             onSendFailedClick = { message -> showResendDialog(message) },
-            onTaskStatusClick = { message -> onTaskStatusCardClick(message) }
+            onTaskStatusClick = { message -> onTaskStatusCardClick(message) },
+            onDiffCardClick = { message -> onDiffCardClick(message) },
+            onViewFullDiff = { message -> onViewFullDiffClick(message) }
         )
         binding.rvMessages.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMessages.adapter = adapter
@@ -240,7 +251,9 @@ class ChatDetailFragment : Fragment() {
         val agentMentioned = mentions.any { it.type == "AGENT" }
         val replyToId = quoteTarget?.id
         val replyToSummary = quoteTarget?.let { "${it.senderName}：${it.displayContent()}" }
-        Log.d("SendMsg", "send text=$text mentions=$mentions replyToId=$replyToId memberNamesById=$memberNamesById")
+        // B2/C2：引用 DIFF 卡发送 = 增量修改续作（服务端复用源 Workspace）
+        val quotingDiff = quoteTarget?.type == MessageType.DIFF
+        Log.d("SendMsg", "send text=$text mentions=$mentions replyToId=$replyToId quotingDiff=$quotingDiff memberNamesById=$memberNamesById")
         binding.etInput.text.clear()
         clearQuote()
 
@@ -273,7 +286,8 @@ class ChatDetailFragment : Fragment() {
                             showCreateTaskDialog(
                                 prefillTitle = text.take(30),
                                 prefillRequirement = text,
-                                messageId = dto.id
+                                messageId = dto.id,
+                                quotingDiff = quotingDiff
                             )
                         }
                     }
@@ -549,11 +563,15 @@ class ChatDetailFragment : Fragment() {
     private fun memoryRepo(): com.example.qgent.data.repository.MemoryRepository =
         (requireActivity().application as QgentApp).container.memoryRepository
 
-    /** 设置引用目标：显示引用条，发送时带 replyToId */
+    /** 设置引用目标：显示引用条，发送时带 replyToId；引用 DIFF 卡时提示将发起增量修改（B2） */
     private fun setQuote(message: ChatMessage) {
         quoteTarget = message
-        binding.tvQuoteBar.text = getString(R.string.quote_prefix, message.senderName) +
-            "：" + message.displayContent()
+        val base = getString(R.string.quote_prefix, message.senderName) + "：" + message.displayContent()
+        binding.tvQuoteBar.text = if (message.type == MessageType.DIFF) {
+            "$base\n引用 Diff 卡将发起增量修改（复用源工作区）"
+        } else {
+            base
+        }
         binding.llQuoteBar.isVisible = true
         binding.etInput.requestFocus()
     }
@@ -749,7 +767,9 @@ class ChatDetailFragment : Fragment() {
     private fun showCreateTaskDialog(
         prefillTitle: String = "",
         prefillRequirement: String = "",
-        messageId: String? = null
+        messageId: String? = null,
+        /** 引用 DIFF 卡续作：复用源工作区，不选仓库、不要求 requirement（C2/B3） */
+        quotingDiff: Boolean = false
     ) {
         val projectId = mainViewModel.currentProjectId() ?: return
         val groupId = arguments?.getString("groupId").orEmpty()
@@ -771,8 +791,9 @@ class ChatDetailFragment : Fragment() {
             gravity = android.view.Gravity.TOP
             setText(prefillRequirement)
         }
+        // 引用 DIFF 卡：展示续作提示，不提供仓库多选（服务端复用源 Workspace）
         val tvRepoLabel = TextView(requireContext()).apply {
-            text = getString(R.string.manage_repositories)
+            text = if (quotingDiff) "将复用源工作区，无需选择仓库" else getString(R.string.manage_repositories)
             textSize = 14f
         }
         val repoChecks = mutableListOf<android.widget.CheckBox>()
@@ -783,23 +804,26 @@ class ChatDetailFragment : Fragment() {
 
         // 加载项目绑定仓库（文档 §6 ProjectRepository），失败时提示
         // repositoryIds 必须用 getProjectRepositories 返回的 id（project_repositories.id，清单二）
+        // 续作引用时不加载仓库（C2：不得传 repositoryIds，否则 409 WORKSPACE_CONTINUATION_REPOSITORIES_FORBIDDEN）
         val repoBranchMap = mutableMapOf<String, String>()   // repoId -> defaultBranch
-        viewLifecycleOwner.lifecycleScope.launch {
-            val repos = githubRepo().getProjectRepositories(projectId).getOrNull().orEmpty()
-            if (repos.isEmpty()) {
-                tvRepoLabel.text = getString(R.string.start_task_repo_required)
-                return@launch
-            }
-            repos.forEach { repo ->
-                val cb = android.widget.CheckBox(requireContext()).apply {
-                    text = repo.displayName
-                    textSize = 14f
-                    tag = repo.id
-                    isChecked = repos.size == 1
+        if (!quotingDiff) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                val repos = githubRepo().getProjectRepositories(projectId).getOrNull().orEmpty()
+                if (repos.isEmpty()) {
+                    tvRepoLabel.text = getString(R.string.start_task_repo_required)
+                    return@launch
                 }
-                repoBranchMap[repo.id] = repo.defaultBranch
-                repoChecks.add(cb)
-                container.addView(cb)
+                repos.forEach { repo ->
+                    val cb = android.widget.CheckBox(requireContext()).apply {
+                        text = repo.displayName
+                        textSize = 14f
+                        tag = repo.id
+                        isChecked = repos.size == 1
+                    }
+                    repoBranchMap[repo.id] = repo.defaultBranch
+                    repoChecks.add(cb)
+                    container.addView(cb)
+                }
             }
         }
 
@@ -815,8 +839,9 @@ class ChatDetailFragment : Fragment() {
                 val baseRef = repoIds.firstOrNull()?.let { repoBranchMap[it] }
                 when {
                     title.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_name_required, Toast.LENGTH_SHORT).show()
-                    requirement.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_requirement_required, Toast.LENGTH_SHORT).show()
-                    repoIds.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_repo_required, Toast.LENGTH_SHORT).show()
+                    // 续作允许纯引用不填文本（B3：服务端用群描述兜底）
+                    !quotingDiff && requirement.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_requirement_required, Toast.LENGTH_SHORT).show()
+                    !quotingDiff && repoIds.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_repo_required, Toast.LENGTH_SHORT).show()
                     messageId != null -> triggerTaskFromMessage(projectId, groupId, messageId, title, requirement, repoIds, baseRef)
                     else -> createTask(projectId, groupId, title, requirement, repoIds, baseRef)
                 }
@@ -856,7 +881,9 @@ class ChatDetailFragment : Fragment() {
         }
     }
 
-    /** 契约 §7：从已发送的群消息显式触发 Task（POST .../messages/{messageId}/trigger-task） */
+    /** 契约 §7：从已发送的群消息显式触发 Task（POST .../messages/{messageId}/trigger-task）。
+     *  引用 DIFF 卡续作时 repositoryIds/requirement 传空 → 请求体不携带（服务端复用源 Workspace，
+     *  传 repositoryIds 会 409 WORKSPACE_CONTINUATION_REPOSITORIES_FORBIDDEN，C2）。 */
     private fun triggerTaskFromMessage(
         projectId: String,
         groupId: String,
@@ -871,14 +898,15 @@ class ChatDetailFragment : Fragment() {
                 projectId, groupId, messageId,
                 TaskTriggerRequest(
                     title = title,
-                    requirement = requirement,
-                    repositoryIds = repoIds,
+                    requirement = requirement.ifEmpty { null },
+                    repositoryIds = repoIds.ifEmpty { null },
                     baseRef = baseRef
                 ),
                 UUID.randomUUID().toString()
             ).onSuccess {
                 Toast.makeText(requireContext(), R.string.start_task_success, Toast.LENGTH_LONG).show()
             }.onFailure { e ->
+                // C3：续作引用异常（QUOTED_DIFF_INVALID / QUOTED_DIFF_NOT_ACCESSIBLE 等）toast 展示 message，不静默重试
                 val rid = if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("HTTP_500")) {
                     e.requestId?.let { "\nrequestId: $it" }.orEmpty()
                 } else {
@@ -1019,11 +1047,14 @@ class ChatDetailFragment : Fragment() {
             )
                 .onSuccess { dto ->
                     replaceLocalMessage(message.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
+                    // 引用 DIFF 卡重发（增量修改续作判定：被引用消息为 DIFF）
+                    val quotingDiff = messages.firstOrNull { it.id == message.replyToId }?.type == MessageType.DIFF
                     if (agentMentioned) {
                         showCreateTaskDialog(
                             prefillTitle = message.content.take(30),
                             prefillRequirement = message.content,
-                            messageId = dto.id
+                            messageId = dto.id,
+                            quotingDiff = quotingDiff
                         )
                     }
                 }
@@ -1123,27 +1154,54 @@ class ChatDetailFragment : Fragment() {
         }
         viewLifecycleOwner.lifecycleScope.launch {
             taskRepo().getTaskDetail(projectId, taskId)
-                .onSuccess { detail ->
-                    val diffSummary = detail.diffReviewSummary
-                    // 从 JsonElement 解析 diffId：仅用于展示首个 Diff 内容；解析不到仍可确认整个批次
-                    val diffId = extractDiffId(diffSummary) ?: taskDiffIdMap[taskId]
-                    // reviewStatus：仅 PENDING_CONFIRMATION 显示确认/拒绝按钮，其余只读展示
-                    val reviewStatus = extractStringField(diffSummary, "reviewStatus")
-                    // 后端能力位优先（可确认/可拒绝/可重试交付），缺省按 reviewStatus 兜底
-                    val caps = detail.capabilities
-                    val canDecide = caps?.canConfirmDiffReview
-                        ?: (reviewStatus == "PENDING_CONFIRMATION" || reviewStatus.isNullOrBlank())
-                    val canRetry = caps?.canRetryDelivery == true
-                    showDiffConfirmDialog(
-                        projectId, taskId, diffId, detail.title, detail.status,
-                        canDecide = canDecide,
-                        canRetry = canRetry
-                    )
-                }
+                .onSuccess { detail -> showTaskDiffReviewDialog(projectId, taskId, detail) }
                 .onFailure { e ->
                     Toast.makeText(requireContext(), "加载任务失败：${e.message}", Toast.LENGTH_SHORT).show()
                 }
         }
+    }
+
+    /**
+     * 拉取 Task 详情后弹出 Diff Review 对话框（§12.3 + MR_FIRST B 方案）。
+     * 也用于 delivery.started / 409 冲突后刷新状态。
+     */
+    private fun showTaskDiffReviewDialog(projectId: String, taskId: String, detail: TaskDetailDto) {
+        val diffSummary = detail.diffReviewSummary
+        // 从 JsonElement 解析 diffId：仅用于展示首个 Diff 内容；解析不到仍可确认整个批次
+        val diffId = extractDiffId(diffSummary) ?: taskDiffIdMap[taskId]
+        val reviewStatus = extractStringField(diffSummary, "reviewStatus")
+        val confirmationSource = extractStringField(diffSummary, "confirmationSource")
+        val deliveryStatus = extractStringField(diffSummary, "deliveryStatus")
+        val deliveryFailedReason = extractDeliveryFailedReason(diffSummary)
+        // 按钮规则（MR_FIRST B 方案）：仅 PENDING_CONFIRMATION 且非 SYSTEM 显示确认/拒绝；
+        // PARTIALLY_DELIVERED / FAILED 或任务 DELIVERY_FAILED 才显示重试（能力位优先）
+        val caps = detail.capabilities
+        val canDecide = DiffReviewRules.canConfirmOrReject(reviewStatus, confirmationSource)
+        val canRetry = DiffReviewRules.canRetryDelivery(deliveryStatus, detail.status, caps?.canRetryDelivery)
+        showDiffConfirmDialog(
+            projectId, taskId, diffId, detail.title, detail.status,
+            reviewStatus = reviewStatus,
+            confirmationSource = confirmationSource,
+            canDecide = canDecide,
+            canRetry = canRetry,
+            deliveryStatus = deliveryStatus,
+            deliveryFailedReason = deliveryFailedReason
+        )
+    }
+
+    /** 从 diffReviewSummary JsonElement 解析交付失败原因（兼容 deliveryFailedReason/failedReason/errorMessage/message 等字段名） */
+    private fun extractDeliveryFailedReason(diffSummary: com.google.gson.JsonElement?): String? {
+        if (diffSummary == null || !diffSummary.isJsonObject) return null
+        val obj = diffSummary.asJsonObject
+        val candidates = listOf("deliveryFailedReason", "failedReason", "deliveryError", "errorMessage", "message")
+        for (key in candidates) {
+            val v = obj.get(key)
+            if (v != null && !v.isJsonNull && !v.isJsonObject && !v.isJsonArray) {
+                val s = v.asString
+                if (s.isNotBlank()) return s
+            }
+        }
+        return null
     }
 
     /** 从 diffReviewSummary JsonElement 解析 diffId（兼容 diffId/reviewId/resourceId 等字段名） */
@@ -1169,11 +1227,13 @@ class ChatDetailFragment : Fragment() {
     }
 
     /**
-     * Diff Review 确认对话框（§12.3）：
-     * - 内容区：批次摘要（仓库数/文件数/增删行）+ 首个 Diff 的文件内容（有 diffId 时）
-     * - 按钮：确认 Diff / 拒绝 Diff 走 Task 级批次接口（confirm/reject，带 Idempotency-Key）；
-     *   canRetry 时追加"重试交付"（交付失败后重试）
-     * - 非待确认状态（canDecide=false）只读展示
+     * Diff Review 确认对话框（§12.3 + MR_FIRST B 方案）：
+     * - 内容区：任务状态 + 总体交付状态 + 批次摘要（仓库数/文件数/增删行）+ 逐仓库交付进度
+     *   + 首个 Diff 的文件内容（有 diffId 时）
+     * - 按钮：仅 canDecide（PENDING_CONFIRMATION 且非 SYSTEM）显示确认/拒绝；
+     *   ACCEPTED+USER 显示「已由用户确认」、ACCEPTED+SYSTEM 显示「自动交付」，均只读；
+     *   canRetry（部分失败/失败）时提供「重试交付」
+     * - MR 链接仅在 mergeRequest.webUrl 非空时展示
      */
     private fun showDiffConfirmDialog(
         projectId: String,
@@ -1181,8 +1241,12 @@ class ChatDetailFragment : Fragment() {
         diffId: String?,
         taskTitle: String,
         taskStatus: String,
+        reviewStatus: String? = null,
+        confirmationSource: String? = null,
         canDecide: Boolean = true,
-        canRetry: Boolean = false
+        canRetry: Boolean = false,
+        deliveryStatus: String? = null,
+        deliveryFailedReason: String? = null
     ) {
         val container = ScrollView(requireContext())
         val tv = TextView(requireContext()).apply {
@@ -1195,6 +1259,15 @@ class ChatDetailFragment : Fragment() {
         // 拉取批次摘要 + 首个 Diff 文件内容（DTO → UI DiffFile 再渲染）
         viewLifecycleOwner.lifecycleScope.launch {
             val sb = StringBuilder("任务状态：").append(taskStatus).append("\n\n")
+            when {
+                // 部分失败/失败：展示稳定文案 + 失败原因（后端脱敏文本）
+                deliveryStatus == "PARTIALLY_DELIVERED" || deliveryStatus == "FAILED" || deliveryStatus == "DELIVERY_FAILED" ->
+                    sb.append("⚠️ ").append(DiffReviewRules.deliveryStatusCaption(deliveryStatus))
+                        .append("：").append(deliveryFailedReason ?: "详见任务运行执行日志").append("\n\n")
+                // 其余非待确认状态：展示交付状态文案（不展示原始枚举）
+                !deliveryStatus.isNullOrBlank() && deliveryStatus != "PENDING_CONFIRMATION" ->
+                    sb.append("交付状态：").append(DiffReviewRules.deliveryStatusCaption(deliveryStatus) ?: deliveryStatus).append("\n\n")
+            }
             diffRepo.getTaskDiffReview(projectId, taskId)
                 .onSuccess { batch ->
                     if (batch != null) {
@@ -1203,6 +1276,19 @@ class ChatDetailFragment : Fragment() {
                             .append(" 个 · 文件 ").append(batch.filesChanged)
                             .append(" 个 · +").append(batch.additions)
                             .append(" -").append(batch.deletions).append("\n")
+                        // 逐仓库交付进度（MR_FIRST B 方案）
+                        batch.repositoryDeliveries?.forEach { rd ->
+                            val repoName = rd.repositoryName ?: rd.repositoryId
+                            sb.append("• ").append(repoName)
+                                .append("：").append(DiffReviewRules.repositoryDeliveryCaption(rd.deliveryStatus))
+                            rd.failureReason?.takeIf { it.isNotBlank() }?.let { sb.append("（").append(it).append("）") }
+                            // MR 链接仅在 webUrl 非空时展示
+                            val mrUrl = rd.mergeRequest?.webUrl
+                            if (!mrUrl.isNullOrBlank()) {
+                                sb.append("  MR #").append(rd.mergeRequest?.number ?: "")
+                            }
+                            sb.append("\n")
+                        }
                         batch.diffs?.forEach { d ->
                             val stats = d.changeStats
                             sb.append("• ").append(d.repositoryName ?: d.repositoryId ?: d.id ?: "未知仓库")
@@ -1233,8 +1319,13 @@ class ChatDetailFragment : Fragment() {
             tv.text = if (sb.isBlank()) "暂无 Diff 内容" else sb.toString()
         }
 
+        val title = when {
+            canDecide -> "待确认 Diff · $taskTitle"
+            reviewStatus == "ACCEPTED" -> "${DiffReviewRules.acceptedCaption(confirmationSource)} · $taskTitle"
+            else -> "Diff · $taskTitle"
+        }
         val dialogBuilder = MaterialAlertDialogBuilder(requireContext())
-            .setTitle(if (canDecide) "待确认 Diff · $taskTitle" else "Diff · $taskTitle")
+            .setTitle(title)
             .setView(container)
         if (canDecide) {
             dialogBuilder
@@ -1254,10 +1345,14 @@ class ChatDetailFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             diffRepo.confirmDiffReview(projectId, taskId, UUID.randomUUID().toString())
                 .onSuccess {
-                    Toast.makeText(requireContext(), "已确认 Diff，Agent 提交 MR 等待审核", Toast.LENGTH_LONG).show()
+                    Toast.makeText(requireContext(), "已确认 Diff，Agent 提交合并请求等待审核", Toast.LENGTH_LONG).show()
                 }
                 .onFailure { e ->
-                    Toast.makeText(requireContext(), "确认失败：${e.message}", Toast.LENGTH_LONG).show()
+                    if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
+                        refreshTaskDiffReviewAfterConflict(projectId, taskId)
+                    } else {
+                        Toast.makeText(requireContext(), "确认失败：${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 }
         }
     }
@@ -1279,7 +1374,11 @@ class ChatDetailFragment : Fragment() {
                             Toast.makeText(requireContext(), "已拒绝 Diff，Agent 重新修改", Toast.LENGTH_LONG).show()
                         }
                         .onFailure { e ->
-                            Toast.makeText(requireContext(), "拒绝失败：${e.message}", Toast.LENGTH_LONG).show()
+                            if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
+                                refreshTaskDiffReviewAfterConflict(projectId, taskId)
+                            } else {
+                                Toast.makeText(requireContext(), "拒绝失败：${e.message}", Toast.LENGTH_LONG).show()
+                            }
                         }
                 }
             }
@@ -1295,10 +1394,130 @@ class ChatDetailFragment : Fragment() {
                     Toast.makeText(requireContext(), "已重试交付", Toast.LENGTH_LONG).show()
                 }
                 .onFailure { e ->
-                    Toast.makeText(requireContext(), "重试交付失败：${e.message}", Toast.LENGTH_LONG).show()
+                    if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
+                        refreshTaskDiffReviewAfterConflict(projectId, taskId)
+                    } else {
+                        Toast.makeText(requireContext(), "重试交付失败：${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 }
         }
     }
+
+    /** 收到 409 冲突：刷新 Task 详情与 DiffReview 后再决定按钮状态（§v1.10.0 B 方案） */
+    private fun refreshTaskDiffReviewAfterConflict(projectId: String, taskId: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepo().getTaskDetail(projectId, taskId)
+                .onSuccess { detail -> showTaskDiffReviewDialog(projectId, taskId, detail) }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), "刷新任务状态失败：${e.message}", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    /**
+     * DIFF 卡点击（§v1.9.4 A3）：
+     * 优先用 diffId 反向映射反查 taskId → 打开 Task Diff 审核对话框（与 TASK_STATUS 卡同一审核面板）；
+     * 反查不到 taskId（历史消息/事件未缓存）时降级为全屏查看 diff 文件。
+     */
+    private fun onDiffCardClick(message: ChatMessage) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val diffId = message.diffId
+        if (diffId.isNullOrBlank()) {
+            Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val taskId = diffIdToTaskIdMap[diffId]
+        if (taskId != null) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                taskRepo().getTaskDetail(projectId, taskId)
+                    .onSuccess { detail -> showTaskDiffReviewDialog(projectId, taskId, detail) }
+                    .onFailure { e ->
+                        Toast.makeText(requireContext(), "加载任务失败：${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+            }
+        } else {
+            showDiffFilesDialog(projectId, diffId, message.diffTitle)
+        }
+    }
+
+    /** DIFF 卡「完整 Diff」：全屏查看所有文件代码 */
+    private fun onViewFullDiffClick(message: ChatMessage) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val diffId = message.diffId
+        if (diffId.isNullOrBlank()) {
+            Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
+            return
+        }
+        showDiffFilesDialog(projectId, diffId, message.diffTitle)
+    }
+
+    /** 全屏查看 diff 文件：可滑动，绿加红减，文件头显示 basename（卡片点击 / 「完整 Diff」入口） */
+    private fun showDiffFilesDialog(projectId: String, diffId: String, title: String?) {
+        val scroll = ScrollView(requireContext())
+        val container = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        scroll.addView(container, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(title ?: "Diff")
+            .setView(scroll)
+            .setPositiveButton(R.string.close, null)
+            .show()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val files = diffRepo.getDiffFiles(projectId, diffId).getOrNull().orEmpty().map { it.toDiffFile() }
+            if (files.isEmpty()) {
+                container.addView(TextView(requireContext()).apply {
+                    text = "（该 Diff 无文件内容）"
+                    textSize = 13f
+                })
+                return@launch
+            }
+            files.forEach { file ->
+                // 文件头：basename + 变更统计（不显示完整路径）
+                container.addView(TextView(requireContext()).apply {
+                    text = "${file.fileName.substringAfterLast('/')}  +${file.additions} -${file.deletions}"
+                    setTextColor(requireContext().getColor(R.color.text_primary))
+                    setBackgroundColor(requireContext().getColor(R.color.diff_header_bg))
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                    setPadding(dp(10), dp(6), dp(10), dp(6))
+                    textSize = 13f
+                })
+                if (file.lines.isEmpty()) {
+                    container.addView(TextView(requireContext()).apply {
+                        text = "（该文件无行内容）"
+                        textSize = 12f
+                        setPadding(dp(10), dp(4), dp(10), dp(4))
+                    })
+                }
+                file.lines.forEach { line ->
+                    // 代码行：+ 绿底 / - 红底，monospace
+                    container.addView(TextView(requireContext()).apply {
+                        val sign = when (line.type) {
+                            com.example.qgent.model.DiffLineType.ADD -> "+"
+                            com.example.qgent.model.DiffLineType.DELETE -> "-"
+                            else -> " "
+                        }
+                        text = "$sign ${line.text}"
+                        setTypeface(android.graphics.Typeface.MONOSPACE)
+                        setPadding(dp(10), dp(2), dp(10), dp(2))
+                        textSize = 12f
+                        setBackgroundColor(requireContext().getColor(
+                            when (line.type) {
+                                com.example.qgent.model.DiffLineType.ADD -> R.color.diff_add_bg
+                                com.example.qgent.model.DiffLineType.DELETE -> R.color.diff_del_bg
+                                else -> R.color.white
+                            }
+                        ))
+                    })
+                }
+            }
+        }
+    }
+
+    /** dp 转 px（弹窗内代码行布局用） */
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 
     private fun buildRows(list: List<ChatMessage>): List<ChatRow> {
         val result = mutableListOf<ChatRow>()
@@ -1395,6 +1614,24 @@ class ChatDetailFragment : Fragment() {
         memberById = mergedMembers.associate { it.id to it }
     }
 
+    /** 群成员变动（group.member.updated）后刷新成员表：@ 列表/成员映射立即包含新成员 */
+    private fun refreshGroupMembers() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (groupId.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            chatRepo.getMembers(projectId, groupId)
+                .onSuccess { dtos ->
+                    Log.d("ChatMember", "刷新群成员成功: ${dtos.size} 人 ${dtos.map { it.resolvedName }}")
+                    baseGroupMembers = dtos.map { it.toGroupMember() }
+                    rebuildMemberMaps()
+                }
+                .onFailure { e ->
+                    Log.w("ChatDetail", "刷新群成员失败: ${e.message}")
+                }
+        }
+    }
+
     /** 前台轮询新消息：后端暂无聊天 SSE，用定时 getMessages 兜底实现「别人发消息实时显示」 */
     private fun startPolling() {
         if (pollingJob?.isActive == true) return
@@ -1420,6 +1657,13 @@ class ChatDetailFragment : Fragment() {
         val myId = SessionStore.user()?.id
         chatRepo.getMessages(projectId, groupId).onSuccess { dtos ->
             val list = dtos.map { it.toChatMessage(myId, memberNamesById) }
+            // 诊断日志：SYSTEM 消息（"XXX 加入群聊"）是否存在；无 SYSTEM 时为 verbose 级避免刷屏
+            val systemMsgs = list.filter { it.type == MessageType.SYSTEM }
+            if (systemMsgs.isNotEmpty()) {
+                Log.d("ChatPoll", "SYSTEM消息 ${systemMsgs.size} 条: ${systemMsgs.joinToString { it.content }}")
+            } else {
+                Log.v("ChatPoll", "本次拉取 ${list.size} 条，无 SYSTEM 消息")
+            }
             // 轮询时保留本会话内刚发的本地兜底消息（keepLocal=true），
             // 避免用户刚发送失败的消息被下一次轮询立刻删掉；下次进页面时由 loadInitialData 清掉
             val merged = mergeWithNetwork(list, keepLocal = true)
@@ -1522,10 +1766,32 @@ class ChatDetailFragment : Fragment() {
                                 pollMessages(projectId, groupId)
                             }
                         }
+                        // 群成员变动（成员进群/退群）：后端会推送 SYSTEM 消息（"XXX 加入群聊"）——
+                        // 立即刷新消息让注释实时出现（不等 3s 轮询），并刷新成员表让 @ 列表包含新成员
+                        SseEventType.GROUP_MEMBER_UPDATED -> {
+                            val targetGroup = parseGroupId(event.data)
+                            Log.d("ChatSSE", "group.member.updated payload=${event.data} targetGroup=$targetGroup currentGroup=$groupId")
+                            if (targetGroup == groupId) {
+                                pollMessages(projectId, groupId)
+                                refreshGroupMembers()
+                            }
+                        }
                         // Diff 相关事件：缓存 taskId → diffId 映射，供 TASK_STATUS 卡片点击确认用
                         SseEventType.DIFF_CREATED,
                         SseEventType.DIFF_REVIEW_CREATED,
                         SseEventType.TASK_AWAITING_DIFF_CONFIRMATION -> cacheTaskDiffId(event.data)
+                        // delivery.started（MR_FIRST）：以 taskId+operationId 去重，重复/乱序/晚到只刷一次消息，
+                        // 让 TASK_STATUS 卡片状态同步；真实状态以查询接口为准
+                        SseEventType.DELIVERY_STARTED -> {
+                            val key = DiffReviewRules.deliveryStartedKeyFromPayload(event.data)
+                            if (key == null || deliveryStartedSeen.add(key)) {
+                                pollMessages(projectId, groupId)
+                            }
+                        }
+                        // 交付事件：交付失败/完成 → 刷新消息，让 TASK_STATUS 卡片状态同步（如"交付失败"）
+                        SseEventType.DELIVERY_FAILED,
+                        SseEventType.DELIVERY_COMPLETED,
+                        SseEventType.DELIVERY_REPOSITORY_UPDATED -> pollMessages(projectId, groupId)
                         else -> Unit
                     }
                 }
@@ -1533,13 +1799,17 @@ class ChatDetailFragment : Fragment() {
         }
     }
 
-    /** 缓存事件 payload 中的 taskId → diffId 映射（后端任务详情可能不返回 diffId） */
+    /** 缓存事件 payload 中的 taskId → diffId 映射（后端任务详情可能不返回 diffId）；
+     *  同时维护 diffId → taskId 反向映射，供 DIFF 卡点击跳转 Diff 审核用（A3）。 */
     private fun cacheTaskDiffId(data: String) {
         runCatching {
             val obj = org.json.JSONObject(data)
             val taskId = obj.optString("taskId").takeIf { it.isNotBlank() }
             val diffId = obj.optString("diffId").takeIf { it.isNotBlank() }
-            if (taskId != null && diffId != null) taskDiffIdMap[taskId] = diffId
+            if (taskId != null && diffId != null) {
+                taskDiffIdMap[taskId] = diffId
+                diffIdToTaskIdMap[diffId] = taskId
+            }
         }
     }
 

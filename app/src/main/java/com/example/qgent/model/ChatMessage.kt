@@ -27,6 +27,11 @@ data class ChatMessage(
     val taskNode: String? = null,
     /** DIFF 卡片：content 含 diffId，展示时用 DiffRepository 拉取文件内容 */
     val diffId: String? = null,
+    /** DIFF 卡：任务标题（content.title，服务端保证必有，§v1.9.4 DIFF 卡契约） */
+    val diffTitle: String? = null,
+    /** DIFF 卡：总变更统计（content.additions / content.deletions） */
+    val diffAdditions: Int? = null,
+    val diffDeletions: Int? = null,
     /** 发送状态（仅自己发送的消息有效）：发送中 / 失败 */
     val sendState: SendState? = null,
     /** 发送失败原因（后端错误码/文案，仅 FAILED 时可能非空，用于重发弹窗展示） */

@@ -34,7 +34,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="MR 详情"
+            android:text="合并请求详情"
             android:textAppearance="@style/TextAppearance.Material3.HeadlineSmall"
             android:textColor="@color/blue_tint"
             android:textStyle="bold" />

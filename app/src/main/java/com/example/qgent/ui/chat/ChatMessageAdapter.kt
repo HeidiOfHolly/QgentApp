@@ -5,6 +5,8 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
@@ -48,7 +50,11 @@ class ChatMessageAdapter(
     private val onLoadDiff: ((String, (List<DiffFile>) -> Unit) -> Unit)? = null,
     private val onMessageClick: ((ChatMessage) -> Unit)? = null,
     private val onSendFailedClick: ((ChatMessage) -> Unit)? = null,
-    private val onTaskStatusClick: ((ChatMessage) -> Unit)? = null
+    private val onTaskStatusClick: ((ChatMessage) -> Unit)? = null,
+    /** DIFF 卡点击 → 跳转 Diff 审核面板（§v1.9.4 A3） */
+    private val onDiffCardClick: ((ChatMessage) -> Unit)? = null,
+    /** DIFF 卡「完整 Diff」→ 全屏查看所有文件代码 */
+    private val onViewFullDiff: ((ChatMessage) -> Unit)? = null
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     /** 多选模式下被选中的消息 id（非多选模式为空集，不参与高亮） */
@@ -82,7 +88,13 @@ class ChatMessageAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         return when (viewType) {
             TYPE_TIME -> TimeVH(ItemMessageTimeBinding.inflate(LayoutInflater.from(parent.context), parent, false))
-            TYPE_DIFF -> DiffVH(ItemMessageDiffBinding.inflate(LayoutInflater.from(parent.context), parent, false), onLoadDiff)
+            TYPE_DIFF -> DiffVH(
+                ItemMessageDiffBinding.inflate(LayoutInflater.from(parent.context), parent, false),
+                onLoadDiff,
+                onMessageLongClick,
+                onDiffCardClick,
+                onViewFullDiff
+            )
             TYPE_SYSTEM -> SystemVH(ItemMessageSystemBinding.inflate(LayoutInflater.from(parent.context), parent, false))
             TYPE_TASK_STATUS -> TaskStatusVH(
                 ItemMessageTaskStatusBinding.inflate(LayoutInflater.from(parent.context), parent, false),
@@ -295,7 +307,10 @@ class ChatMessageAdapter(
 
     class DiffVH(
         private val binding: ItemMessageDiffBinding,
-        private val onLoadDiff: ((String, (List<DiffFile>) -> Unit) -> Unit)?
+        private val onLoadDiff: ((String, (List<DiffFile>) -> Unit) -> Unit)?,
+        private val onMessageLongClick: ((View, ChatMessage) -> Unit)? = null,
+        private val onDiffCardClick: ((ChatMessage) -> Unit)? = null,
+        private val onViewFullDiff: ((ChatMessage) -> Unit)? = null
     ) : RecyclerView.ViewHolder(binding.root) {
 
         private val pagerAdapter = DiffFilePagerAdapter()
@@ -309,6 +324,23 @@ class ChatMessageAdapter(
 
         fun bind(message: ChatMessage) {
             binding.tvSenderName.text = message.senderName
+            // DIFF 卡标题（content.title）+ 总变更统计（content.additions/deletions；缺省待文件加载后汇总）
+            binding.tvDiffTitle.text = message.diffTitle?.takeIf { it.isNotBlank() } ?: "代码变更"
+            binding.tvDiffTotalStats.text = if (message.diffAdditions != null || message.diffDeletions != null) {
+                "+${message.diffAdditions ?: 0} -${message.diffDeletions ?: 0}"
+            } else {
+                ""
+            }
+            // 操作行：Diff 审核（确认/拒绝/重试）/ 完整 Diff 全屏查看
+            binding.tvActionReview.setOnClickListener { onDiffCardClick?.invoke(message) }
+            binding.tvActionFull.setOnClickListener { onViewFullDiff?.invoke(message) }
+            // 点击卡片 → 全屏查看完整代码（可滑动，绿加红减）
+            binding.diffCard.setOnClickListener { onViewFullDiff?.invoke(message) }
+            // 长按 → 引用/复制/多选（引用 DIFF 卡发起增量修改，B1）
+            binding.root.setOnLongClickListener {
+                onMessageLongClick?.invoke(it, message)
+                true
+            }
             // 优先用内存中已有的 diff；否则按 diffId 异步拉取（真实接口优先，失败 mock 保底）
             val diffId = message.diffId
             val files = message.diff
@@ -323,18 +355,57 @@ class ChatMessageAdapter(
 
         private fun render(files: List<DiffFile>) {
             pagerAdapter.submitList(files)
+            renderChips(files)
             if (files.isNotEmpty()) {
+                // content 未带统计时按已加载文件汇总
+                if (binding.tvDiffTotalStats.text.isNullOrBlank()) {
+                    binding.tvDiffTotalStats.text = "+${files.sumOf { it.additions }} -${files.sumOf { it.deletions }}"
+                }
                 binding.viewPagerDiff.setCurrentItem(0, false)
                 updateHeader(0)
             }
         }
 
+        /** 文件列表 chips：只显示 basename，点击跳转对应文件页（替代盲滑页码） */
+        private fun renderChips(files: List<DiffFile>) {
+            binding.llFileChips.removeAllViews()
+            files.forEachIndexed { index, file ->
+                val chip = TextView(binding.root.context).apply {
+                    text = file.fileName.basename()
+                    textSize = 11f
+                    setTextColor(ContextCompat.getColor(binding.root.context, R.color.text_primary))
+                    setBackgroundResource(R.drawable.bg_chip)
+                    setPadding(dp(8), dp(3), dp(8), dp(3))
+                    isClickable = true
+                    isFocusable = true
+                    maxWidth = dp(140)
+                    ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+                    maxLines = 1
+                }
+                chip.layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = dp(6) }
+                chip.setOnClickListener {
+                    binding.viewPagerDiff.setCurrentItem(index, false)
+                    updateHeader(index)
+                }
+                binding.llFileChips.addView(chip)
+            }
+        }
+
+        private fun dp(value: Int): Int =
+            (value * binding.root.resources.displayMetrics.density).toInt()
+
         private fun updateHeader(position: Int) {
             val file = pagerAdapter.fileAt(position) ?: return
-            binding.tvDiffFileName.text = file.fileName
+            binding.tvDiffFileName.text = file.fileName.basename()
             binding.tvDiffStats.text = "+${file.additions} -${file.deletions}"
             binding.tvDiffIndicator.text = "${position + 1}/${pagerAdapter.count}"
         }
+
+        /** 文件名只显示 basename（去掉完整路径） */
+        private fun String.basename(): String = substringAfterLast('/')
     }
 
     companion object {
