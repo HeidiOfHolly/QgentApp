@@ -43,7 +43,9 @@ class TaskCardAdapter(
         fun bind(task: TaskListItemDto) {
             val context = binding.root.context
             binding.tvTaskName.text = task.displayCode + " " + task.title
-            binding.tvTaskInformation.text = task.requirementSummary ?: task.title
+            // MR_FIRST（自动交付）在信息行加前缀，便于区分交付模式（文档 §15）
+            val prefix = if (task.deliveryMode == "MR_FIRST") "自动交付 · " else ""
+            binding.tvTaskInformation.text = prefix + (task.requirementSummary ?: task.title)
             binding.tvTaskStatus.text = statusText(context, task.status)
             binding.tvTaskStatus.setTextColor(context.getColor(taskStatusColorRes(task.status)))
             // 交付模式标签：MR_FIRST 显示「自动交付」（任务列表/卡片统一读取后端 deliveryMode）

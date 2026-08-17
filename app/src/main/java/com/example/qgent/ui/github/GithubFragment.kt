@@ -92,6 +92,10 @@ class GithubFragment : Fragment() {
                 Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
                 githubViewModel.consumeError()
             }
+            // 解除安装被 409 拦截（仍有仓库绑定）→ 弹确认框，用户确认后强制卸载
+            state.uninstallConfirm?.let { confirm ->
+                showForceUninstallDialog(confirm)
+            }
         }
 
         // 未读团队邀请 → 头像右上角红点
@@ -110,6 +114,21 @@ class GithubFragment : Fragment() {
                 githubViewModel.uninstallTeam(team.id)
             }
             .show()
+    }
+
+    /** 强制卸载确认弹窗：安装仍被仓库绑定（后端 409），确认后继续卸载 */
+    private fun showForceUninstallDialog(confirm: GithubViewModel.UninstallConfirm) {
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.github_uninstall_bind_title)
+            .setMessage(R.string.github_uninstall_bind_message)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.github_uninstall_bind_confirm) { _, _ ->
+                githubViewModel.confirmForceUninstall(confirm)
+            }
+            .create()
+        // 弹窗关闭（确认/取消/返回）后清空待确认状态，避免配置变更重建后重复弹出
+        dialog.setOnDismissListener { githubViewModel.cancelUninstall() }
+        dialog.show()
     }
 
     /** 右上角加号：从「我创建的团队」单选一个，下一步进入新建项目页 */

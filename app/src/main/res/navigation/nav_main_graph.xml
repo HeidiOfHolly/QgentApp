@@ -22,6 +22,9 @@
         <action
             android:id="@+id/action_chatList_to_chatDetail"
             app:destination="@id/chatDetailFragment" />
+        <action
+            android:id="@+id/action_chatList_to_projectDetail"
+            app:destination="@id/projectDetailFragment" />
     </fragment>
 
     <fragment
@@ -241,4 +244,10 @@
             android:name="mode"
             android:defaultValue="members" />
     </fragment>
+
+    <fragment
+        android:id="@+id/projectDetailFragment"
+        android:name="com.example.qgent.ui.personal.ProjectDetailFragment"
+        android:label="@string/project_detail_title"
+        tools:layout="@layout/fragment_project_detail" />
 </navigation>

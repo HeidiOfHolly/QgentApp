@@ -60,6 +60,9 @@ class TaskDetailFragment : Fragment() {
     private var eventStreamJob: Job? = null
     private var pollingJob: Job? = null
 
+    /** 收到 diff-review.skipped（reason=FINAL_DIFF_EMPTY）的任务：展示"已完成，无代码变更"空态（文档 §15.6.4/§20.3） */
+    private val noCodeChangeTaskIds = mutableSetOf<String>()
+
     /** 加载中指示器引用计数：detail/steps/runs 三个请求全部结束后隐藏 */
     private var loadingCount = 0
 
@@ -129,7 +132,17 @@ class TaskDetailFragment : Fragment() {
                         com.example.qgent.data.sse.SseEventType.DELIVERY_STARTED,
                         com.example.qgent.data.sse.SseEventType.DELIVERY_REPOSITORY_UPDATED,
                         com.example.qgent.data.sse.SseEventType.DELIVERY_FAILED,
-                        com.example.qgent.data.sse.SseEventType.DELIVERY_COMPLETED -> loadDetail()
+                        com.example.qgent.data.sse.SseEventType.DELIVERY_COMPLETED,
+                        com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SKIPPED -> {
+                            // 无代码变更（FINAL_DIFF_EMPTY）：记录当前任务，详情页展示空态
+                            if (event.type == com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SKIPPED) {
+                                val taskIdFromEvent = runCatching {
+                                    org.json.JSONObject(event.data).optString("taskId")
+                                }.getOrNull()
+                                if (taskIdFromEvent == taskId) noCodeChangeTaskIds.add(taskId)
+                            }
+                            loadDetail()
+                        }
                         else -> Unit
                     }
                 }
@@ -173,18 +186,25 @@ class TaskDetailFragment : Fragment() {
     /** 调用取消任务接口（§11.3，202 异步受理）；终态 409 专门提示 */
     private fun cancelTask() {
         if (projectId.isEmpty() || taskId.isEmpty()) return
+        binding.btnCancelTask.isEnabled = false
         viewLifecycleOwner.lifecycleScope.launch {
             taskRepository.cancelTask(projectId, taskId, UUID.randomUUID().toString())
                 .onSuccess {
                     Toast.makeText(requireContext(), R.string.cancel_task_success, Toast.LENGTH_SHORT).show()
+                    loadDetail()
                 }
                 .onFailure { e ->
+                    binding.btnCancelTask.isEnabled = true
                     val message = if (e is ApiException && e.code == "TASK_NOT_CANCELLABLE") {
                         "该任务已处于终态，无法取消"
                     } else {
                         e.message ?: getString(R.string.cancel_task_failed)
                     }
                     Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+                    // 终态冲突：刷新详情让取消按钮按最新状态隐藏
+                    if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
+                        loadDetail()
+                    }
                 }
         }
     }
@@ -327,6 +347,10 @@ class TaskDetailFragment : Fragment() {
             R.string.task_detail_repo,
             detail.repositories?.joinToString { it.fullName.ifEmpty { it.name } }.orEmpty()
         )
+        // 取消按钮：能力位 canCancel 优先；缺省按终态状态隐藏（终态不可取消，避免"取消失败"）
+        val cancellable = detail.capabilities?.canCancel ?: (detail.status !in TERMINAL_STATUSES)
+        binding.btnCancelTask.isVisible = cancellable
+        binding.btnCancelTask.isEnabled = true
         bindDelivery(detail)
     }
 
@@ -341,15 +365,19 @@ class TaskDetailFragment : Fragment() {
         val diffSummary = detail.diffReviewSummary
         val deliveryStatus = extractStringField(diffSummary, "deliveryStatus")
 
-        // 自动交付标签（仅 MR_FIRST 展示）
+        // 交付模式：MR_FIRST=⚡自动交付 / DIFF_FIRST=📦代码交付，deliveryReason 作为副文案（§15）
         val mrFirst = DiffReviewRules.isMrFirst(detail.deliveryMode)
-        binding.tvDeliveryModeTag.isVisible = mrFirst
-        binding.tvDeliveryModeTag.text = DiffReviewRules.deliveryModeCaption(detail.deliveryMode)
-
-        // 判定理由：优先任务详情 deliveryReason，其次 diffReviewSummary 内字段
-        val reason = detail.deliveryReason ?: extractStringField(diffSummary, "deliveryReason")
-        binding.tvDeliveryReason.isVisible = mrFirst && !reason.isNullOrBlank()
-        binding.tvDeliveryReason.text = reason?.let { "判定理由：$it" }
+        binding.tvDeliveryMode.isVisible = mrFirst || detail.deliveryMode == "DIFF_FIRST"
+        binding.tvDeliveryMode.text = when {
+            mrFirst -> getString(R.string.task_delivery_auto)
+            detail.deliveryMode == "DIFF_FIRST" -> getString(R.string.task_delivery_code)
+            else -> ""
+        }
+        if (mrFirst && !detail.deliveryReason.isNullOrBlank()) {
+            binding.tvDeliveryMode.text = "${binding.tvDeliveryMode.text}（${detail.deliveryReason}）"
+        }
+        // 无代码变更空态：仅当收到 diff-review.skipped（FINAL_DIFF_EMPTY）且任务已完成时展示（§20.3）
+        binding.tvNoCodeChange.isVisible = detail.status == "SUCCEEDED" && taskId in noCodeChangeTaskIds
 
         // 批次级交付状态总览（稳定文案；失败状态交给 tvDeliveryError 行展示）
         val overview = when (deliveryStatus) {
@@ -681,5 +709,8 @@ class TaskDetailFragment : Fragment() {
         const val ARG_TASK_ID = "taskId"
         const val ARG_PROJECT_ID = "projectId"
         private const val POLL_INTERVAL_MS = 3_000L
+
+        /** 终态/不可取消状态：不显示取消按钮（避免对已取消任务再次取消导致"取消失败"） */
+        private val TERMINAL_STATUSES = setOf("SUCCEEDED", "FAILED", "DELIVERY_FAILED", "CANCELLED", "CANCELLING")
     }
 }

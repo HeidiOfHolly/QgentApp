@@ -10,6 +10,7 @@ import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.NewRepositoryRequest
+import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.formatGroupTime
 import com.example.qgent.data.model.parseRfc3339
@@ -278,9 +279,10 @@ class MainViewModel(
             val teamDto = _teamDtos.value.find { it.name == team }
             if (teamDto != null) {
                 userRepo.getProjects(teamDto.id).onSuccess { projectDtos ->
-                    _projects.value = projectDtos.map { it.name }
                     // 每次全量刷新该团队的项目映射，覆盖旧桶，防止跨团队残留
                     projectIdsByTeam[teamDto.id] = projectDtos.associate { it.name to it.id }
+                    // 抽屉项目按最后活跃倒序：以各项目总群(PROJECT_MAIN) latestActivityAt 为活跃时间
+                    _projects.value = sortProjectsByActivity(projectDtos)
                     loadedProjectsTeam = team
                     finished()
                     return@launch
@@ -291,6 +293,22 @@ class MainViewModel(
             finished()
         }
     }
+
+    /**
+     * 项目按最后活跃时间倒序：取各项目总群（PROJECT_MAIN）的 latestActivityAt 作为项目活跃时间。
+     * 群拉取失败或总群无活动时间时按 0L 兜底排到最末（parseRfc3339 失败会回退当前时间，故先判空）。
+     */
+    private suspend fun sortProjectsByActivity(projectDtos: List<ProjectDto>): List<String> =
+        projectDtos
+            .map { dto ->
+                val latest = chatRepo.getGroups(dto.id).getOrNull()
+                    ?.firstOrNull { it.type == "PROJECT_MAIN" }
+                    ?.latestActivityAt?.trim()?.takeIf { it.isNotEmpty() }
+                    ?.let { parseRfc3339(it) } ?: 0L
+                dto.name to latest
+            }
+            .sortedByDescending { it.second }
+            .map { it.first }
 
     /** 拉取当前团队 / 项目下的群聊。只用真实 projectId，失败由数据层 mock 回退兜底 */
     private fun loadGroups(projectName: String) {

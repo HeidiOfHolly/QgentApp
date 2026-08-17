@@ -602,10 +602,12 @@ data class DiffReviewBatchDto(
     @SerializedName("reviewStatus") val reviewStatus: String? = null,
     /** NOT_STARTED / DELIVERING / DELIVERED / PARTIALLY_DELIVERED / FAILED（校准后枚举，§v1.10.0） */
     @SerializedName("deliveryStatus") val deliveryStatus: String? = null,
+
     /**
      * 确认来源：USER（用户确认）/ SYSTEM（后端自动判定交付）。
      * 只读字段，仅服务端返回，客户端不得提交或修改。
      */
+    /** 交付授权来源（§15.2）：USER=用户确认 / SYSTEM=MR_FIRST 自动授权；前端不得展示为"用户已确认" */
     @SerializedName("confirmationSource") val confirmationSource: String? = null,
     @SerializedName("repositoryCount") val repositoryCount: Int = 0,
     @SerializedName("filesChanged") val filesChanged: Int = 0,

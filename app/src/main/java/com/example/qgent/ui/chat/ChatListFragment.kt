@@ -183,6 +183,13 @@ class ChatListFragment : Fragment() {
             when (item.itemId) {
                 R.id.action_create_group -> showCreateGroupDialog()
                 R.id.action_add_member -> showAddMemberDialog()
+                R.id.action_project_detail -> {
+                    if (mainViewModel.currentProjectId() == null) {
+                        Toast.makeText(requireContext(), R.string.add_member_missing_project, Toast.LENGTH_SHORT).show()
+                    } else {
+                        findNavController().navigate(R.id.action_chatList_to_projectDetail)
+                    }
+                }
                 else -> Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
             }
             true

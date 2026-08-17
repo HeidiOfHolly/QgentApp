@@ -8,6 +8,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -45,6 +46,9 @@ class GitHubAuthorizeFragment : Fragment() {
 
     /** 防止 shouldOverrideUrlLoading 与 onPageStarted 重复处理同一次回跳 */
     private var callbackHandled = false
+
+    /** 点击「去授权」时团队是否已绑定 GitHub 账号（存在 ACTIVE 安装）；已绑定则跳过账号绑定提醒与安装成功提示 */
+    private var hadGitHubAccount = false
 
     /** 系统返回键：WebView 内部可回退时先回退，否则收起 WebView 交还默认返回行为 */
     private val backCallback = object : OnBackPressedCallback(false) {
@@ -86,17 +90,22 @@ class GitHubAuthorizeFragment : Fragment() {
                 Toast.makeText(requireContext(), R.string.github_authorize_missing_team, Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            // 点击时记录团队是否已有 GitHub 账号（存在 ACTIVE 安装），决定本次是否弹提示
+            hadGitHubAccount = githubViewModel.uiState.value?.installations?.any { it.status == "ACTIVE" } ?: false
             githubViewModel.createInstallationUrl(teamId)
         }
 
         githubViewModel.uiState.observe(viewLifecycleOwner) { state ->
-            // 安装链接就绪 → 先提示账号绑定规则，用户确认后再打开 WebView
+            // 安装链接就绪：未绑定 GitHub 账号的团队先弹账号绑定提醒，已绑定的直接打开 WebView
             state.installationUrl?.let { url ->
                 githubViewModel.consumeInstallationUrl()
-                confirmBeforeAuthorize(url)
+                if (hadGitHubAccount) showWebView(url) else confirmBeforeAuthorize(url)
             }
             if (state.installed) {
-                Toast.makeText(requireContext(), R.string.github_install_success, Toast.LENGTH_SHORT).show()
+                // 已绑定账号的团队重复授权不算新安装，不弹安装成功提示
+                if (!hadGitHubAccount) {
+                    Toast.makeText(requireContext(), R.string.github_install_success, Toast.LENGTH_SHORT).show()
+                }
                 githubViewModel.consumeInstalled()
             }
             state.error?.let {
@@ -110,6 +119,9 @@ class GitHubAuthorizeFragment : Fragment() {
         binding.webView.apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            // 必须有 WebChromeClient：GitHub 安装页点「Uninstall」会调 window.confirm() 弹确认框，
+            // 缺省时 WebView 静默吞掉确认框（默认返回 false），导致卸载没有任何反应
+            webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     if (!callbackHandled && isCallbackUrl(request.url)) {

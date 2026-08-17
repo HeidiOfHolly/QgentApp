@@ -1226,6 +1226,11 @@ class ChatDetailFragment : Fragment() {
         return if (v != null && !v.isJsonNull) v.asString else null
     }
 
+    /** 是否为"无 Diff Review 批次"的 404：FINAL_DIFF_EMPTY 后查询 Diff Review 属正常业务，不报错（文档 §15.6.4） */
+    private fun isDiffReviewNotFound(e: Throwable): Boolean =
+        e is com.example.qgent.data.model.ApiException &&
+            (e.code == "DIFF_REVIEW_NOT_FOUND" || e.code == "HTTP_404")
+
     /**
      * Diff Review 确认对话框（§12.3 + MR_FIRST B 方案）：
      * - 内容区：任务状态 + 总体交付状态 + 批次摘要（仓库数/文件数/增删行）+ 逐仓库交付进度
@@ -1272,6 +1277,9 @@ class ChatDetailFragment : Fragment() {
                 .onSuccess { batch ->
                     if (batch != null) {
                         sb.append("📦 Diff Review 批次：\n")
+                        if (!batch.deliveryStatus.isNullOrBlank()) {
+                            sb.append("交付状态：").append(batch.deliveryStatus).append("\n")
+                        }
                         sb.append("仓库 ").append(batch.repositoryCount)
                             .append(" 个 · 文件 ").append(batch.filesChanged)
                             .append(" 个 · +").append(batch.additions)
@@ -1298,7 +1306,13 @@ class ChatDetailFragment : Fragment() {
                     }
                 }
                 .onFailure { e ->
-                    Log.w("DiffReview", "批次摘要加载失败: ${e.message}")
+                    // 无代码变更（FINAL_DIFF_EMPTY）：任务 SUCCEEDED 但无 DiffReviewBatch，
+                    // 查询返回 404 是正常业务结果，不得显示为系统错误/交付失败/重试入口（文档 §15.6.4/§20.3）
+                    if (isDiffReviewNotFound(e)) {
+                        sb.append(getString(R.string.task_no_code_change)).append("\n\n")
+                    } else {
+                        Log.w("DiffReview", "批次摘要加载失败: ${e.message}")
+                    }
                 }
             if (!diffId.isNullOrBlank()) {
                 val files = diffRepo.getDiffFiles(projectId, diffId).getOrNull().orEmpty().map { it.toDiffFile() }

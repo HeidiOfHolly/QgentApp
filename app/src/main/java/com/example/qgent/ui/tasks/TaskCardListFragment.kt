@@ -140,7 +140,8 @@ class TaskCardListFragment : Fragment() {
                         com.example.qgent.data.sse.SseEventType.DIFF_CREATED,
                         com.example.qgent.data.sse.SseEventType.DELIVERY_REPOSITORY_UPDATED,
                         com.example.qgent.data.sse.SseEventType.DELIVERY_FAILED,
-                        com.example.qgent.data.sse.SseEventType.DELIVERY_COMPLETED -> {
+                        com.example.qgent.data.sse.SseEventType.DELIVERY_COMPLETED,
+                        com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SKIPPED -> {
                             taskListViewModel.loadTasks(projectId)
                         }
                         else -> Unit
