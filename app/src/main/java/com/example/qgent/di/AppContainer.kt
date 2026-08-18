@@ -10,6 +10,8 @@ import com.example.qgent.data.local.QgentDatabase
 import com.example.qgent.data.repository.AgentRepository
 import com.example.qgent.data.repository.AgentRepositoryImpl
 import com.example.qgent.data.repository.AttachmentUploader
+import com.example.qgent.data.repository.AgentAvatarUploader
+import com.example.qgent.data.repository.AvatarUploader
 import com.example.qgent.data.repository.AuthRepository
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.ChatRepositoryImpl
@@ -50,6 +52,8 @@ class AppContainer(context: Context) {
     val database = QgentDatabase.getInstance(context)
     val messageCache = MessageCache(database.messageDao())
     val attachmentUploader = AttachmentUploader(RetrofitClient.service, RetrofitClient.uploadClient)
+    val avatarUploader = AvatarUploader(RetrofitClient.service, RetrofitClient.uploadClient)
+    val agentAvatarUploader = AgentAvatarUploader(RetrofitClient.service, RetrofitClient.uploadClient)
 
     val authRepository = AuthRepository(RetrofitClient.service)
 

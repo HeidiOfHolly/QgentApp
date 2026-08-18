@@ -14,10 +14,12 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.bumptech.glide.Glide
 import com.example.qgent.MainActivity
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
+import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.UserRepository
@@ -140,6 +142,15 @@ class ChatListFragment : Fragment() {
         binding.btnAdd.setOnClickListener { showMoreMenu() }
 
         binding.tvUserName.text = SessionStore.user()?.displayName ?: getString(R.string.user_name_placeholder)
+        // 用户头像：有 URL 用 Glide 加载（公共读地址），centerCrop 占满圆形画框；否则默认占位
+        SessionStore.user()?.avatarUrl?.takeIf { it.isNotBlank() }?.let {
+            Glide.with(binding.btnAvatar)
+                .load(RetrofitClient.resolveMediaUrl(it))
+                .centerCrop()
+                .placeholder(R.drawable.ic_avatar_default)
+                .error(R.drawable.ic_avatar_default)
+                .into(binding.btnAvatar)
+        }
         mainViewModel.currentTeam.observe(viewLifecycleOwner) { team ->
             binding.tvTeamName.text = team
         }

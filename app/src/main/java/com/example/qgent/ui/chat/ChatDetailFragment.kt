@@ -255,21 +255,20 @@ class ChatDetailFragment : Fragment() {
     private fun sendTextMessage() {
         val text = binding.etInput.text.toString().trim()
         if (text.isEmpty()) return
-        // 契约 §7：消息体不再携带 mentions；仅客户端解析 @Agent 用于发送成功后弹「触发任务」弹窗
+        // v2.0.6 §1：mentions 随消息体提交（@用户通知 / @Agent 自动触发任务）
         val mentions = extractMentions(text)
         val agentMentioned = mentions.any { it.type == "AGENT" }
         val replyToId = quoteTarget?.id
         val replyToSummary = quoteTarget?.let { "${it.senderName}：${it.displayContent()}" }
         // B2/C2：引用 DIFF 卡发送 = 增量修改续作（服务端复用源 Workspace）
         val quotingDiff = quoteTarget?.type == MessageType.DIFF
-        // 引用消息（带 replyToId）按契约用 type=QUOTE（内容 text 为回复正文），否则 TEXT
+        // 引用消息（带 replyToId）用 type=QUOTE（v2.0.6 §1.4 结构），否则 TEXT
         val isQuote = replyToId != null
         val sendType = if (isQuote) "QUOTE" else "TEXT"
-        // v2.0.4：QUOTE 消息 content 需带引用信息（replyText + quotedText/quotedMessageId/quotedSenderName）
+        // v2.0.6 §1.4：QUOTE content 只含 quoted* 三字段，回复正文走顶层 replyText
         val content = if (isQuote) {
             MessageContentDto(
                 text = null,
-                replyText = text,
                 quotedText = quoteTarget?.diffTitle?.takeIf { it.isNotBlank() } ?: quoteTarget?.displayContent(),
                 quotedMessageId = replyToId,
                 quotedSenderName = quoteTarget?.senderName
@@ -303,7 +302,13 @@ class ChatDetailFragment : Fragment() {
                 // 串行发送：排队等待前一条完成，避免同群并发 POST 被后端拒绝（同时发多条必现）
                 sendMutex.withLock {
                     // Idempotency-Key 后端强制要求，防重复提交；每次发送都是全新消息，生成新 UUID
-                    chatRepo.sendMessage(projectId, groupId, sendType, content, replyToId = replyToId, idempotencyKey = UUID.randomUUID().toString())
+                    chatRepo.sendMessage(
+                        projectId, groupId, sendType, content,
+                        mentions = mentions,
+                        replyText = if (isQuote) text else null,
+                        replyToId = replyToId,
+                        idempotencyKey = UUID.randomUUID().toString()
+                    )
                         .onSuccess { dto ->
                             Log.d("SendMsg", "send success id=${dto.id} senderId=${dto.senderId} mentions=${dto.mentions} replyTo=${dto.replyToId}")
                             replaceLocalMessage(local.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
@@ -1070,14 +1075,14 @@ class ChatDetailFragment : Fragment() {
 
     private fun resendText(message: ChatMessage, projectId: String, groupId: String) {
         viewLifecycleOwner.lifecycleScope.launch {
-            // 契约 §7：消息体不再携带 mentions；仅客户端解析 @Agent 决定是否弹「触发任务」
-            val agentMentioned = extractMentions(message.content).any { it.type == "AGENT" }
+            // v2.0.6 §1：mentions 随消息体提交
+            val mentions = extractMentions(message.content)
+            val agentMentioned = mentions.any { it.type == "AGENT" }
             // 引用消息重发保持 type=QUOTE，并从 replyToSummary（"发送者：被引用文本"）还原引用信息
             val sendType = if (message.replyToId != null) "QUOTE" else "TEXT"
             val content = if (message.replyToId != null) {
                 MessageContentDto(
                     text = null,
-                    replyText = message.content,
                     quotedText = message.replyToSummary?.substringAfter("："),
                     quotedMessageId = message.replyToId,
                     quotedSenderName = message.replyToSummary?.substringBefore("：")?.takeIf { it.isNotBlank() }
@@ -1088,6 +1093,8 @@ class ChatDetailFragment : Fragment() {
             sendMutex.withLock {
                 chatRepo.sendMessage(
                     projectId, groupId, sendType, content,
+                    mentions = mentions,
+                    replyText = if (message.replyToId != null) message.content else null,
                     replyToId = message.replyToId,
                     idempotencyKey = UUID.randomUUID().toString()
                 )
@@ -1836,18 +1843,18 @@ class ChatDetailFragment : Fragment() {
         super.onResume()
         startPolling()
         startEventStream()
+        // 进入群聊即标记已读（v2.0.6 §1.2 后端游标推进），未读/@我 立即清零
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (groupId.isNotEmpty()) mainViewModel.markGroupRead(groupId)
     }
 
     override fun onPause() {
         super.onPause()
         stopPolling()
         stopEventStream()
-        // 退出详情页时把已看到的最新消息时间回传，避免回到列表页仍显示红点
+        // 退出详情页时标记已读（后端游标推进到当前已看到的最新消息）
         val groupId = arguments?.getString("groupId").orEmpty()
-        val lastSeen = messages.maxOfOrNull { it.timestamp }
-        if (groupId.isNotEmpty() && lastSeen != null) {
-            mainViewModel.markGroupRead(groupId, lastSeen)
-        }
+        if (groupId.isNotEmpty()) mainViewModel.markGroupRead(groupId)
     }
 
     /**

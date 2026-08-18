@@ -42,4 +42,7 @@ class FallbackAgentRepository(
 
     override suspend fun bindAgentSkills(projectId: String, agentId: String, skillIds: List<String>, idempotencyKey: String) =
         fb.call { bindAgentSkills(projectId, agentId, skillIds, idempotencyKey) }
+
+    override suspend fun getAgentSkillBindings(projectId: String, agentId: String) =
+        fb.call { getAgentSkillBindings(projectId, agentId) }
 }

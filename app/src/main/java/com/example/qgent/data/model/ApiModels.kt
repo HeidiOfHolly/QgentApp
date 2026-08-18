@@ -125,7 +125,33 @@ data class RefreshRequest(
 data class AuthUserDto(
     val id: String,
     val email: String,
-    @SerializedName("displayName") val displayName: String
+    @SerializedName("displayName") val displayName: String,
+    @SerializedName("avatarUrl") val avatarUrl: String? = null
+)
+
+// ── 头像上传（§7.0 /me/avatar）：credential 签发直传凭证 → OSS PUT → confirm 确认并返回公共读 URL ──
+
+/** 头像直传凭证请求：mediaType 必须为图片 MIME（image 类型），sizeBytes ≤ 5MB；OSS 未启用返回 501 AVATAR_STORAGE_NOT_CONFIGURED */
+data class AvatarCredentialRequest(
+    @SerializedName("mediaType") val mediaType: String,
+    @SerializedName("sizeBytes") val sizeBytes: Long
+)
+
+/** 头像直传凭证响应：uploadUrl 为预签名/代理直传地址，objectKey confirm 时原样回传 */
+data class AvatarCredentialResponse(
+    @SerializedName("uploadUrl") val uploadUrl: String?,
+    @SerializedName("objectKey") val objectKey: String?,
+    val headers: Map<String, String>? = null
+)
+
+/** 头像确认请求（POST /me/avatar/confirm）：objectKey 原样回传，校验对象属于当前用户且已真实上传 */
+data class AvatarConfirmRequest(
+    @SerializedName("objectKey") val objectKey: String
+)
+
+/** 头像确认响应：长期稳定、公共可读的头像 URL */
+data class AvatarConfirmResponse(
+    @SerializedName("avatarUrl") val avatarUrl: String?
 )
 
 // ── 业务 DTO ──
@@ -249,7 +275,18 @@ data class GroupDto(
     @SerializedName("memberCount") val memberCount: Int,
     @SerializedName("repositoryIds") val repositoryIds: List<String>?,
     @SerializedName("latestActivityAt") val latestActivityAt: String?,
-    @SerializedName("latestMessage") val latestMessage: GroupLatestMessageDto?
+    @SerializedName("latestMessage") val latestMessage: GroupLatestMessageDto?,
+    /** v2.0.6 §1.1：未读消息数（后端权威，前端直接用） */
+    @SerializedName("unreadCount") val unreadCount: Int? = 0,
+    /** v2.0.6 §1.1：未读「@我」消息数（后端权威；>0 显示「有人@你」角标） */
+    @SerializedName("mentionedUnread") val mentionedUnread: Int? = 0
+)
+
+/** v2.0.6 §1.2：标记群已读响应（POST .../groups/{groupId}/read） */
+data class GroupReadResponse(
+    @SerializedName("groupId") val groupId: String,
+    @SerializedName("lastReadSequenceNo") val lastReadSequenceNo: Long = 0,
+    @SerializedName("unreadCount") val unreadCount: Int = 0
 )
 
 /** 群列表摘要（文档 §7 群列表 DTO 补充）：{ senderName, text }；SYSTEM 消息 senderName 为空 */
@@ -291,6 +328,8 @@ data class GroupMessageDto(
     @SerializedName("senderType") val senderType: String? = null,
     val type: String,               // TEXT / CODE / IMAGE / FILE / SYSTEM / QUOTE / TASK_STATUS
     val content: MessageContentDto?,
+    /** v2.0.6 §1.4：QUOTE 消息回复正文可能回显在顶层（兼容 content.replyText） */
+    @SerializedName("replyText") val replyText: String? = null,
     val mentions: List<MentionDto>?,
     @SerializedName("replyToId") val replyToId: String?,
     @SerializedName("clientMessageId") val clientMessageId: String?,
@@ -388,6 +427,10 @@ data class UpdateGroupRequest(
 data class SendMessageRequest(
     val type: String,
     val content: MessageContentDto,
+    // v2.0.6 §1.4：QUOTE 消息的回复正文放顶层（content 只含 quoted* 三字段）
+    @SerializedName("replyText") val replyText: String? = null,
+    // v2.0.6 §1：mentions 恢复进请求体（type=USER/AGENT 数组，@Agent 自动触发任务、@用户通知）
+    val mentions: List<MentionDto>? = null,
     @SerializedName("replyToId") val replyToId: String? = null,
     @SerializedName("clientMessageId") val clientMessageId: String? = null
 )
@@ -414,8 +457,11 @@ data class AgentDto(
     val role: String,                   // ORCHESTRATOR / PLANNER / DEVELOPER / TESTER / REVIEWER / GENERAL
     val capabilities: List<String>?,
     val prompt: String?,                // 私有提示词，仅创建者可见
+    @SerializedName("description") val description: String? = null,
     val visibility: String,             // PRIVATE / TEAM_SHARED
     val status: String,                 // ACTIVE / ARCHIVED
+    /** v2.0.6 §5.1：系统预置 Agent=true（不可编辑），自定义=false */
+    @SerializedName("isDefault") val isDefault: Boolean? = null,
     @SerializedName("createdBy") val createdBy: String
 )
 
@@ -439,6 +485,21 @@ data class UpdateAgentRequest(
 /** 为 Agent 绑定当前项目 Skill（PUT /projects/{projectId}/agent-skill-bindings/{agentId}） */
 data class AgentSkillBindingsRequest(
     @SerializedName("skillIds") val skillIds: List<String>
+)
+
+/** Agent 在当前项目的 Skill 绑定集（GET /projects/{projectId}/agent-skill-bindings/{agentId}） */
+data class AgentSkillBindingsResponse(
+    @SerializedName("agentId") val agentId: String,
+    @SerializedName("skillIds") val skillIds: List<String>? = null,
+    val skills: List<AgentSkillSummaryDto>? = null
+)
+
+/** 绑定集内 Skill 摘要（{id, name, visibility, status}） */
+data class AgentSkillSummaryDto(
+    val id: String,
+    val name: String? = null,
+    val visibility: String? = null,
+    val status: String? = null
 )
 
 // ── GitHub 集成（§6）──

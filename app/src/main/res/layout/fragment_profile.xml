@@ -54,15 +54,18 @@
             android:orientation="vertical"
             android:padding="28dp">
 
-            <ImageView
+            <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/iv_avatar"
                 android:layout_width="88dp"
                 android:layout_height="88dp"
                 android:background="@drawable/bg_oval"
                 android:backgroundTint="@color/light_gray"
                 android:contentDescription="头像"
-                android:padding="20dp"
-                app:srcCompat="@drawable/ic_person" />
+                android:scaleType="centerCrop"
+                app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.App.Avatar"
+                app:srcCompat="@drawable/ic_avatar_default"
+                app:strokeColor="@color/white"
+                app:strokeWidth="2dp" />
 
             <TextView
                 android:id="@+id/tv_user_name"

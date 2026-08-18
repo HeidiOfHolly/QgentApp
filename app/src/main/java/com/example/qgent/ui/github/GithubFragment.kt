@@ -14,10 +14,12 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
+import com.bumptech.glide.Glide
 import com.example.qgent.MainActivity
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
+import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.model.TeamDto
 import com.example.qgent.databinding.DialogSelectTeamBinding
 import com.example.qgent.databinding.FragmentGithubBinding
@@ -62,6 +64,15 @@ class GithubFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.tvUserName.text = SessionStore.user()?.displayName ?: getString(R.string.user_name_placeholder)
+        // 用户头像：有 URL 用 Glide 加载（公共读地址），centerCrop 占满圆形画框；否则默认占位
+        SessionStore.user()?.avatarUrl?.takeIf { it.isNotBlank() }?.let {
+            Glide.with(binding.btnAvatar)
+                .load(RetrofitClient.resolveMediaUrl(it))
+                .centerCrop()
+                .placeholder(R.drawable.ic_avatar_default)
+                .error(R.drawable.ic_avatar_default)
+                .into(binding.btnAvatar)
+        }
 
         // 头像 → 打开个人中心抽屉（与群聊列表页一致）
         binding.btnAvatar.setOnClickListener {

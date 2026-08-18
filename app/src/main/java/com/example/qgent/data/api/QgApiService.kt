@@ -2,10 +2,15 @@ package com.example.qgent.data.api
 
 import com.example.qgent.data.model.AgentDto
 import com.example.qgent.data.model.AgentSkillBindingsRequest
+import com.example.qgent.data.model.AgentSkillBindingsResponse
 import com.example.qgent.data.model.AddProjectMemberRequest
 import com.example.qgent.data.model.ApiResponse
 import com.example.qgent.data.model.AttachmentDto
 import com.example.qgent.data.model.AttachmentConfirmDto
+import com.example.qgent.data.model.AvatarConfirmRequest
+import com.example.qgent.data.model.AvatarCredentialRequest
+import com.example.qgent.data.model.AvatarCredentialResponse
+import com.example.qgent.data.model.AvatarConfirmResponse
 import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.CreateAttachmentRequest
 import com.example.qgent.data.model.CreateAgentRequest
@@ -27,6 +32,7 @@ import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.InviteTeamMemberRequest
 import com.example.qgent.data.model.AuthSessionDto
 import com.example.qgent.data.model.GroupMessageDto
+import com.example.qgent.data.model.GroupReadResponse
 import com.example.qgent.data.model.LoginRequest
 import com.example.qgent.data.model.MemoryDto
 import com.example.qgent.data.model.NotificationDto
@@ -100,6 +106,20 @@ interface QgApiService {
 
     @GET("me")
     suspend fun getUserProfile(): Response<ApiResponse<UserProfileDto>>
+
+    /** 签发头像直传凭证（OSS 未启用时 501 AVATAR_STORAGE_NOT_CONFIGURED） */
+    @POST("me/avatar/credential")
+    suspend fun createAvatarCredential(
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: AvatarCredentialRequest
+    ): Response<ApiResponse<AvatarCredentialResponse>>
+
+    /** 确认头像上传并返回公共读长期 URL（OSS 未启用时 501 AVATAR_STORAGE_NOT_CONFIGURED） */
+    @POST("me/avatar/confirm")
+    suspend fun confirmAvatar(
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: AvatarConfirmRequest
+    ): Response<ApiResponse<AvatarConfirmResponse>>
 
     // ── 团队 ──
 
@@ -287,6 +307,22 @@ interface QgApiService {
         @Query("limit") limit: Int = 30
     ): Response<ApiResponse<List<GroupMessageDto>>>
 
+    /** v2.0.6 §1.3：按消息 ID 拉取单条群消息（通知直达被 @ 消息定位用） */
+    @GET("projects/{projectId}/groups/{groupId}/messages/{messageId}")
+    suspend fun getMessage(
+        @Path("projectId") projectId: String,
+        @Path("groupId") groupId: String,
+        @Path("messageId") messageId: String
+    ): Response<ApiResponse<GroupMessageDto>>
+
+    /** v2.0.6 §1.2：进群全读，已读游标推进到该群最新消息 sequence */
+    @POST("projects/{projectId}/groups/{groupId}/read")
+    suspend fun markGroupRead(
+        @Path("projectId") projectId: String,
+        @Path("groupId") groupId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<ApiResponse<GroupReadResponse>>
+
     @POST("projects/{projectId}/groups/{groupId}/messages")
     suspend fun sendMessage(
         @Path("projectId") projectId: String,
@@ -393,6 +429,29 @@ interface QgApiService {
         @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: AgentSkillBindingsRequest
     ): Response<ApiResponse<AgentDto>>
+
+    /** 读取 Agent 在当前项目的 Skill 绑定集（项目成员） */
+    @GET("projects/{projectId}/agent-skill-bindings/{agentId}")
+    suspend fun getAgentSkillBindings(
+        @Path("projectId") projectId: String,
+        @Path("agentId") agentId: String
+    ): Response<ApiResponse<AgentSkillBindingsResponse>>
+
+    /** v2.0.6 §5.2：签发 Agent 头像直传凭证（对象键 agents/{teamId}/{uuid}.{ext}） */
+    @POST("teams/{teamId}/agents/avatar/credential")
+    suspend fun createAgentAvatarCredential(
+        @Path("teamId") teamId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: AvatarCredentialRequest
+    ): Response<ApiResponse<AvatarCredentialResponse>>
+
+    /** v2.0.6 §5.2：确认 Agent 头像上传并返回公共读 URL */
+    @POST("teams/{teamId}/agents/avatar/confirm")
+    suspend fun confirmAgentAvatar(
+        @Path("teamId") teamId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: AvatarConfirmRequest
+    ): Response<ApiResponse<AvatarConfirmResponse>>
 
     // ── GitHub 集成（§6）──
 

@@ -14,10 +14,12 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.navOptions
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.bumptech.glide.Glide
 import com.example.qgent.MainActivity
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
+import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.databinding.FragmentPersonalCenterBinding
 import com.example.qgent.ui.team.TeamAdapter
 import com.example.qgent.viewmodel.MainViewModel
@@ -68,6 +70,15 @@ class PersonalCenterFragment : Fragment() {
         binding.rvProjects.adapter = projectAdapter
 
         binding.tvUserName.text = SessionStore.user()?.displayName ?: getString(R.string.user_name_placeholder)
+        // 用户头像：有 URL 用 Glide 加载（公共读地址），centerCrop 占满圆形画框；否则默认占位
+        SessionStore.user()?.avatarUrl?.takeIf { it.isNotBlank() }?.let {
+            Glide.with(binding.btnAvatar)
+                .load(RetrofitClient.resolveMediaUrl(it))
+                .centerCrop()
+                .placeholder(R.drawable.ic_avatar_default)
+                .error(R.drawable.ic_avatar_default)
+                .into(binding.btnAvatar)
+        }
 
         // 团队列表加载完成后更新 adapter（复用实例，保持选中态，不重建）
         mainViewModel.teams.observe(viewLifecycleOwner) { teams ->

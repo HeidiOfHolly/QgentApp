@@ -82,11 +82,11 @@ object MockDataSource {
     // ── Agent（系统内置“新手大礼包”） ──
 
     val mockAgents: List<AgentDto> = listOf(
-        AgentDto("1", "AgentOrchestrator", null, "ORCHESTRATOR", listOf("任务调度", "工作流编排", "质量门禁"), null, "PRIVATE", "ACTIVE", "system"),
-        AgentDto("2", "Planner", null, "PLANNER", listOf("需求分析", "任务拆分", "计划编排"), null, "PRIVATE", "ACTIVE", "system"),
-        AgentDto("3", "Developer", null, "DEVELOPER", listOf("java", "spring-boot", "api", "react"), null, "PRIVATE", "ACTIVE", "system"),
-        AgentDto("4", "Tester", null, "TESTER", listOf("单元测试", "集成测试", "回归测试"), null, "PRIVATE", "ACTIVE", "system"),
-        AgentDto("5", "Reviewer", null, "REVIEWER", listOf("代码审查", "规范检查", "安全扫描"), null, "PRIVATE", "ACTIVE", "system")
+        AgentDto("1", "AgentOrchestrator", null, "ORCHESTRATOR", listOf("任务调度", "工作流编排", "质量门禁"), null, null, "PRIVATE", "ACTIVE", null, "system"),
+        AgentDto("2", "Planner", null, "PLANNER", listOf("需求分析", "任务拆分", "计划编排"), null, null, "PRIVATE", "ACTIVE", null, "system"),
+        AgentDto("3", "Developer", null, "DEVELOPER", listOf("java", "spring-boot", "api", "react"), null, null, "PRIVATE", "ACTIVE", null, "system"),
+        AgentDto("4", "Tester", null, "TESTER", listOf("单元测试", "集成测试", "回归测试"), null, null, "PRIVATE", "ACTIVE", null, "system"),
+        AgentDto("5", "Reviewer", null, "REVIEWER", listOf("代码审查", "规范检查", "安全扫描"), null, null, "PRIVATE", "ACTIVE", null, "system")
     )
 
     // ── GitHub 集成（Installation / 授权仓库 / 项目绑定） ──
