@@ -169,6 +169,8 @@ class PersonalCenterFragment : Fragment() {
     /** 收起个人中心抽屉，并在主内容区打开 GitHub 页 */
     private fun openGithub() {
         (activity as? MainActivity)?.closeDrawer()
+        // 每次从抽屉点击都强制刷新团队列表，即使已停留在 GitHub 页
+        mainViewModel.refreshTeams()
         // 已在 GitHub 页时避免重复压栈（团队无项目时 onTeamClick 回调会再次进入）
         if (onGithubPage) return
         navController.navigate(R.id.githubFragment)

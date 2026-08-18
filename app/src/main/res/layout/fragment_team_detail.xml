@@ -273,7 +273,7 @@
                 android:layout_marginHorizontal="12dp"
                 android:layout_marginTop="8dp"
                 android:minHeight="44dp"
-                android:text="+ 新建仓库"
+                android:text="管理仓库"
                 android:textColor="@color/teal"
                 android:textSize="15sp"
                 app:cornerRadius="12dp"

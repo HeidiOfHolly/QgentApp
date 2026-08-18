@@ -41,6 +41,73 @@
             tools:text="邀请成员" />
     </LinearLayout>
 
+    <!-- 自动新建仓库（仅 repos 模式显示）：可添加多个仓库名，与勾选已有仓库二选一 -->
+    <LinearLayout
+        android:id="@+id/autoCreateSection"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/auto_create_repo_title"
+            android:textColor="@color/charcoal"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/auto_create_repo_subtitle"
+            android:textColor="@color/gray"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/newRepoInputLayout"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="@string/new_repo_name_hint"
+                app:boxStrokeWidthFocused="2dp">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etNewRepoName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:imeOptions="actionDone"
+                    android:inputType="text"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/bnAddRepo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:minHeight="0dp"
+                android:text="@string/auto_create_repo_add"
+                app:cornerRadius="8dp" />
+        </LinearLayout>
+
+        <!-- 已添加的自动建仓仓库名列表（动态填充） -->
+        <LinearLayout
+            android:id="@+id/newRepoList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/tvEmpty"
         android:layout_width="match_parent"

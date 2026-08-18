@@ -74,6 +74,11 @@ class GithubFragment : Fragment() {
         // 右上角加号：选择我创建的团队后进入新建项目页
         binding.tvAddTeam.setOnClickListener { showSelectTeamDialog() }
 
+        // 团队列表刷新期间显示加载进度条
+        mainViewModel.teamsLoading.observe(viewLifecycleOwner) { loading ->
+            binding.pbLoading.isVisible = loading
+        }
+
         mainViewModel.teamDtos.observe(viewLifecycleOwner) { teams ->
             // GitHub 授权是团队级能力，仅展示我创建的团队（TEAM_OWNER）
             currentTeams = teams.filter { it.role == "TEAM_OWNER" }
@@ -87,6 +92,8 @@ class GithubFragment : Fragment() {
             if (state.uninstallDone) {
                 Toast.makeText(requireContext(), R.string.github_uninstall_success, Toast.LENGTH_SHORT).show()
                 githubViewModel.consumeUninstallDone()
+                // 解除安装后团队 GitHub 授权状态可能变化，刷新团队列表
+                mainViewModel.refreshTeams()
             }
             state.error?.let {
                 Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
@@ -185,6 +192,8 @@ class GithubFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        // 每次进入 GitHub 页都刷新团队列表，同步最新团队/授权状态
+        mainViewModel.refreshTeams()
         githubViewModel.loadRepositoryCounts(currentTeams.map { it.id })
         mainViewModel.refreshUnreadInvitations()
     }

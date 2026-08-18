@@ -1,9 +1,13 @@
 package com.example.qgent.ui.personal
 
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
@@ -37,6 +41,10 @@ class ProjectSelectionFragment : Fragment() {
     private var memberItems = emptyList<TeamMemberDto>()
     private var repoItems = emptyList<GitHubRepositoryDto>()
 
+    // 自动建仓仓库名列表（与勾选已有仓库二选一，清单一）
+    private val newRepoNames = mutableListOf<String>()
+    private val newRepoNameRegex = Regex("^[a-z0-9._-]+$")
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -66,6 +74,14 @@ class ProjectSelectionFragment : Fragment() {
             selectedIds.addAll(if (isMembers) draft.selectedMembers.map { it.userId } else draft.selectedRepos.map { it.id })
         }
 
+        // 自动建仓区块仅绑定仓库模式显示；从草稿恢复已添加的仓库名
+        binding.autoCreateSection.isVisible = !isMembers
+        if (!isMembers) {
+            binding.bnAddRepo.setOnClickListener { addNewRepoName() }
+            draft?.let { newRepoNames.addAll(it.newRepoNames) }
+            renderNewRepoList()
+        }
+
         if (isMembers) {
             newProjectViewModel.members.observe(viewLifecycleOwner) { list ->
                 memberItems = list
@@ -88,8 +104,77 @@ class ProjectSelectionFragment : Fragment() {
 
     private fun onToggle(id: String, checked: Boolean) {
         if (checked) selectedIds.add(id) else selectedIds.remove(id)
+        // 二选一：勾选已有仓库时清空自动建仓仓库名
+        if (checked && newRepoNames.isNotEmpty()) {
+            newRepoNames.clear()
+            renderNewRepoList()
+        }
         refresh()
     }
+
+    /** 添加一个自动建仓仓库名：校验命名约束；添加后清空已选已有仓库（二选一） */
+    private fun addNewRepoName() {
+        val name = binding.etNewRepoName.text?.toString()?.trim().orEmpty()
+        when {
+            name.isEmpty() -> {
+                binding.newRepoInputLayout.error = getString(R.string.new_repo_name_required)
+                return
+            }
+            !newRepoNameRegex.matches(name) -> {
+                binding.newRepoInputLayout.error = getString(R.string.new_repo_name_invalid)
+                return
+            }
+            name in newRepoNames -> {
+                binding.newRepoInputLayout.error = getString(R.string.new_repo_duplicate)
+                return
+            }
+        }
+        binding.newRepoInputLayout.error = null
+        binding.etNewRepoName.text?.clear()
+        newRepoNames.add(name)
+        if (selectedIds.isNotEmpty()) {
+            selectedIds.clear()
+            refresh()
+        }
+        renderNewRepoList()
+    }
+
+    /** 渲染已添加的自动建仓仓库名列表（每行带删除按钮） */
+    private fun renderNewRepoList() {
+        binding.newRepoList.removeAllViews()
+        newRepoNames.forEach { name ->
+            val row = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = context.getDrawable(R.drawable.bg_card)
+            }
+            row.addView(TextView(requireContext()).apply {
+                text = name
+                textSize = 16f
+                setTextColor(context.getColor(R.color.charcoal))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            row.addView(ImageView(requireContext()).apply {
+                setImageResource(R.drawable.ic_close)
+                setColorFilter(context.getColor(R.color.gray))
+                contentDescription = context.getString(R.string.github_repo_delete)
+                layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
+                setOnClickListener {
+                    newRepoNames.remove(name)
+                    renderNewRepoList()
+                }
+            })
+            binding.newRepoList.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(6) }
+            )
+        }
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun refresh() {
         val items = if (mode == MODE_MEMBERS) {
@@ -107,6 +192,7 @@ class ProjectSelectionFragment : Fragment() {
             newProjectViewModel.setSelectedMembers(memberItems.filter { it.userId in selectedIds })
         } else {
             newProjectViewModel.setSelectedRepos(repoItems.filter { it.id in selectedIds })
+            newProjectViewModel.setNewRepoNames(newRepoNames.toList())
         }
         findNavController().navigateUp()
     }

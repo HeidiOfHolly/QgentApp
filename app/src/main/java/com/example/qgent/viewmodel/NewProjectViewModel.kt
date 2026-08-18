@@ -24,7 +24,9 @@ class NewProjectViewModel(
         val name: String = "",
         val description: String = "",
         val selectedMembers: List<TeamMemberDto> = emptyList(),
-        val selectedRepos: List<GitHubRepositoryDto> = emptyList()
+        val selectedRepos: List<GitHubRepositoryDto> = emptyList(),
+        // 自动新建的仓库名列表（与 selectedRepos 二选一，清单一）
+        val newRepoNames: List<String> = emptyList()
     )
 
     private val _draft = MutableStateFlow(Draft())
@@ -67,6 +69,10 @@ class NewProjectViewModel(
 
     fun setSelectedRepos(list: List<GitHubRepositoryDto>) {
         _draft.value = _draft.value.copy(selectedRepos = list)
+    }
+
+    fun setNewRepoNames(list: List<String>) {
+        _draft.value = _draft.value.copy(newRepoNames = list)
     }
 
     private fun loadMembers() {

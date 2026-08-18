@@ -62,14 +62,44 @@
             android:layout_marginEnd="10dp"
             app:tint="@color/teal" />
     </LinearLayout>
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_marginTop="10dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+        <ImageView
+            android:src="@drawable/ic_github"
+            app:tint="@color/charcoal"
+            android:layout_marginStart="20dp"
+            android:layout_gravity="center_vertical"
+            android:layout_width="35dp"
+            android:layout_height="35dp"/>
+        <TextView
+            android:text="Github授权中心"
+            android:paddingLeft="10dp"
+            android:textSize="30sp"
+            android:textStyle="bold"
+            android:textColor="@color/charcoal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"/>
+    </LinearLayout>
     <TextView
-        android:text="我的团队"
-        android:paddingTop="10dp"
+        android:text="@string/github_page_guide"
         android:paddingLeft="15dp"
-        android:textSize="30sp"
-        android:textStyle="bold"
-        android:layout_width="wrap_content"
+        android:paddingTop="5dp"
+        android:paddingBottom="3dp"
+        android:paddingRight="15dp"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"/>
+    <ProgressBar
+        android:id="@+id/pbLoading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="24dp"
+        android:visibility="gone" />
     <TextView
         android:id="@+id/tvEmpty"
         android:layout_width="match_parent"

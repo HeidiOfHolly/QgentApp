@@ -6,7 +6,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.os.bundleOf
-import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -14,7 +13,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.navigation.navOptions
 import com.example.qgent.QgentApp
 import com.example.qgent.R
-import com.example.qgent.data.model.NewRepositoryRequest
 import com.example.qgent.databinding.FragmentNewProjectBinding
 import com.example.qgent.viewmodel.CreateProjectState
 import com.example.qgent.viewmodel.MainViewModel
@@ -69,22 +67,17 @@ class NewProjectFragment : Fragment() {
             findNavController().navigate(R.id.projectSelectionFragment, bundleOf(ProjectSelectionFragment.ARG_MODE to ProjectSelectionFragment.MODE_REPOS))
         }
 
-        // 自动建仓开关：打开时显示仓库名输入，并清空已选仓库（二选一，清单一）
-        binding.swNewRepo.setOnCheckedChangeListener { _, checked ->
-            binding.newRepoLayout.isVisible = checked
-            if (checked) {
-                newProjectViewModel.setSelectedRepos(emptyList())
-                binding.tvBindRepos.text = getString(R.string.bind_repos)
-            }
-        }
-
         binding.bnCreate.setOnClickListener { createProject() }
 
         newProjectViewModel.draft.observe(viewLifecycleOwner) { d ->
             binding.tvInviteMembers.text = if (d.selectedMembers.isEmpty()) getString(R.string.invite_members)
             else getString(R.string.selected_members_count, d.selectedMembers.size)
-            binding.tvBindRepos.text = if (d.selectedRepos.isEmpty()) getString(R.string.bind_repos)
-            else getString(R.string.selected_repos_count, d.selectedRepos.size)
+            // 自动建仓 / 绑定已有仓库二选一（清单一）
+            binding.tvBindRepos.text = when {
+                d.newRepoNames.isNotEmpty() -> getString(R.string.selected_new_repos_count, d.newRepoNames.size)
+                d.selectedRepos.isNotEmpty() -> getString(R.string.selected_repos_count, d.selectedRepos.size)
+                else -> getString(R.string.bind_repos)
+            }
         }
 
         mainViewModel.createProjectState.observe(viewLifecycleOwner) { state ->
@@ -115,28 +108,13 @@ class NewProjectFragment : Fragment() {
         val rawDescription = binding.etDescription.text?.toString()?.trim().orEmpty()
         val description = if (rawDescription.isEmpty()) null else rawDescription
 
-        // 自动建仓 vs 绑定已有仓库二选一（清单一）
-        if (binding.swNewRepo.isChecked) {
-            val repoName = binding.etNewRepoName.text?.toString()?.trim().orEmpty()
-            if (repoName.isEmpty()) {
-                binding.newRepoLayout.error = getString(R.string.new_repo_name_required)
-                return
-            }
-            if (!Regex("^[a-z0-9._-]+$").matches(repoName)) {
-                binding.newRepoLayout.error = getString(R.string.new_repo_name_invalid)
-                return
-            }
-            mainViewModel.createProject(
+        // 自动建仓 vs 绑定已有仓库二选一（清单一）：自动建仓支持多个仓库名，逐次创建项目
+        if (draft.newRepoNames.isNotEmpty()) {
+            mainViewModel.createProjectAutoRepos(
                 name = name,
                 description = description,
                 memberIds = draft.selectedMembers.map { it.userId },
-                repos = emptyList(),
-                newRepository = NewRepositoryRequest(
-                    name = repoName,
-                    description = description,
-                    isPrivate = true,
-                    displayName = name
-                )
+                newRepoNames = draft.newRepoNames
             )
         } else {
             mainViewModel.createProject(

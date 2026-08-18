@@ -69,6 +69,11 @@
     <string name="new_repo_name_hint">仓库名（小写字母、数字、-、_、.）</string>
     <string name="new_repo_name_required">请输入仓库名</string>
     <string name="new_repo_name_invalid">仓库名仅支持小写字母、数字、-、_、.</string>
+    <string name="new_repo_duplicate">该仓库名已添加</string>
+    <string name="auto_create_repo_title">自动新建仓库</string>
+    <string name="auto_create_repo_subtitle">自动创建多个 GitHub 仓库并与项目绑定（与绑定已有仓库二选一）</string>
+    <string name="auto_create_repo_add">添加</string>
+    <string name="selected_new_repos_count">自动新建 %1$d 个仓库</string>
     <string name="create_memory_draft">生成 Memory 草稿</string>
     <string name="multi_select_count">已选 %1$d 条</string>
     <string name="memory_draft_created">Memory 草稿已提交审核</string>
@@ -161,6 +166,7 @@
     <string name="github_authorize_desc">授权 Qgents GitHub App 后，即可将团队代码仓库与项目绑定，用于分支群聊、任务与合并工作流。授权为团队级操作，需团队管理员完成。</string>
     <string name="github_authorize_action">前往 GitHub 授权</string>
     <string name="github_authorize_hint">授权后，GitHub 仓库将显示在可绑定列表中</string>
+    <string name="github_page_guide">授权团队 GitHub App，即可将代码仓库与项目绑定</string>
     <string name="github_title">GitHub 仓库</string>
     <string name="github_enter_no_project">当前团队尚未创建项目</string>
     <string name="github_repo_count">%1$d 个仓库</string>

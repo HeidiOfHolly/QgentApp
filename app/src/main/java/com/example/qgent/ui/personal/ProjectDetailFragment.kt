@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
+import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.model.ProjectMemberDto
@@ -281,7 +282,13 @@ class ProjectDetailFragment : Fragment() {
                             loadRepositories(projectId)
                         }
                         .onFailure { e ->
-                            Toast.makeText(requireContext(), "解绑失败：${e.message}", Toast.LENGTH_LONG).show()
+                            // 软解绑：仓库正被进行中的任务使用，无法解绑（后端接入活动占用校验后生效）
+                            val msg = if (e is ApiException && e.code == "PROJECT_REPOSITORY_IN_USE") {
+                                "仓库正被进行中的任务使用，无法解绑"
+                            } else {
+                                "解绑失败：${e.message}"
+                            }
+                            Toast.makeText(requireContext(), msg, Toast.LENGTH_LONG).show()
                         }
                 }
             }

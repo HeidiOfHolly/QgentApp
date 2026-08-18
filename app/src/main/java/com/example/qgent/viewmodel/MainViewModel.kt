@@ -6,6 +6,7 @@ import androidx.lifecycle.asLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.qgent.data.SessionStore
+import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.model.GroupDto
@@ -54,6 +55,11 @@ class MainViewModel(
 
     private val _teams = MutableStateFlow<List<String>>(emptyList())
     val teams: LiveData<List<String>> = _teams.asLiveData()
+
+    // ── 团队列表加载中标记：刷新团队期间为 true，供界面显示 ProgressBar ──
+
+    private val _teamsLoading = MutableStateFlow(false)
+    val teamsLoading: LiveData<Boolean> = _teamsLoading.asLiveData()
 
     // ── 团队详情列表（含 role，用于区分“我创建的 / 我加入的”） ──
 
@@ -248,6 +254,7 @@ class MainViewModel(
     // ── 数据加载（Repository 已内置 mock 回退） ──
 
     private fun loadTeams() {
+        _teamsLoading.value = true
         viewModelScope.launch {
             userRepo.getTeams()
                 .onSuccess { dtos ->
@@ -261,8 +268,12 @@ class MainViewModel(
                         routingInitPending = true
                         dtos.firstOrNull()?.name?.let { setCurrentTeam(it) }
                     }
+                    _teamsLoading.value = false
                 }
-                .onFailure { _initialDataLoaded.value = true }
+                .onFailure {
+                    _initialDataLoaded.value = true
+                    _teamsLoading.value = false
+                }
         }
     }
 
@@ -435,28 +446,89 @@ class MainViewModel(
                             BindProjectRepositoryRequest(repo.installationId, repo.id, repo.fullName)
                         )
                     }
-                    loadProjects(teamName) {
-                        _currentProject.value = name
-                        val projectId = currentProjectId()
-                        if (projectId == null) {
-                            _createProjectState.value = CreateProjectState.Success(name, "", name)
-                        } else {
-                            viewModelScope.launch {
-                                val dtos = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
-                                _groups.value = toChatGroups(dtos)
-                                val main = dtos.firstOrNull { it.type == "PROJECT_MAIN" }
-                                _createProjectState.value = CreateProjectState.Success(
-                                    projectName = name,
-                                    groupId = main?.id.orEmpty(),
-                                    groupName = main?.title ?: name
-                                )
-                            }
-                        }
-                    }
+                    finishCreateProject(teamName, name)
                 }
                 .onFailure { e ->
-                    _createProjectState.value = CreateProjectState.Error(e.message ?: "创建项目失败")
+                    _createProjectState.value = CreateProjectState.Error(createProjectErrorMessage(e))
                 }
+        }
+    }
+
+    /**
+     * 自动建仓创建项目：后端一次创建仅支持一个 newRepository（§22.5，无批量接口），
+     * 故多个仓库名逐次调用创建项目接口（每次新建一个项目并自动建仓绑定）。
+     * 单个失败仅记录不中断其余仓库；全部结束后以最后一个创建的项目为成功结果，
+     * 只发一次 Success 避免界面重复跳转。memberIds 添加到每个创建的项目。
+     */
+    fun createProjectAutoRepos(
+        name: String,
+        description: String?,
+        memberIds: List<String>,
+        newRepoNames: List<String>
+    ) {
+        val teamName = _currentTeam.value
+        val teamId = teamNameToId[teamName] ?: run {
+            _createProjectState.value = CreateProjectState.Error("请先选择团队")
+            return
+        }
+        if (_createProjectState.value == CreateProjectState.Loading) return
+        _createProjectState.value = CreateProjectState.Loading
+        viewModelScope.launch {
+            var last: ProjectDto? = null
+            var lastError: Throwable? = null
+            newRepoNames.forEach { repoName ->
+                userRepo.createProject(
+                    teamId,
+                    name,
+                    description,
+                    NewRepositoryRequest(name = repoName, description = description, isPrivate = true, displayName = name),
+                    UUID.randomUUID().toString()
+                ).fold(
+                    onSuccess = { project ->
+                        last = project
+                        memberIds.forEach { userId ->
+                            userRepo.addProjectMember(project.id, userId, UUID.randomUUID().toString())
+                        }
+                    },
+                    onFailure = { e -> lastError = e }
+                )
+            }
+            val project = last ?: run {
+                _createProjectState.value = CreateProjectState.Error(createProjectErrorMessage(lastError))
+                return@launch
+            }
+            finishCreateProject(teamName, name)
+        }
+    }
+
+    /** 建仓错误文案：冲突/缺安装等按错误码给专属提示，其余回退通用文案 */
+    private fun createProjectErrorMessage(e: Throwable?): String = when {
+        e is ApiException && e.code == "GITHUB_REPOSITORY_CREATE_CONFLICT" ->
+            "仓库名已存在或不合规，请修改仓库名后重试"
+        e is ApiException && e.code == "GITHUB_INSTALLATION_REQUIRED" ->
+            "团队有多个 GitHub 安装，自动建仓需指定安装"
+        else -> e?.message ?: "创建项目失败"
+    }
+
+    /** 创建成功收尾：刷新项目列表、选中新项目并拉取群聊（总群由后端自动生成） */
+    private fun finishCreateProject(teamName: String, name: String) {
+        loadProjects(teamName) {
+            _currentProject.value = name
+            val projectId = currentProjectId()
+            if (projectId == null) {
+                _createProjectState.value = CreateProjectState.Success(name, "", name)
+            } else {
+                viewModelScope.launch {
+                    val dtos = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
+                    _groups.value = toChatGroups(dtos)
+                    val main = dtos.firstOrNull { it.type == "PROJECT_MAIN" }
+                    _createProjectState.value = CreateProjectState.Success(
+                        projectName = name,
+                        groupId = main?.id.orEmpty(),
+                        groupName = main?.title ?: name
+                    )
+                }
+            }
         }
     }
 }
