@@ -2,6 +2,7 @@ package com.example.qgent.data.local
 
 import com.example.qgent.model.ChatMessage
 import com.example.qgent.model.MessageType
+import com.example.qgent.model.TaskStepSnapshot
 
 class MessageCache(private val dao: MessageDao) {
 
@@ -24,7 +25,24 @@ class MessageCache(private val dao: MessageDao) {
         fileSize = fileSize,
         sequence = sequence,
         replyToId = replyToId,
-        senderType = senderType
+        replyToSummary = replyToSummary,
+        senderType = senderType,
+        taskId = taskId,
+        taskStatus = taskStatus,
+        taskNode = taskNode,
+        taskPhase = taskPhase,
+        taskDeliveryMode = taskDeliveryMode,
+        taskPlanSummary = taskPlanSummary,
+        taskPlanSteps = runCatching {
+            taskPlanStepsJson?.let { gson.fromJson(it, Array<TaskStepSnapshot>::class.java)?.toList() }
+        }.getOrNull(),
+        diffId = diffId,
+        diffTitle = diffTitle,
+        diffAdditions = diffAdditions,
+        diffDeletions = diffDeletions,
+        reviewBatchId = reviewBatchId,
+        reviewStatus = reviewStatus,
+        deliveryStatus = deliveryStatus
     )
 
     private fun ChatMessage.toEntity(groupId: String): MessageEntity = MessageEntity(
@@ -39,6 +57,25 @@ class MessageCache(private val dao: MessageDao) {
         fileSize = fileSize,
         sequence = sequence,
         replyToId = replyToId,
-        senderType = senderType
+        replyToSummary = replyToSummary,
+        senderType = senderType,
+        taskId = taskId,
+        taskStatus = taskStatus,
+        taskNode = taskNode,
+        taskPhase = taskPhase,
+        taskDeliveryMode = taskDeliveryMode,
+        taskPlanSummary = taskPlanSummary,
+        taskPlanStepsJson = taskPlanSteps?.let { gson.toJson(it) },
+        diffId = diffId,
+        diffTitle = diffTitle,
+        diffAdditions = diffAdditions,
+        diffDeletions = diffDeletions,
+        reviewBatchId = reviewBatchId,
+        reviewStatus = reviewStatus,
+        deliveryStatus = deliveryStatus
     )
+
+    companion object {
+        private val gson = com.google.gson.Gson()
+    }
 }
