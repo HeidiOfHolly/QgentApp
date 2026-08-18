@@ -177,14 +177,34 @@ class ChatMessageAdapter(
             val isAgent = message.senderType == "AGENT"
             binding.rowContainer.gravity = if (mine) Gravity.END else Gravity.START
             binding.rowInner.gravity = if (mine) Gravity.END else Gravity.START
-            binding.ivAvatar.isVisible = !mine
+            // 头像：他人显示在气泡左侧，自己显示在气泡右侧（运行时移动子 View；注意回收时恢复位置）
+            if (mine) {
+                binding.rowContainer.removeView(binding.ivAvatar)
+                binding.rowContainer.addView(binding.ivAvatar)
+            } else if (binding.rowContainer.indexOfChild(binding.ivAvatar) != 0) {
+                binding.rowContainer.removeView(binding.ivAvatar)
+                binding.rowContainer.addView(binding.ivAvatar, 0)
+            }
+            binding.ivAvatar.isVisible = true
             binding.tvSenderName.isVisible = !mine
             binding.tvSenderName.text = message.senderName
-            // Agent 消息：头像用 Agent 图标 + 名字旁显示 Agent 标签
-            if (!mine && isAgent) {
-                binding.ivAvatar.setImageResource(R.drawable.ic_nav_agent)
-            } else {
-                binding.ivAvatar.setImageResource(R.drawable.ic_avatar_default)
+            // 头像内容：自己的消息用当前用户头像；Agent 用 Agent 图标；他人默认占位
+            when {
+                mine -> {
+                    val avatarUrl = SessionStore.user()?.avatarUrl
+                    if (avatarUrl.isNullOrBlank()) {
+                        binding.ivAvatar.setImageResource(R.drawable.ic_avatar_default)
+                    } else {
+                        Glide.with(binding.ivAvatar)
+                            .load(RetrofitClient.resolveMediaUrl(avatarUrl))
+                            .centerCrop()
+                            .placeholder(R.drawable.ic_avatar_default)
+                            .error(R.drawable.ic_avatar_default)
+                            .into(binding.ivAvatar)
+                    }
+                }
+                isAgent -> binding.ivAvatar.setImageResource(R.drawable.ic_nav_agent)
+                else -> binding.ivAvatar.setImageResource(R.drawable.ic_avatar_default)
             }
             binding.tvAgentTag.isVisible = !mine && isAgent
 

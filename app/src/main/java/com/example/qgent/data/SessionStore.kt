@@ -17,6 +17,7 @@ object SessionStore {
     private const val KEY_USER_ID = "user_id"
     private const val KEY_USER_EMAIL = "user_email"
     private const val KEY_USER_DISPLAY_NAME = "user_display_name"
+    private const val KEY_USER_AVATAR = "user_avatar"
     private const val KEY_REMEMBERED_EMAIL = "remembered_email"
 
     private var prefs: SharedPreferences? = null
@@ -36,8 +37,14 @@ object SessionStore {
             .putString(KEY_USER_ID, session.user.id)
             .putString(KEY_USER_EMAIL, session.user.email)
             .putString(KEY_USER_DISPLAY_NAME, session.user.displayName)
+            .putString(KEY_USER_AVATAR, session.user.avatarUrl)
             .apply()
         SessionExpiryNotifier.reset()
+    }
+
+    /** 头像上传成功后更新本地头像地址 */
+    fun updateAvatar(avatarUrl: String?) {
+        requirePrefs().edit().putString(KEY_USER_AVATAR, avatarUrl).apply()
     }
 
     fun clear() {
@@ -58,7 +65,8 @@ object SessionStore {
         val id = requirePrefs().getString(KEY_USER_ID, null) ?: return null
         val email = requirePrefs().getString(KEY_USER_EMAIL, "") ?: ""
         val displayName = requirePrefs().getString(KEY_USER_DISPLAY_NAME, "") ?: ""
-        return AuthUserDto(id, email, displayName)
+        val avatarUrl = requirePrefs().getString(KEY_USER_AVATAR, null)
+        return AuthUserDto(id, email, displayName, avatarUrl)
     }
 
     fun isLoggedIn(): Boolean = !accessToken().isNullOrEmpty()

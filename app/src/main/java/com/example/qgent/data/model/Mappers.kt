@@ -18,11 +18,11 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-/** AgentDto → UI Agent。API 无 description 字段，用能力标签拼接兜底描述。 */
+/** AgentDto → UI Agent。description 后端返回（v2.0.4 起），缺失时用能力标签拼接兜底。 */
 fun AgentDto.toAgent(): Agent = Agent(
     id = id,
     name = name,
-    description = "",
+    description = description?.takeIf { it.isNotBlank() } ?: capabilities?.joinToString(", ").orEmpty(),
     role = runCatching { AgentRole.valueOf(role) }.getOrDefault(AgentRole.GENERAL),
     capabilities = capabilities ?: emptyList(),
     status = if (status == "ARCHIVED") AgentStatus.ARCHIVED else AgentStatus.ACTIVE,
@@ -46,8 +46,8 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
     val displayContent = when {
         parsedType == MessageType.IMAGE || parsedType == MessageType.FILE -> content?.url ?: ""
         parsedType == MessageType.TASK_STATUS -> taskStatusSummary()
-        // v2.0.4：QUOTE 消息正文 = content.replyText（被引用内容由引用条展示）
-        parsedType == MessageType.QUOTE -> content?.replyText ?: content?.text ?: ""
+        // v2.0.6 §1.4：QUOTE 回复正文 = content.replyText（旧版）或顶层 replyText（新版）或 content.text（更旧）
+        parsedType == MessageType.QUOTE -> content?.replyText ?: replyText ?: content?.text ?: ""
         else -> content?.text ?: ""
     }
     // v2.0.4：QUOTE 消息的引用摘要由后端直接给出（quotedSenderName + quotedText），

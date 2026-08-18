@@ -59,6 +59,11 @@ class AgentFragment : Fragment() {
             agentAdapter.submitList(agents)
         }
 
+        // 「+ 新建」→ 新建 Agent 表单（任何人都可创建自己的 PRIVATE Agent）
+        binding.tvAddAgent.setOnClickListener {
+            findNavController().navigate(R.id.action_agent_to_agentEdit)
+        }
+
         // ── Memory 预览（真实接口，取已共享前 3 条） ──
         binding.rvMemoryPreview.layoutManager = LinearLayoutManager(requireContext())
         binding.tvMemoryMore.setOnClickListener {

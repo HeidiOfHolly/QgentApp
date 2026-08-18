@@ -6,6 +6,8 @@ import com.example.qgent.data.model.CreateGroupRequest
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.GroupMessageDto
+import com.example.qgent.data.model.GroupReadResponse
+import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 import com.example.qgent.data.model.SendMessageRequest
 import com.example.qgent.data.model.UpdateGroupRequest
@@ -75,18 +77,30 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         service.getMessages(projectId, groupId, cursor, limit).toDataOrThrow()
     }
 
+    override suspend fun getMessage(projectId: String, groupId: String, messageId: String): Result<GroupMessageDto> = apiCall {
+        service.getMessage(projectId, groupId, messageId).toDataOrThrow()
+    }
+
+    override suspend fun markGroupRead(projectId: String, groupId: String, idempotencyKey: String): Result<GroupReadResponse> = apiCall {
+        service.markGroupRead(projectId, groupId, idempotencyKey).toDataOrThrow()
+    }
+
     override suspend fun sendMessage(
         projectId: String,
         groupId: String,
         type: String,
         content: MessageContentDto,
         clientMessageId: String?,
+        mentions: List<MentionDto>?,
+        replyText: String?,
         replyToId: String?,
         idempotencyKey: String
     ): Result<GroupMessageDto> = apiCall {
         val body = SendMessageRequest(
             type = type,
             content = content,
+            replyText = replyText,
+            mentions = mentions,
             clientMessageId = clientMessageId,
             replyToId = replyToId
         )

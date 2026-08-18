@@ -1,6 +1,7 @@
 package com.example.qgent.data.repository
 
 import com.example.qgent.data.model.AgentDto
+import com.example.qgent.data.model.AgentSkillBindingsResponse
 
 /**
  * Agent 仓库。所有写操作（create/update/publish/unpublish/archive/bindAgentSkills）
@@ -16,4 +17,6 @@ interface AgentRepository {
     suspend fun unpublishAgent(teamId: String, agentId: String, idempotencyKey: String): Result<AgentDto>
     suspend fun archiveAgent(teamId: String, agentId: String, idempotencyKey: String): Result<AgentDto>
     suspend fun bindAgentSkills(projectId: String, agentId: String, skillIds: List<String>, idempotencyKey: String): Result<AgentDto>
+    /** 读取 Agent 在当前项目的 Skill 绑定集（项目成员） */
+    suspend fun getAgentSkillBindings(projectId: String, agentId: String): Result<AgentSkillBindingsResponse>
 }

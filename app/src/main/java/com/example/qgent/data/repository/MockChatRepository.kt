@@ -4,6 +4,8 @@ import com.example.qgent.data.datasource.MockDataSource
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.GroupMessageDto
+import com.example.qgent.data.model.GroupReadResponse
+import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 
 class MockChatRepository : ChatRepository {
@@ -89,12 +91,20 @@ class MockChatRepository : ChatRepository {
         )
     )
 
+    override suspend fun getMessage(projectId: String, groupId: String, messageId: String): Result<GroupMessageDto> =
+        Result.failure(UnsupportedOperationException("mock 不支持单条消息定位"))
+
+    override suspend fun markGroupRead(projectId: String, groupId: String, idempotencyKey: String): Result<GroupReadResponse> =
+        Result.success(GroupReadResponse(groupId = groupId))
+
     override suspend fun sendMessage(
         projectId: String,
         groupId: String,
         type: String,
         content: MessageContentDto,
         clientMessageId: String?,
+        mentions: List<MentionDto>?,
+        replyText: String?,
         replyToId: String?,
         idempotencyKey: String
     ): Result<GroupMessageDto> = Result.failure(UnsupportedOperationException("mock 不支持发送消息"))

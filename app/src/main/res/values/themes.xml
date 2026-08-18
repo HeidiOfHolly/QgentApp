@@ -19,4 +19,10 @@
     </style>
 
     <style name="Theme.Qgent" parent="Base.Theme.Qgent" />
+
+    <!-- 圆形头像 shape：ShapeableImageView 内容裁剪为圆形（cornerSize 50%） -->
+    <style name="ShapeAppearanceOverlay.App.Avatar" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
 </resources>

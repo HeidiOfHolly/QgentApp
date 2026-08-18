@@ -94,13 +94,18 @@
             android:paddingVertical="10dp"
             android:paddingHorizontal="8dp">
 
-            <ImageView
+            <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/btnAvatar"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
+                android:background="@drawable/bg_avatar"
                 android:clickable="true"
                 android:focusable="true"
-                android:src="@drawable/ic_person"
+                android:scaleType="centerCrop"
+                app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.App.Avatar"
+                android:src="@drawable/ic_avatar_default"
+                app:strokeColor="@color/white"
+                app:strokeWidth="1dp"
                 app:layout_constraintLeft_toLeftOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
 

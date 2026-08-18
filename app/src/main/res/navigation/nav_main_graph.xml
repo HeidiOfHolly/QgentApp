@@ -97,11 +97,39 @@
             android:id="@+id/action_agent_to_agentDetail"
             app:destination="@id/agentDetailFragment" />
         <action
+            android:id="@+id/action_agent_to_agentEdit"
+            app:destination="@id/agentEditFragment" />
+        <action
             android:id="@+id/action_agent_to_memoryPool"
             app:destination="@id/memoryPoolFragment" />
         <action
             android:id="@+id/action_agent_to_skillPool"
             app:destination="@id/skillPoolFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/agentEditFragment"
+        android:name="com.example.qgent.ui.agent.AgentEditFragment"
+        android:label="新建/编辑 Agent"
+        tools:layout="@layout/fragment_agent_edit">
+        <argument
+            android:name="agentId"
+            android:defaultValue="" />
+        <argument
+            android:name="agentName"
+            android:defaultValue="" />
+        <argument
+            android:name="agentRole"
+            android:defaultValue="" />
+        <argument
+            android:name="agentDescription"
+            android:defaultValue="" />
+        <argument
+            android:name="agentAvatar"
+            android:defaultValue="" />
+        <argument
+            android:name="agentPrompt"
+            android:defaultValue="" />
     </fragment>
 
     <fragment
@@ -124,6 +152,9 @@
         <argument
             android:name="agentCapabilities"
             android:defaultValue="" />
+        <action
+            android:id="@+id/action_agentDetail_to_agentEdit"
+            app:destination="@id/agentEditFragment" />
     </fragment>
 
     <fragment
