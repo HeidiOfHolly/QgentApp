@@ -5,6 +5,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
@@ -14,6 +15,7 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.SessionStore
 import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.GitHubRepositoryDto
@@ -84,8 +86,10 @@ class ProjectDetailFragment : Fragment() {
         bindCollapsibleSection(binding.headerRepositories, binding.ivArrowRepositories, binding.sectionRepositories)
 
         // 管理员管理入口
-        binding.tvAddMember.setOnClickListener { showAddMemberDialog() }
+        binding.ivMembersMenu.setOnClickListener { showMembersMenu() }
         binding.tvAddRepository.setOnClickListener { showBindRepoDialog() }
+        // 退出项目（仅普通成员可见）
+        binding.tvExitProject.setOnClickListener { confirmExitProject() }
 
         val projectId = mainViewModel.currentProjectId()
         if (projectId == null) {
@@ -124,11 +128,16 @@ class ProjectDetailFragment : Fragment() {
             // 管理员判断以项目详情返回的当前用户有效角色为准（权限方案 v1.1）：
             // Team Owner 兜底 PROJECT_ADMIN 已由后端在 role 体现，不再从成员列表查找自己
             isAdmin = userRepository.getProject(projectId).getOrNull()?.role == "PROJECT_ADMIN"
-            binding.tvAddMember.isVisible = isAdmin
+            // 团长由后端兜底 PROJECT_ADMIN，故 isAdmin 即覆盖「团长与管理员」
+            binding.ivMembersMenu.isVisible = isAdmin
             binding.tvAddRepository.isVisible = isAdmin
+            // 退出项目仅普通成员可见（团长/管理员隐藏）
+            binding.tvExitProject.isVisible = !isAdmin
 
-            binding.tvMembersEmpty.isVisible = members.isEmpty()
-            fillLinearLayout(binding.rvMembers, members, R.layout.item_chat_member) { view, member ->
+            // 管理员（PROJECT_ADMIN）置顶，其余保持后端返回顺序
+            val sortedMembers = members.sortedByDescending { it.role == "PROJECT_ADMIN" }
+            binding.tvMembersEmpty.isVisible = sortedMembers.isEmpty()
+            fillLinearLayout(binding.rvMembers, sortedMembers, R.layout.item_chat_member) { view, member ->
                 val item = ItemChatMemberBinding.bind(view)
                 item.tvMemberName.text = memberNameById[member.userId] ?: getString(R.string.member_unknown)
                 // 角色标签：仅管理员可见；点击切换 成员/管理员（PATCH 角色）
@@ -140,8 +149,11 @@ class ProjectDetailFragment : Fragment() {
                 item.tvMemberRole.setOnClickListener {
                     toggleMemberRole(projectId, member)
                 }
-                // 删除成员接口缺失，暂不实现（保持隐藏）
-                item.ivDeleteMember.isVisible = false
+                // 删除成员：仅团长/管理员可见，且仅普通成员行显示（管理员/团长不设删除键）
+                item.ivDeleteMember.isVisible = isAdmin && member.role == "PROJECT_MEMBER"
+                item.ivDeleteMember.setOnClickListener {
+                    confirmRemoveMember(projectId, member)
+                }
             }
             loadRepositories(projectId)
         }
@@ -150,6 +162,28 @@ class ProjectDetailFragment : Fragment() {
     private fun roleLabel(role: String): String = when (role) {
         "PROJECT_ADMIN" -> "管理员"
         else -> "成员"
+    }
+
+    /** 确认删除成员：弹窗确认后调移除项目成员接口，成功后刷新成员列表 */
+    private fun confirmRemoveMember(projectId: String, member: ProjectMemberDto) {
+        val name = memberNameById[member.userId] ?: getString(R.string.member_unknown)
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("删除成员")
+            .setMessage("确定将 $name 从项目移除？")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("删除") { _, _ ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    userRepository.removeProjectMember(projectId, member.userId, UUID.randomUUID().toString())
+                        .onSuccess {
+                            Toast.makeText(requireContext(), "已移除 $name", Toast.LENGTH_SHORT).show()
+                            loadMembers(projectId)
+                        }
+                        .onFailure { e ->
+                            Toast.makeText(requireContext(), "删除失败：${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                }
+            }
+            .show()
     }
 
     /** 切换成员身份：成员 ↔ 管理员（PATCH /projects/{id}/members/{userId}，§5.2） */
@@ -174,6 +208,21 @@ class ProjectDetailFragment : Fragment() {
                 }
             }
             .show()
+    }
+
+    /** 成员管理菜单（仅团长/管理员可见）：添加成员 / 添加管理员 */
+    private fun showMembersMenu() {
+        val popup = PopupMenu(requireContext(), binding.ivMembersMenu)
+        popup.menuInflater.inflate(R.menu.menu_project_members, popup.menu)
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_add_member -> showAddMemberDialog()
+                R.id.action_add_admin -> showAddAdminDialog()
+                else -> false
+            }
+            true
+        }
+        popup.show()
     }
 
     /** 添加成员：列出团队中未加入当前项目的成员，勾选后可设置身份（与群设置页一致） */
@@ -228,6 +277,104 @@ class ProjectDetailFragment : Fragment() {
         }
         sheetBinding.btnCancel.setOnClickListener { dialog.dismiss() }
         dialog.show()
+    }
+
+    /** 设置管理员：列出项目内已有普通成员，勾选后将其升级为管理员（PATCH 角色，不新增成员） */
+    private fun showAddAdminDialog() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val dialog = BottomSheetDialog(requireContext())
+        val sheetBinding = BottomSheetCreateGroupBinding.inflate(layoutInflater)
+        dialog.setContentView(sheetBinding.root)
+        sheetBinding.tvSheetTitle.text = "设置管理员"
+        sheetBinding.tvSheetSubtitle.text = "选择普通成员设为项目管理员"
+        sheetBinding.etGroupDescription.visibility = View.GONE
+        sheetBinding.btnSelectAll.visibility = View.GONE
+        sheetBinding.etGroupName.hint = getString(R.string.add_member_select_hint)
+
+        lateinit var pickAdapter: GroupMemberPickAdapter
+        pickAdapter = GroupMemberPickAdapter(
+            onItemClick = { pickAdapter.toggle(it) }
+        )
+        sheetBinding.rvGroupMembers.layoutManager = LinearLayoutManager(requireContext())
+        sheetBinding.rvGroupMembers.adapter = pickAdapter
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            // 候选 = 项目内已有普通成员（PROJECT_MEMBER），管理员/团长已具管理员身份，不列入
+            val candidates = userRepository.getProjectMembers(projectId).getOrElse {
+                Toast.makeText(requireContext(), R.string.add_member_failed, Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+                return@launch
+            }.filter { it.role == "PROJECT_MEMBER" }
+            if (candidates.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.add_member_empty, Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+                return@launch
+            }
+            // 显示名从团队成员表反查（ProjectMemberDto 无 displayName）
+            pickAdapter.submitList(
+                candidates.map { member ->
+                    GroupMemberPick(
+                        userId = member.userId,
+                        name = memberNameById[member.userId] ?: getString(R.string.member_unknown),
+                        role = "PROJECT_MEMBER"
+                    )
+                }
+            )
+        }
+
+        sheetBinding.btnSend.setOnClickListener {
+            val selected = pickAdapter.checkedIds()
+            if (selected.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.add_member_empty, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            dialog.dismiss()
+            promoteToAdmin(projectId, selected)
+        }
+        sheetBinding.btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
+    }
+
+    /** 逐个将选中的普通成员升级为管理员（PATCH /projects/{id}/members/{userId}） */
+    private fun promoteToAdmin(projectId: String, userIds: List<String>) {
+        if (userIds.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            var ok = 0
+            userIds.forEach { userId ->
+                userRepository.updateProjectMemberRole(projectId, userId, "PROJECT_ADMIN", UUID.randomUUID().toString())
+                    .onSuccess { ok++ }
+            }
+            if (ok == 0) {
+                Toast.makeText(requireContext(), R.string.add_member_failed, Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(requireContext(), "已将 $ok 名成员设为管理员", Toast.LENGTH_SHORT).show()
+                loadMembers(projectId)
+            }
+        }
+    }
+
+    /** 退出项目：确认弹窗后调用移除项目成员接口（删除自己），成功后返回上一页 */
+    private fun confirmExitProject() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val myId = SessionStore.user()?.id
+        if (myId.isNullOrEmpty()) return
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("退出项目")
+            .setMessage("确定退出该项目？退出后将不再查看该项目的任务与合并请求。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("退出") { _, _ ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    userRepository.removeProjectMember(projectId, myId, UUID.randomUUID().toString())
+                        .onSuccess {
+                            Toast.makeText(requireContext(), "已退出项目", Toast.LENGTH_SHORT).show()
+                            findNavController().navigateUp()
+                        }
+                        .onFailure { e ->
+                            Toast.makeText(requireContext(), "退出失败：${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                }
+            }
+            .show()
     }
 
     /** 逐个加入项目：POST 加入后按所选身份决定是否 PATCH 升级，汇总成功数量 */

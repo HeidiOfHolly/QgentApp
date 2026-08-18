@@ -123,8 +123,7 @@
                 android:id="@+id/rvRepoDeliveries"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="10dp"
-                android:layout_marginTop="5dp"
+
                 android:orientation="vertical" />
 
             <!-- Diff 审核入口（diffReviewSummary.available=true 时展示，点击弹审核面板） -->

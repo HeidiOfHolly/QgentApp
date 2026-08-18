@@ -4,6 +4,9 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
@@ -18,11 +21,10 @@ import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.databinding.FragmentMrDetailBinding
 import com.example.qgent.databinding.ItemMrDiffFileBinding
-import com.example.qgent.databinding.ItemMrDiffLineBinding
 import com.example.qgent.model.DiffFile
-import com.example.qgent.model.DiffLine
 import com.example.qgent.model.DiffLineType
 import com.example.qgent.ui.personal.fillLinearLayout
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 
 /** MR 详情页：MR 基础信息 + diff 完整代码块（§13 + §12.3） */
@@ -91,8 +93,8 @@ class MergeRequestDetailFragment : Fragment() {
         loadDiffFiles(diffId)
     }
 
-    /** Diff 文件走 diffRepository（DiffFileDto），后端可能返回 hunks 或 lines 形态，
-     *  由 toDiffFile() 统一解析成扁平行（与聊天 DIFF 卡片同路径，避免代码行缺失） */
+    /** 加载 diff 文件列表（走 diffRepository，兼容后端 hunks / lines 两种返回形态），
+     *  仅展示文件名 + 增删统计；点击文件弹出该文件完整 diff（与聊天 DIFF 卡片查看方式一致） */
     private fun loadDiffFiles(diffId: String) {
         viewLifecycleOwner.lifecycleScope.launch {
             diffRepository.getDiffFiles(projectId, diffId)
@@ -115,35 +117,56 @@ class MergeRequestDetailFragment : Fragment() {
         val item = ItemMrDiffFileBinding.bind(view)
         item.tvDiffFileName.text = file.fileName
         item.tvDiffStats.text = "+${file.additions} -${file.deletions}"
+        // 点击文件整卡，弹窗查看该文件完整 diff
+        item.root.setOnClickListener { showDiffFileDialog(file) }
+    }
+
+    /** 弹窗展示单个文件 diff：ScrollView 内文件头（basename + 增删）+ 代码行（+ 绿底 / - 红底、monospace） */
+    private fun showDiffFileDialog(file: DiffFile) {
+        val scroll = ScrollView(requireContext())
+        val container = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        scroll.addView(container, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(file.fileName.substringAfterLast('/'))
+            .setView(scroll)
+            .setPositiveButton(R.string.close, null)
+            .show()
         if (file.lines.isEmpty()) {
-            item.containerDiffLines.isVisible = false
+            container.addView(TextView(requireContext()).apply {
+                text = "（该文件无行内容）"
+                textSize = 12f
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+            })
             return
         }
-        // 短文件由 fillViewport 铺满屏宽；长行按内容宽撑开，由 HorizontalScrollView 横向滚动查看完整代码
-        fillLinearLayout(item.containerDiffLines, file.lines, R.layout.item_mr_diff_line) { lineView, line ->
-            bindDiffLine(ItemMrDiffLineBinding.bind(lineView), line)
+        file.lines.forEach { line ->
+            container.addView(TextView(requireContext()).apply {
+                val sign = when (line.type) {
+                    DiffLineType.ADD -> "+"
+                    DiffLineType.DELETE -> "-"
+                    else -> " "
+                }
+                text = "$sign ${line.text}"
+                setTypeface(android.graphics.Typeface.MONOSPACE)
+                setPadding(dp(10), dp(2), dp(10), dp(2))
+                textSize = 12f
+                setBackgroundColor(requireContext().getColor(
+                    when (line.type) {
+                        DiffLineType.ADD -> R.color.diff_add_bg
+                        DiffLineType.DELETE -> R.color.diff_del_bg
+                        else -> R.color.white
+                    }
+                ))
+            })
         }
     }
 
-    private fun bindDiffLine(item: ItemMrDiffLineBinding, line: DiffLine) {
-        val context = binding.root.context
-        item.tvSign.text = when (line.type) {
-            DiffLineType.ADD -> "+"
-            DiffLineType.DELETE -> "-"
-            DiffLineType.CONTEXT -> " "
-        }
-        item.tvSign.setTextColor(androidx.core.content.ContextCompat.getColor(context, when (line.type) {
-            DiffLineType.ADD -> R.color.diff_add_fg
-            DiffLineType.DELETE -> R.color.diff_del_fg
-            DiffLineType.CONTEXT -> R.color.diff_line_no
-        }))
-        item.tvCode.text = line.text
-        item.root.setBackgroundColor(androidx.core.content.ContextCompat.getColor(context, when (line.type) {
-            DiffLineType.ADD -> R.color.diff_add_bg
-            DiffLineType.DELETE -> R.color.diff_del_bg
-            DiffLineType.CONTEXT -> android.R.color.white
-        }))
-    }
+    /** dp 转 px（弹窗内代码行布局用） */
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 
     private fun statusLabel(status: String): String = when (status) {
         "OPEN" -> "进行中"

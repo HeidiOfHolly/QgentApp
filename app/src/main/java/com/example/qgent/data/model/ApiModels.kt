@@ -143,7 +143,9 @@ data class TeamDto(
     val name: String,
     val role: String,           // TEAM_OWNER / TEAM_MEMBER
     @SerializedName("memberCount") val memberCount: Int,
-    @SerializedName("createdAt") val createdAt: String
+    @SerializedName("createdAt") val createdAt: String,
+    /** 最后活跃时间（GET /teams/by-last-activity 返回，ISO8601 UTC；其余接口可能不带） */
+    @SerializedName("lastActivityAt") val lastActivityAt: String? = null
 )
 
 /** 团队成员（GET /teams/{teamId}/members，API-105）：userId + role + displayName + email */
@@ -222,7 +224,11 @@ data class ProjectDto(
     val status: String,
     /** 当前用户有效项目角色（GET /projects/{id} 返回，§权限方案）：PROJECT_ADMIN / PROJECT_MEMBER；
      *  Team Owner 即使无 project_members 记录也返回 PROJECT_ADMIN；列表接口可能不带此字段 */
-    val role: String? = null
+    val role: String? = null,
+    /** 生效（ACTIVE）仓库绑定数（v2.0.6 §24.1，项目卡/详情展示，避免逐卡 N+1 查询） */
+    @SerializedName("repositoryCount") val repositoryCount: Int? = null,
+    /** 最后活跃时间（GET /teams/{teamId}/projects/by-last-activity 返回，ISO8601 UTC；其余接口可能不带） */
+    @SerializedName("lastActivityAt") val lastActivityAt: String? = null
 )
 
 /** 项目成员（加成员响应）：userId + role */

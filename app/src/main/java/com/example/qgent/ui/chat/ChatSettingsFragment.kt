@@ -66,6 +66,7 @@ class ChatSettingsFragment : Fragment() {
         binding.btnBack.setOnClickListener { findNavController().popBackStack() }
 
         loadGroupData()
+        loadAdminPermission()
 
         // 添加成员：从团队成员中拉人进当前项目（与群列表页一致，含身份选择）
         binding.btnAddMember.setOnClickListener { showAddMemberDialog() }
@@ -75,6 +76,15 @@ class ChatSettingsFragment : Fragment() {
 
         // 退出群聊：先弹确认，确认后调接口
         binding.btnExitGroup.setOnClickListener { confirmExitGroup() }
+    }
+
+    /** 判定当前用户是否为项目管理员（团长由后端兜底 PROJECT_ADMIN）：仅团长/管理员可见添加成员 */
+    private fun loadAdminPermission() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val isAdmin = userRepository.getProject(projectId).getOrNull()?.role == "PROJECT_ADMIN"
+            binding.btnAddMember.isVisible = isAdmin
+        }
     }
 
     /**

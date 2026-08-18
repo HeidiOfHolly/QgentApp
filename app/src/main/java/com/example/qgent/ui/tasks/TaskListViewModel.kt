@@ -61,6 +61,7 @@ class TaskListViewModel(
         val loading: Boolean = false,
         val tasks: List<TaskListItemDto> = emptyList(),
         val agentRuns: List<AgentRun> = emptyList(),
+        val activitiesLoading: Boolean = false,
         val mergeRequests: List<MergeRequestDto> = emptyList(),
         val filter: TaskFilter = TaskFilter(),
         val error: String? = null
@@ -73,19 +74,8 @@ class TaskListViewModel(
     private var loadedTeamId: String? = null
     /** MR 已加载项目：与 loadedProjectId（任务）独立，避免跨项目串数据 */
     private var loadedMrProjectId: String? = null
-
-    /** 加载指定项目任务与 MR、该项目内各 Agent 的近况（task-runs）；同项目/团队重复加载跳过 */
-    fun load(projectId: String?, teamId: String?, agents: List<Agent>) {
-        if (projectId != null && loadedProjectId != projectId) {
-            loadedProjectId = projectId
-            loadTasks(projectId, _uiState.value.filter)
-            loadAgentRuns(projectId, agents)
-            loadMergeRequests(projectId)
-        }
-        if (teamId != null && loadedTeamId != teamId) {
-            loadedTeamId = teamId
-        }
-    }
+    /** 最近动态查询任务：新查询启动前取消旧查询，避免轮询并发导致旧结果覆盖新结果 */
+    private var activitiesJob: kotlinx.coroutines.Job? = null
 
     /**
      * 加载任务。
@@ -116,27 +106,41 @@ class TaskListViewModel(
         }
     }
 
-    /** 遍历项目内 Agent，逐个查 task-runs，合并最新 MAX_AGENT_ACTIVITIES 条近况 */
-    private fun loadAgentRuns(projectId: String, agents: List<Agent>) {
-        viewModelScope.launch {
-            val all = mutableListOf<AgentRun>()
-            agents.forEach { agent ->
-                repo.getTaskRuns(projectId, agent.id)
-                    .getOrElse { emptyList() }
-                    .forEach { run ->
-                        all.add(
-                            AgentRun(
-                                agentName = agent.name,
-                                taskTitle = run.taskTitle ?: "执行任务",
-                                createdAt = run.createdAt
+    /** 加载最近被调用的 Agent 及任务：遍历项目内 Agent，逐个查 task-runs（§20.6），
+     *  按 createdAt 倒序取最新 MAX_AGENT_ACTIVITIES 条。单个 Agent 查询失败静默跳过。
+     *  仅当列表为空（首次加载 / 暂无数据）时显示加载指示，已有内容刷新时静默更新避免轮询闪现；
+     *  finally 保证 activitiesLoading 无论成功/失败/取消都复位，避免 ProgressBar 卡死。 */
+    fun loadActivities(projectId: String?, agents: List<Agent>) {
+        if (projectId == null) return
+        // 新查询前取消上一次：轮询每 3 秒触发，多 agent 串行查询慢，不取消会导致旧协程晚到覆盖新结果
+        activitiesJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            activitiesLoading = _uiState.value.agentRuns.isEmpty()
+        )
+        activitiesJob = viewModelScope.launch {
+            try {
+                val all = mutableListOf<AgentRun>()
+                agents.forEach { agent ->
+                    repo.getTaskRuns(projectId, agent.id)
+                        .getOrElse { emptyList() }
+                        .forEach { run ->
+                            all.add(
+                                AgentRun(
+                                    agentName = agent.name,
+                                    taskTitle = run.taskTitle ?: "执行任务",
+                                    createdAt = run.createdAt
+                                )
                             )
-                        )
-                    }
+                        }
+                }
+                android.util.Log.d("Activities", "loadActivities agents=${agents.size} runs=${all.size} " +
+                    "top=${all.sortedWith(compareByDescending { it.createdAt }).take(MAX_AGENT_ACTIVITIES).map { "${it.agentName}:${it.taskTitle}" }}")
+                _uiState.value = _uiState.value.copy(
+                    agentRuns = all.sortedWith(compareByDescending { it.createdAt }).take(MAX_AGENT_ACTIVITIES)
+                )
+            } finally {
+                _uiState.value = _uiState.value.copy(activitiesLoading = false)
             }
-            val sorted = all.sortedWith(compareByDescending { it.createdAt })
-            _uiState.value = _uiState.value.copy(
-                agentRuns = sorted.take(MAX_AGENT_ACTIVITIES)
-            )
         }
     }
 

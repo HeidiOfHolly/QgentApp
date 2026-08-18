@@ -189,6 +189,8 @@
     <string name="github_repo_delete_confirm">确定撤销「%1$s」的授权吗？撤销后该仓库将不再显示在团队授权列表，已绑定的项目不受影响。</string>
     <string name="github_repo_delete_success">已撤销仓库授权</string>
     <string name="github_repo_delete_failed">删除失败，请稍后重试</string>
+    <string name="github_repo_delete_forbidden">无权限撤销仓库授权</string>
+    <string name="github_repo_delete_service_unavailable">服务暂不可用，请稍后重试</string>
     <string name="github_authorize_warning_title">GitHub 账号绑定提醒</string>
     <string name="github_authorize_warning_message">一个 GitHub 账号只能授权给一个团队。若该账号已绑定其他团队，本次授权将进入该账号的原团队安装，在 GitHub 页面增删的仓库会作用于原团队，且无法被拦截。建议使用未绑定过 GitHub 的账号。</string>
     <string name="github_authorize_continue">继续授权</string>

@@ -137,8 +137,8 @@
 
                 <ImageView
                     android:id="@+id/ivArrowMembers"
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
+                    android:layout_width="25dp"
+                    android:layout_height="25dp"
                     android:contentDescription="@string/manage_members"
                     android:rotation="90"
                     android:src="@drawable/ic_triangle"
@@ -154,23 +154,15 @@
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
-                <!-- 添加成员（仅项目管理员可见） -->
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/tvAddMember"
+                <!-- 成员管理菜单（仅团长/管理员可见）：添加成员 / 添加管理员 -->
+                <ImageView
+                    android:id="@+id/ivMembersMenu"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:paddingStart="8dp"
-                    android:paddingTop="4dp"
-                    android:paddingEnd="8dp"
-                    android:paddingBottom="4dp"
-                    android:text="＋ 添加成员"
-                    android:textColor="@color/teal"
-                    android:textSize="15sp"
-                    android:visibility="gone"
-                    app:strokeColor="@color/navy_light"
-                    app:strokeWidth="1dp"
-                    style="?attr/materialButtonOutlinedStyle"
-                    android:backgroundTint="@color/blue_tint" />
+                    android:contentDescription="成员管理"
+                    android:src="@drawable/ic_more"
+                    app:tint="@color/blue_tint"
+                    android:visibility="gone" />
             </LinearLayout>
 
             <!-- 成员分组内容：成员列表（默认收起） -->
@@ -226,8 +218,8 @@
 
                 <ImageView
                     android:id="@+id/ivArrowRepositories"
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
+                    android:layout_width="25dp"
+                    android:layout_height="25dp"
                     android:contentDescription="@string/manage_repositories"
                     android:rotation="90"
                     android:src="@drawable/ic_triangle"
@@ -244,20 +236,17 @@
                     android:textStyle="bold" />
 
                 <!-- 绑定仓库（仅项目管理员可见） -->
-                <com.google.android.material.button.MaterialButton
+                <ImageView
                     android:id="@+id/tvAddRepository"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:paddingStart="8dp"
-                    android:paddingTop="4dp"
-                    android:paddingEnd="8dp"
-                    android:paddingBottom="4dp"
-                    android:text="＋ 绑定仓库"
+                    android:layout_width="25dp"
+                    android:layout_height="25dp"
                     android:textColor="@color/teal"
-                    android:textSize="14sp"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:src="@drawable/ic_add"
+                    app:tint="@color/teal"
                     android:visibility="gone"
-                    app:strokeColor="@color/navy_light"
-                    style="?attr/materialButtonOutlinedStyle"
+                    android:background="@drawable/bg_avatar"
                     android:backgroundTint="@color/blue_tint"/>
             </LinearLayout>
 
@@ -287,6 +276,23 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical" />
             </LinearLayout>
+
+            <!-- 退出项目（仅普通成员可见；团长/管理员隐藏） -->
+            <TextView
+                android:id="@+id/tvExitProject"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/bg_card"
+                android:backgroundTint="@color/exit_red"
+                android:gravity="center"
+                android:paddingVertical="14dp"
+                android:text="退出项目"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
 
         </LinearLayout>
     </ScrollView>

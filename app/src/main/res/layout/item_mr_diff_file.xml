@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MR diff 文件项：文件头 + 代码行列表 -->
+<!-- MR diff 文件项：仅展示文件名 + 增删统计，点击整卡弹窗查看该文件完整 diff（与聊天 DIFF 卡片一致） -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="8dp"
+    android:layout_margin="5dp"
     android:elevation="3dp"
     android:background="@drawable/bg_card"
     android:backgroundTint="@color/white"
+    android:clickable="true"
+    android:focusable="true"
     android:orientation="vertical">
 
     <LinearLayout
@@ -16,9 +18,9 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="14dp"
-        android:paddingTop="10dp"
+        android:paddingTop="12dp"
         android:paddingEnd="14dp"
-        android:paddingBottom="10dp">
+        android:paddingBottom="12dp">
 
         <TextView
             android:id="@+id/tvDiffFileName"
@@ -40,24 +42,13 @@
             android:textColor="@color/text_secondary"
             android:textSize="13sp"
             tools:text="+12 -3" />
-    </LinearLayout>
 
-
-    <!-- 代码区横向滚动：长代码行不截断，横向滑动查看完整内容；竖向滚动由详情页外层 ScrollView 承担。
-         fillViewport=true：短文件代码区铺满屏宽，长文件按内容宽撑开触发横向滚动 -->
-    <HorizontalScrollView
-        android:id="@+id/scrollDiffLines"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fillViewport="true"
-        android:scrollbars="horizontal"
-        android:overScrollMode="ifContentScrolls">
-
-        <!-- 代码行容器：逐行 inflate item_mr_diff_line；宽度为 wrap_content 以容纳超屏宽的长行 -->
-        <LinearLayout
-            android:id="@+id/containerDiffLines"
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="vertical" />
-    </HorizontalScrollView>
+            android:layout_marginStart="8dp"
+            android:text="查看 >"
+            android:textColor="@color/teal"
+            android:textSize="13sp" />
+    </LinearLayout>
 </LinearLayout>

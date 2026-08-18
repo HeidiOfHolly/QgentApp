@@ -106,6 +106,10 @@ interface QgApiService {
     @GET("teams")
     suspend fun getTeams(): Response<ApiResponse<List<TeamDto>>>
 
+    /** 团队按最后活跃排序（v2.0.6 §10.1）：返回当前用户全部团队，按最后活跃倒序 */
+    @GET("teams/by-last-activity")
+    suspend fun getTeamsByLastActivity(): Response<ApiResponse<List<TeamDto>>>
+
     @DELETE("teams/{teamId}")
     suspend fun deleteTeam(
         @Path("teamId") teamId: String,
@@ -170,6 +174,12 @@ interface QgApiService {
         @Path("teamId") teamId: String
     ): Response<ApiResponse<List<ProjectDto>>>
 
+    /** 项目按最后活跃排序（v2.0.6 §10.2）：返回某团队下当前用户可见的全部项目，按最后活跃倒序 */
+    @GET("teams/{teamId}/projects/by-last-activity")
+    suspend fun getProjectsByLastActivity(
+        @Path("teamId") teamId: String
+    ): Response<ApiResponse<List<ProjectDto>>>
+
     @POST("teams/{teamId}/projects")
     suspend fun createProject(
         @Path("teamId") teamId: String,
@@ -206,6 +216,14 @@ interface QgApiService {
     suspend fun getProject(
         @Path("projectId") projectId: String
     ): Response<ApiResponse<ProjectDto>>
+
+    /** 移除项目成员（退出项目：删除自己或由管理员删除他人） */
+    @DELETE("projects/{projectId}/members/{userId}")
+    suspend fun removeProjectMember(
+        @Path("projectId") projectId: String,
+        @Path("userId") userId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<Unit>
 
     // ── 群（Group） ──
 
