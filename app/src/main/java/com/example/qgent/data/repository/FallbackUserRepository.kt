@@ -13,6 +13,8 @@ class FallbackUserRepository(
 
     override suspend fun getTeams() = fb.call { getTeams() }
 
+    override suspend fun getTeamsByLastActivity() = fb.call { getTeamsByLastActivity() }
+
     override suspend fun getTeamMembers(teamId: String, cursor: String?, limit: Int) = fb.call { getTeamMembers(teamId, cursor, limit) }
 
     override suspend fun removeTeamMember(teamId: String, userId: String, idempotencyKey: String) =
@@ -33,6 +35,8 @@ class FallbackUserRepository(
 
     override suspend fun getProjects(teamId: String) = fb.call { getProjects(teamId) }
 
+    override suspend fun getProjectsByLastActivity(teamId: String) = fb.call { getProjectsByLastActivity(teamId) }
+
     override suspend fun getProject(projectId: String) = fb.call { getProject(projectId) }
 
     override suspend fun createProject(teamId: String, name: String, description: String?, newRepository: com.example.qgent.data.model.NewRepositoryRequest?, idempotencyKey: String) =
@@ -46,6 +50,9 @@ class FallbackUserRepository(
 
     override suspend fun getProjectMembers(projectId: String) =
         fb.call { getProjectMembers(projectId) }
+
+    override suspend fun removeProjectMember(projectId: String, userId: String, idempotencyKey: String) =
+        fb.call { removeProjectMember(projectId, userId, idempotencyKey) }
 
     override suspend fun createTeam(name: String, description: String?, idempotencyKey: String) =
         fb.call { createTeam(name, description, idempotencyKey) }

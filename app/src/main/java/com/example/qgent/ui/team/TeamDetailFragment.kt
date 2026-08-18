@@ -58,6 +58,8 @@ class TeamDetailFragment : Fragment() {
     private val githubRepository: GitHubRepository
         get() = (requireActivity().application as QgentApp).container.githubRepository
 
+    /** 当前用户是否团队创建者（仅团长可见撤销仓库授权入口等管理操作） */
+    private var isOwner = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -74,7 +76,7 @@ class TeamDetailFragment : Fragment() {
         val teamName = arguments?.getString(ARG_TEAM_NAME).orEmpty()
         val teamId = arguments?.getString(ARG_TEAM_ID).orEmpty()
         // 我创建的团队 → 解散团队；我加入的团队 → 退出团队（默认按创建的兜底）
-        val isOwner = arguments?.getBoolean(ARG_IS_OWNER, true) ?: true
+        isOwner = arguments?.getBoolean(ARG_IS_OWNER, true) ?: true
 
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
         binding.tvTeamName.text = teamName
@@ -111,7 +113,7 @@ class TeamDetailFragment : Fragment() {
 
         if (teamId.isNotEmpty()) {
             // 仓库列表 = 团队授权仓库（与 GitHub 页计数口径一致）
-            loadAuthorizedRepositories(teamId)
+            loadAuthorizedRepositories(teamId, isOwner)
             loadMembers(teamId, isOwner)
         }
 
@@ -144,7 +146,7 @@ class TeamDetailFragment : Fragment() {
      * - 展示 AUTHORIZED 仓库 + 「已被项目绑定但授权已撤销」的死绑定仓库（REVOKED），后者标红并点击提示；
      * - 每个仓库标注「已绑定项目 / 未绑定项目」，未绑定且仍授权的提供撤销授权删除入口。
      */
-    private fun loadAuthorizedRepositories(teamId: String) {
+    private fun loadAuthorizedRepositories(teamId: String, isOwner: Boolean) {
         viewLifecycleOwner.lifecycleScope.launch {
             val repos = githubRepository.getGithubRepositories(teamId).getOrNull().orEmpty()
             // 授权仓库 → 项目绑定列表：文档 §6 对 ProjectRepository.repositoryId 的语义与示例冲突
@@ -180,8 +182,8 @@ class TeamDetailFragment : Fragment() {
                         Toast.makeText(requireContext(), R.string.repo_revoked_hint, Toast.LENGTH_LONG).show()
                     }
                 } else {
-                    // 未绑定项目且仍授权 → 提供撤销授权删除入口；已绑定保护项目引用，不显示
-                    item.ivDeleteRepository.isVisible = !bound
+                    // 仅团长可撤销授权；未绑定项目且仍授权 → 显示删除入口，已绑定保护项目引用，不显示
+                    item.ivDeleteRepository.isVisible = isOwner && !bound
                     item.ivDeleteRepository.setOnClickListener {
                         confirmDeleteRepository(teamId, repo)
                     }
@@ -208,16 +210,33 @@ class TeamDetailFragment : Fragment() {
             githubRepository.revokeGithubRepository(teamId, repo.id, UUID.randomUUID().toString())
                 .onSuccess {
                     Toast.makeText(requireContext(), R.string.github_repo_delete_success, Toast.LENGTH_SHORT).show()
-                    loadAuthorizedRepositories(teamId)
+                    loadAuthorizedRepositories(teamId, isOwner)
                 }
                 .onFailure { e ->
+                    // 按错误码区分提示：权限不足 / 服务暂不可用，其余透传后端 message
                     Toast.makeText(
                         requireContext(),
-                        e.message ?: getString(R.string.github_repo_delete_failed),
+                        deleteRepoErrorMessage(e),
                         Toast.LENGTH_SHORT
                     ).show()
                 }
         }
+    }
+
+    /**
+     * 撤销仓库授权失败文案：按 ApiException 错误码分类。
+     * 权限不足：401 / 403 及 FORBIDDEN / UNAUTHORIZED / PERMISSION_* 业务码；
+     * 服务暂不可用：HTTP_5xx（网关/服务端异常）；其余（业务码、4xx 冲突等）回退透传后端 message。
+     */
+    private fun deleteRepoErrorMessage(e: Throwable): String {
+        if (e is ApiException) {
+            val code = e.code
+            val forbidden = code == "HTTP_401" || code == "HTTP_403" ||
+                code.startsWith("FORBIDDEN") || code == "UNAUTHORIZED" || code.startsWith("PERMISSION")
+            if (forbidden) return getString(R.string.github_repo_delete_forbidden)
+            if (code.startsWith("HTTP_5")) return getString(R.string.github_repo_delete_service_unavailable)
+        }
+        return e.message ?: getString(R.string.github_repo_delete_failed)
     }
 
     /** 底部操作：我创建的团队 → 解散（契约 §5.1）；我加入的团队 → 退出（待接入） */

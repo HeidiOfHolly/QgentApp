@@ -31,6 +31,8 @@ class MockUserRepository : UserRepository {
 
     override suspend fun getTeams(): Result<List<TeamDto>> = Result.success(MockDataSource.teams)
 
+    override suspend fun getTeamsByLastActivity(): Result<List<TeamDto>> = Result.success(MockDataSource.teams)
+
     override suspend fun getTeamMembers(teamId: String, cursor: String?, limit: Int): Result<List<TeamMemberDto>> =
         Result.success(
             listOf(
@@ -82,6 +84,9 @@ class MockUserRepository : UserRepository {
     override suspend fun getProjects(teamId: String): Result<List<ProjectDto>> =
         Result.success(MockDataSource.projectsOf(teamId))
 
+    override suspend fun getProjectsByLastActivity(teamId: String): Result<List<ProjectDto>> =
+        Result.success(MockDataSource.projectsOf(teamId))
+
     override suspend fun getProject(projectId: String): Result<ProjectDto> = Result.success(
         ProjectDto(
             id = projectId,
@@ -118,6 +123,9 @@ class MockUserRepository : UserRepository {
 
     override suspend fun getProjectMembers(projectId: String): Result<List<ProjectMemberDto>> =
         Result.success(listOf(ProjectMemberDto("mock-user", "PROJECT_ADMIN")))
+
+    override suspend fun removeProjectMember(projectId: String, userId: String, idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
 
     override suspend fun createTeam(name: String, description: String?, idempotencyKey: String): Result<TeamDto> =
         Result.success(

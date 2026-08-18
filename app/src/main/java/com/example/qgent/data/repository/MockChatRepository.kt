@@ -66,6 +66,9 @@ class MockChatRepository : ChatRepository {
 
     override suspend fun leaveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<Unit> = Result.success(Unit)
 
+    override suspend fun removeGroupMember(projectId: String, groupId: String, memberUserId: String, idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
+
     override suspend fun getMessages(
         projectId: String,
         groupId: String,

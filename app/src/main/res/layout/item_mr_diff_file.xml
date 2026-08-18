@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MR diff 文件项：文件头 + 代码行列表 -->
+<!-- MR diff 文件项：仅展示文件名 + 增删统计，点击整卡弹窗查看该文件完整 diff（与聊天 DIFF 卡片一致） -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="8dp"
+    android:layout_margin="5dp"
+    android:elevation="3dp"
     android:background="@drawable/bg_card"
     android:backgroundTint="@color/white"
+    android:clickable="true"
+    android:focusable="true"
     android:orientation="vertical">
 
     <LinearLayout
@@ -15,9 +18,9 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="14dp"
-        android:paddingTop="10dp"
+        android:paddingTop="12dp"
         android:paddingEnd="14dp"
-        android:paddingBottom="10dp">
+        android:paddingBottom="12dp">
 
         <TextView
             android:id="@+id/tvDiffFileName"
@@ -39,17 +42,13 @@
             android:textColor="@color/text_secondary"
             android:textSize="13sp"
             tools:text="+12 -3" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="查看 >"
+            android:textColor="@color/teal"
+            android:textSize="13sp" />
     </LinearLayout>
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/divider" />
-
-    <!-- 代码行容器：逐行 inflate item_diff_line -->
-    <LinearLayout
-        android:id="@+id/containerDiffLines"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical" />
 </LinearLayout>

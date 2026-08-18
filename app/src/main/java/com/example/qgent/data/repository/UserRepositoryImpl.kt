@@ -27,6 +27,10 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
         service.getTeams().toDataOrThrow()
     }
 
+    override suspend fun getTeamsByLastActivity(): Result<List<TeamDto>> = apiCall {
+        service.getTeamsByLastActivity().toDataOrThrow()
+    }
+
     override suspend fun getTeamMembers(teamId: String, cursor: String?, limit: Int): Result<List<TeamMemberDto>> = apiCall {
         service.getTeamMembers(teamId, cursor, limit).toDataOrThrow()
     }
@@ -64,6 +68,10 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
 
     override suspend fun getProjects(teamId: String): Result<List<ProjectDto>> = apiCall {
         service.getProjects(teamId).toDataOrThrow()
+    }
+
+    override suspend fun getProjectsByLastActivity(teamId: String): Result<List<ProjectDto>> = apiCall {
+        service.getProjectsByLastActivity(teamId).toDataOrThrow()
     }
 
     override suspend fun getProject(projectId: String): Result<ProjectDto> = apiCall {
@@ -116,6 +124,11 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
         } while (cursor != null)
         all
     }
+
+    override suspend fun removeProjectMember(projectId: String, userId: String, idempotencyKey: String): Result<Unit> =
+        apiCall {
+            service.removeProjectMember(projectId, userId, idempotencyKey).toUnitOrThrow()
+        }
 
     override suspend fun createTeam(name: String, description: String?, idempotencyKey: String): Result<TeamDto> =
         apiCall {

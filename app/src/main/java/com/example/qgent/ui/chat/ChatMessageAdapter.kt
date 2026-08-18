@@ -399,7 +399,7 @@ class ChatMessageAdapter(
             if (!files.isNullOrEmpty()) {
                 render(files)
             } else if (!diffId.isNullOrBlank() && onLoadDiff != null) {
-                onLoadDiff(diffId) { loaded -> render(loaded) }
+                onLoadDiff?.let { it(diffId) { loaded -> render(loaded) } }
             } else {
                 render(emptyList())
             }

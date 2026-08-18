@@ -251,24 +251,22 @@ class MainViewModel(
     private fun loadTeams() {
         _teamsLoading.value = true
         viewModelScope.launch {
-            userRepo.getTeams()
-                .onSuccess { dtos ->
-                    dtos.forEach { teamNameToId[it.name] = it.id }
-                    _teams.value = dtos.map { it.name }
-                    _teamDtos.value = dtos
-                    // 无团队 → 初始就绪（启动页引导创建）；有团队 → 等首个团队项目及群聊加载完成再就绪
-                    if (dtos.isEmpty()) {
-                        _initialDataLoaded.value = true
-                    } else if (_currentTeam.value.isEmpty()) {
-                        routingInitPending = true
-                        dtos.firstOrNull()?.name?.let { setCurrentTeam(it) }
-                    }
-                    _teamsLoading.value = false
-                }
-                .onFailure {
-                    _initialDataLoaded.value = true
-                    _teamsLoading.value = false
-                }
+            // 按最后活跃倒序（v2.0.6 §10.1）；排序接口未就绪（后端 400/404）时回退普通团队列表，
+            // 避免空团队列表导致冷启动误跳团队引导页
+            val dtos = userRepo.getTeamsByLastActivity()
+                .recoverCatching { userRepo.getTeams().getOrThrow() }
+                .getOrElse { emptyList() }
+            dtos.forEach { teamNameToId[it.name] = it.id }
+            _teams.value = dtos.map { it.name }
+            _teamDtos.value = dtos
+            // 无团队 → 初始就绪（启动页引导创建）；有团队 → 等首个团队项目及群聊加载完成再就绪
+            if (dtos.isEmpty()) {
+                _initialDataLoaded.value = true
+            } else if (_currentTeam.value.isEmpty()) {
+                routingInitPending = true
+                dtos.firstOrNull()?.name?.let { setCurrentTeam(it) }
+            }
+            _teamsLoading.value = false
         }
     }
 
@@ -284,15 +282,16 @@ class MainViewModel(
         loadProjectsJob = viewModelScope.launch {
             val teamDto = _teamDtos.value.find { it.name == team }
             if (teamDto != null) {
-                userRepo.getProjects(teamDto.id).onSuccess { projectDtos ->
-                    // 每次全量刷新该团队的项目映射，覆盖旧桶，防止跨团队残留
-                    projectIdsByTeam[teamDto.id] = projectDtos.associate { it.name to it.id }
-                    // 抽屉项目按最后活跃倒序：以各项目总群(PROJECT_MAIN) latestActivityAt 为活跃时间
-                    _projects.value = sortProjectsByActivity(projectDtos)
-                    loadedProjectsTeam = team
-                    finished()
-                    return@launch
-                }
+                // 按最后活跃倒序（v2.0.6 §10.2）；排序接口未就绪（后端 500/404）时回退普通项目列表
+                val projectDtos = userRepo.getProjectsByLastActivity(teamDto.id)
+                    .recoverCatching { userRepo.getProjects(teamDto.id).getOrThrow() }
+                    .getOrElse { emptyList() }
+                // 每次全量刷新该团队的项目映射，覆盖旧桶，防止跨团队残留
+                projectIdsByTeam[teamDto.id] = projectDtos.associate { it.name to it.id }
+                _projects.value = projectDtos.map { it.name }
+                loadedProjectsTeam = team
+                finished()
+                return@launch
             }
             _projects.value = emptyList()
             loadedProjectsTeam = team

@@ -11,6 +11,8 @@ class ActivityAdapter : RecyclerView.Adapter<ActivityAdapter.VH>() {
     private val items = mutableListOf<TaskListViewModel.AgentRun>()
 
     fun submitList(newItems: List<TaskListViewModel.AgentRun>) {
+        // 内容未变化时不刷新，避免轮询每 3 秒整列重绘造成列表闪现
+        if (items == newItems) return
         items.clear()
         items.addAll(newItems)
         notifyDataSetChanged()

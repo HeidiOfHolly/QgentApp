@@ -100,6 +100,10 @@ class TasksFragment : Fragment() {
         mainViewModel.currentProject.observe(viewLifecycleOwner) { project ->
             binding.tvProjectName.text = project.ifEmpty { getString(R.string.short_test) }
         }
+        // Agent 名单变化时触发最近动态；agents 为空时也会清空旧动态，避免串项目
+        mainViewModel.agents.observe(viewLifecycleOwner) { agents ->
+            taskListViewModel.loadActivities(mainViewModel.currentProjectId(), agents)
+        }
 
         // 三列表数据
         taskListViewModel.uiState.observe(viewLifecycleOwner) { state ->
@@ -109,7 +113,9 @@ class TasksFragment : Fragment() {
             mrAdapter.submitList(state.mergeRequests.take(TaskListViewModel.MAX_MR))
             // 空状态：列表为空时展示提示，非空时隐藏
             binding.tvTaskEmpty.isVisible = state.tasks.isEmpty()
-            binding.tvAgentEmpty.isVisible = state.agentRuns.isEmpty()
+            // 最近动态：加载中显示 ProgressBar，空态隐藏；完成后据列表是否为空切换空态提示
+            binding.pbActivitiesLoading.isVisible = state.activitiesLoading
+            binding.tvAgentEmpty.isVisible = !state.activitiesLoading && state.agentRuns.isEmpty()
             binding.tvMREmpty.isVisible = state.mergeRequests.isEmpty()
             state.error?.let {
                 taskListViewModel.consumeError()
@@ -121,10 +127,10 @@ class TasksFragment : Fragment() {
         super.onResume()
         mainViewModel.refreshUnreadTaskNotifications()
         val projectId = mainViewModel.currentProjectId()
-        val teamId = mainViewModel.currentTeamId()
-        // load() 内部对同项目防重复跳过，这里先强制刷新一次再启动轮询
+        // loadTasks 内部对同项目防重复跳过，这里先强制刷新一次再启动轮询
         taskListViewModel.loadTasks(projectId)
         taskListViewModel.loadMergeRequestsForList(projectId)
+        taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
         loadRepoNameMap(projectId)
         startPolling()
     }
@@ -134,7 +140,7 @@ class TasksFragment : Fragment() {
         stopPolling()
     }
 
-    /** 轮询：任务页 Tab 停留时每 3 秒刷新任务/MR（后端任务执行进度实时可见） */
+    /** 轮询：任务页 Tab 停留时每 3 秒刷新任务/MR/最近动态（后端任务执行进度实时可见） */
     private fun startPolling() {
         if (pollingJob?.isActive == true) return
         val projectId = mainViewModel.currentProjectId() ?: return
@@ -143,6 +149,7 @@ class TasksFragment : Fragment() {
                 delay(POLL_INTERVAL_MS)
                 taskListViewModel.loadTasks(projectId)
                 taskListViewModel.loadMergeRequestsForList(projectId)
+                taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
             }
         }
     }

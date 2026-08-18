@@ -149,13 +149,12 @@
                             android:src="@drawable/ic_chevron_right" />
                     </LinearLayout>
 
-                    <!-- 成员列表 -->
-                    <LinearLayout
+                    <!-- 成员网格：横向最多 4 个，纵向最多 3 个（末尾两个空位放 添加/删除 控件） -->
+                    <GridLayout
                         android:id="@+id/containerMembers"
-
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical" />
+                        android:columnCount="4" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -173,32 +172,6 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
-
-                    <!-- 添加成员：从团队成员中拉人进当前项目 -->
-                    <LinearLayout
-                        android:id="@+id/btnAddMember"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:padding="16dp">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/action_add_member"
-                            android:textColor="@color/text_primary"
-                            android:textSize="18sp" />
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:contentDescription="@string/action_enter"
-                            app:tint="@color/charcoal"
-                            android:src="@drawable/ic_chevron_right" />
-                    </LinearLayout>
 
                     <!-- 查看聊天记录 -->
                     <LinearLayout

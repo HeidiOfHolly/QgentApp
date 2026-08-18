@@ -54,7 +54,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="15dp">
 
             <!-- 标题 -->
             <TextView
@@ -123,7 +123,7 @@
                 android:id="@+id/rvRepoDeliveries"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+
                 android:orientation="vertical" />
 
             <!-- Diff 审核入口（diffReviewSummary.available=true 时展示，点击弹审核面板） -->

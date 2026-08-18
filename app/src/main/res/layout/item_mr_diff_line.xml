@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MR 详情 diff 代码行：tvCode 不截断、按内容撑宽，配合父级 HorizontalScrollView 横向滚动查看完整代码。
+     与聊天页 item_diff_line 分开：聊天卡片内保持 ellipsize 截断，不受此处改动影响 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="26dp"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp">
+
+    <TextView
+        android:id="@+id/tvSign"
+        android:layout_width="20dp"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textSize="13sp"
+        android:typeface="monospace"
+        tools:text="+" />
+
+    <TextView
+        android:id="@+id/tvCode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:maxLines="1"
+        android:textColor="@color/text_primary"
+        android:textSize="13sp"
+        android:typeface="monospace"
+        tools:text="import androidx.appcompat.app.AppCompatActivity" />
+</LinearLayout>
