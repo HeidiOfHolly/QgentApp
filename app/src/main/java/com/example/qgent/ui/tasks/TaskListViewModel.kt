@@ -71,6 +71,8 @@ class TaskListViewModel(
 
     private var loadedProjectId: String? = null
     private var loadedTeamId: String? = null
+    /** MR 已加载项目：与 loadedProjectId（任务）独立，避免跨项目串数据 */
+    private var loadedMrProjectId: String? = null
 
     /** 加载指定项目任务与 MR、该项目内各 Agent 的近况（task-runs）；同项目/团队重复加载跳过 */
     fun load(projectId: String?, teamId: String?, agents: List<Agent>) {
@@ -167,8 +169,9 @@ class TaskListViewModel(
     /** MR 列表页专用：只加载 MR（全量），供独立 MR 列表页使用 */
     fun loadMergeRequestsForList(projectId: String?) {
         if (projectId == null) return
-        if (loadedProjectId == projectId && _uiState.value.mergeRequests.isNotEmpty()) return
-        loadedProjectId = projectId
+        // 独立跟踪 MR 项目：与任务加载共用 loadedProjectId 会串数据（见 loadTasks）
+        if (loadedMrProjectId == projectId && _uiState.value.mergeRequests.isNotEmpty()) return
+        loadedMrProjectId = projectId
         viewModelScope.launch {
             repo.getMergeRequests(projectId)
                 .onSuccess { mrs ->

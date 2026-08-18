@@ -57,6 +57,9 @@ class ProjectDetailFragment : Fragment() {
     /** 当前用户是否为项目管理员（决定管理入口显隐） */
     private var isAdmin = false
 
+    /** 当前项目绑定的仓库数量：仅剩 1 个时禁止解绑（项目至少保留一个仓库） */
+    private var boundRepoCount = 0
+
     /** 成员 userId → 显示名（团队成员表反查） */
     private var memberNameById = emptyMap<String, String>()
 
@@ -254,6 +257,7 @@ class ProjectDetailFragment : Fragment() {
     private fun loadRepositories(projectId: String) {
         viewLifecycleOwner.lifecycleScope.launch {
             val repos = githubRepository.getProjectRepositories(projectId).getOrNull().orEmpty()
+            boundRepoCount = repos.size
             binding.tvRepositoriesEmpty.isVisible = repos.isEmpty()
             fillLinearLayout(binding.rvRepositories, repos, R.layout.item_repository) { view, repo ->
                 val item = ItemRepositoryBinding.bind(view)
@@ -270,6 +274,11 @@ class ProjectDetailFragment : Fragment() {
 
     /** 解绑仓库（DELETE /projects/{id}/repositories/{id}） */
     private fun unbindRepo(projectId: String, projectRepositoryId: String, name: String) {
+        // 仅剩一个绑定仓库时禁止解绑（项目至少保留一个仓库）
+        if (boundRepoCount <= 1) {
+            Toast.makeText(requireContext(), R.string.repo_last_one, Toast.LENGTH_SHORT).show()
+            return
+        }
         MaterialAlertDialogBuilder(requireContext())
             .setTitle("解绑仓库")
             .setMessage("确认将仓库 $name 从项目解绑？")

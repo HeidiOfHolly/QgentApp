@@ -303,7 +303,7 @@ data class MessageContentDto(
     @SerializedName("quotedText") val quotedText: String? = null,
     @SerializedName("quotedMessageId") val quotedMessageId: String? = null,
     @SerializedName("quotedSenderName") val quotedSenderName: String? = null,
-    // ── TASK_STATUS 卡片（v23 单消息持续更新契约）：content 含 taskId/status/phase/node/message/plan ──
+    // ── TASK_STATUS 卡片（v23 §23.3）：阶段 / 交付模式 / 计划快照 ──
     @SerializedName("taskId") val taskId: String? = null,
     @SerializedName("status") val status: String? = null,
     @SerializedName("phase") val phase: String? = null,
@@ -312,8 +312,8 @@ data class MessageContentDto(
     @SerializedName("node") val node: String? = null,
     @SerializedName("message") val message: String? = null,
     @SerializedName("currentStepId") val currentStepId: String? = null,
-    @SerializedName("plan") val plan: TaskStatusPlanDto? = null,
-    // ── DIFF 卡片（v23）：content 必含 diffId + taskId，另带 reviewBatchId/reviewStatus/deliveryStatus ──
+    @SerializedName("plan") val plan: PlanSnapshotDto? = null,
+    // ── DIFF 卡片（v23 §23.4）：content 至少含 diffId，另带 reviewBatchId/reviewStatus/deliveryStatus ──
     @SerializedName(value = "diffId", alternate = ["reviewId", "resourceId"])
     val diffId: String? = null,
     @SerializedName("reviewBatchId") val reviewBatchId: String? = null,
@@ -324,13 +324,13 @@ data class MessageContentDto(
     @SerializedName("deliveryStatus") val deliveryStatus: String? = null
 )
 
-/** TASK_STATUS 卡 plan（v23）：Planner 计划摘要 + TaskStep 快照（按 sequence 升序） */
-data class TaskStatusPlanDto(
+/** TASK_STATUS 卡 plan 快照（v23 §23.3）：Planner 计划摘要 + TaskStep 快照列表 */
+data class PlanSnapshotDto(
     val summary: String? = null,
     val steps: List<TaskStepSnapshotDto>? = null
 )
 
-/** TASK_STATUS 卡 plan.steps 单步快照（stepId 为数据库 TaskStepEntity.id） */
+/** TASK_STATUS 卡 plan.steps 单步快照（v23 §23.3；stepId 为数据库 TaskStepEntity.id） */
 data class TaskStepSnapshotDto(
     @SerializedName("stepId") val stepId: String? = null,
     val sequence: Int? = null,
