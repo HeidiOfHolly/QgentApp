@@ -17,6 +17,8 @@ import com.example.qgent.model.SkillItem
 import com.example.qgent.model.toMemoryItem
 import com.example.qgent.model.toSkillItem
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -29,6 +31,12 @@ class AgentFragment : Fragment() {
     private val mainViewModel: MainViewModel by activityViewModels {
         (requireActivity().application as QgentApp).container.mainViewModelFactory
     }
+
+    private lateinit var agentAdapter: AgentCardAdapter
+    private var workingPollJob: Job? = null
+
+    /** 运行中视为「工作流中」的 TaskRun 状态：排队/执行/等待输入或审批 */
+    private val ACTIVE_RUN_STATUSES = setOf("QUEUED", "RUNNING", "WAITING_INPUT", "WAITING_APPROVAL", "BLOCKED")
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -50,11 +58,14 @@ class AgentFragment : Fragment() {
                     "agentName" to agent.name,
                     "agentDescription" to agent.description,
                     "agentRole" to agent.role.name,
-                    "agentCapabilities" to agent.capabilities.joinToString(", ")
+                    "agentCapabilities" to agent.capabilities.joinToString(", "),
+                    "agentCreatedBy" to (agent.createdBy ?: ""),
+                    "agentIsDefault" to false
                 )
             )
         }
         binding.rvAgents.adapter = agentAdapter
+        this.agentAdapter = agentAdapter
         mainViewModel.agents.observe(viewLifecycleOwner) { agents ->
             agentAdapter.submitList(agents)
         }
@@ -114,8 +125,49 @@ class AgentFragment : Fragment() {
         binding.rvSkillPreview.adapter = adapter
     }
 
+    override fun onResume() {
+        super.onResume()
+        startWorkingPoll()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        workingPollJob?.cancel()
+        workingPollJob = null
+    }
+
+    /** 轮询推导各 Agent 是否在工作流中（后端 Agent 状态恒 ACTIVE，运行态看 task-runs） */
+    private fun startWorkingPoll() {
+        if (workingPollJob?.isActive == true) return
+        workingPollJob = viewLifecycleOwner.lifecycleScope.launch {
+            while (true) {
+                refreshWorkingState()
+                delay(POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    private suspend fun refreshWorkingState() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val agents = mainViewModel.agents.value.orEmpty()
+        if (agents.isEmpty()) return
+        val app = requireActivity().application as QgentApp
+        val working = mutableSetOf<String>()
+        agents.forEach { agent ->
+            val runs = app.container.taskRepository.getTaskRuns(projectId, agent.id).getOrNull().orEmpty()
+            if (runs.any { it.status in ACTIVE_RUN_STATUSES }) working.add(agent.id)
+        }
+        agentAdapter.setWorkingIds(working)
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
+        workingPollJob?.cancel()
+        workingPollJob = null
         _binding = null
+    }
+
+    companion object {
+        private const val POLL_INTERVAL_MS = 3_000L
     }
 }

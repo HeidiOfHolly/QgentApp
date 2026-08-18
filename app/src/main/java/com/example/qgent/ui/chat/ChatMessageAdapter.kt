@@ -63,6 +63,15 @@ class ChatMessageAdapter(
     /** 是否多选模式：控制复选框显示 */
     private var multiSelectMode = false
 
+    /** 群成员 id → 头像 URL（群成员接口返回，用于他人消息气泡旁展示） */
+    private var memberAvatarById: Map<String, String> = emptyMap()
+
+    /** 更新成员头像映射（成员表加载/刷新后调用） */
+    fun setMemberAvatars(avatars: Map<String, String>) {
+        memberAvatarById = avatars
+        notifyDataSetChanged()
+    }
+
     /** 更新选中集合（多选模式切换选中时调用） */
     fun setSelectedIds(ids: Set<String>) {
         selectedIds = ids
@@ -160,7 +169,7 @@ class ChatMessageAdapter(
         }
     }
 
-    class MessageVH(
+    inner class MessageVH(
         private val binding: ItemMessageBinding,
         private val onAvatarLongClick: ((String) -> Unit)?,
         private val onImageClick: ((String) -> Unit)?,
@@ -188,7 +197,15 @@ class ChatMessageAdapter(
             binding.ivAvatar.isVisible = true
             binding.tvSenderName.isVisible = !mine
             binding.tvSenderName.text = message.senderName
-            // 头像内容：自己的消息用当前用户头像；Agent 用 Agent 图标；他人默认占位
+            // 头像与气泡间距：他人头像在左 → 右侧留 8dp；自己头像在右 → 左侧留 8dp
+            val innerLp = binding.rowInner.layoutParams as ViewGroup.MarginLayoutParams
+            innerLp.marginStart = if (mine) 0 else dp(8)
+            binding.rowInner.layoutParams = innerLp
+            val avatarLp = binding.ivAvatar.layoutParams as ViewGroup.MarginLayoutParams
+            avatarLp.marginStart = if (mine) dp(8) else 0
+            avatarLp.marginEnd = 0
+            binding.ivAvatar.layoutParams = avatarLp
+            // 头像内容：自己的消息用当前用户头像；Agent 用 Agent 图标；他人用群成员头像（缺省默认占位）
             when {
                 mine -> {
                     val avatarUrl = SessionStore.user()?.avatarUrl
@@ -204,7 +221,19 @@ class ChatMessageAdapter(
                     }
                 }
                 isAgent -> binding.ivAvatar.setImageResource(R.drawable.ic_nav_agent)
-                else -> binding.ivAvatar.setImageResource(R.drawable.ic_avatar_default)
+                else -> {
+                    val memberAvatar = message.senderId?.let { memberAvatarById[it] }
+                    if (memberAvatar.isNullOrBlank()) {
+                        binding.ivAvatar.setImageResource(R.drawable.ic_avatar_default)
+                    } else {
+                        Glide.with(binding.ivAvatar)
+                            .load(RetrofitClient.resolveMediaUrl(memberAvatar))
+                            .centerCrop()
+                            .placeholder(R.drawable.ic_avatar_default)
+                            .error(R.drawable.ic_avatar_default)
+                            .into(binding.ivAvatar)
+                    }
+                }
             }
             binding.tvAgentTag.isVisible = !mine && isAgent
 
@@ -312,6 +341,9 @@ class ChatMessageAdapter(
                 })
             view.setOnClickListener { onImageClick?.invoke(uri) }
         }
+
+        private fun dp(value: Int): Int =
+            (value * binding.root.resources.displayMetrics.density).toInt()
 
         private fun isLocalUri(uri: String): Boolean =
             uri.startsWith("content://") || uri.startsWith("file://")

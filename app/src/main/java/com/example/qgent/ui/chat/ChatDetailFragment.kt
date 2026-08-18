@@ -457,12 +457,12 @@ class ChatDetailFragment : Fragment() {
     private fun appendLocalMessage(text: String) {
         appendMessage(
             ChatMessage(
-                LOCAL_ID_PREFIX + UUID.randomUUID(),
-                "我",
-                text,
-                MessageType.TEXT,
-                System.currentTimeMillis(),
-                true,
+                id = LOCAL_ID_PREFIX + UUID.randomUUID(),
+                senderName = "我",
+                content = text,
+                type = MessageType.TEXT,
+                timestamp = System.currentTimeMillis(),
+                isMine = true,
                 sequence = 0,
                 sendState = SendState.FAILED
             )
@@ -1711,6 +1711,8 @@ class ChatDetailFragment : Fragment() {
         groupMembers = mergedMembers
         memberNamesById = mergedMembers.associate { it.id to it.name }
         memberById = mergedMembers.associate { it.id to it }
+        // 成员头像映射 → 消息气泡旁展示他人头像
+        adapter.setMemberAvatars(mergedMembers.mapNotNull { m -> m.avatar?.takeIf { it.isNotBlank() }?.let { m.id to it } }.toMap())
     }
 
     /** 群成员变动（group.member.updated）后刷新成员表：@ 列表/成员映射立即包含新成员 */

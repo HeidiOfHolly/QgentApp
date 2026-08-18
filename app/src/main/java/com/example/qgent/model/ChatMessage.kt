@@ -7,6 +7,8 @@ enum class SendState { SENDING, FAILED }
 
 data class ChatMessage(
     val id: String,
+    /** 发送者 id（USER=userId / AGENT=agentId），用于反查成员头像 */
+    val senderId: String? = null,
     val senderName: String,
     val content: String,
     val type: MessageType,

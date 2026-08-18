@@ -35,7 +35,8 @@ fun AgentDto.toAgent(): Agent = Agent(
 fun GroupMemberDto.toGroupMember(): GroupMember = GroupMember(
     id = id,
     name = resolvedName,
-    type = if (isAgent) MemberType.AGENT else MemberType.HUMAN
+    type = if (isAgent) MemberType.AGENT else MemberType.HUMAN,
+    avatar = avatar
 )
 
 /** GroupMessageDto → UI ChatMessage。isMine 依据当前用户 id 与 senderId 比对。
@@ -65,6 +66,7 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
     }
     return ChatMessage(
         id = id,
+        senderId = senderId,
         // v1.6.0 起后端返回 senderName（用户=displayName、Agent=name、SYSTEM=null），反查仅兜底
         senderName = senderName?.takeIf { it.isNotBlank() } ?: memberNamesById[senderId] ?: "成员",
         content = displayContent,

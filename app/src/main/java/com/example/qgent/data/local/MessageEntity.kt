@@ -8,6 +8,8 @@ import androidx.room.PrimaryKey
 data class MessageEntity(
     @PrimaryKey val id: String,
     val groupId: String,
+    /** 发送者 id（USER=userId / AGENT=agentId），用于反查成员头像 */
+    val senderId: String?,
     val senderName: String,
     val content: String,
     val type: String,
