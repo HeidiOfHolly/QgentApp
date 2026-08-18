@@ -16,6 +16,7 @@ import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.GitHubRepository
+import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.databinding.FragmentTaskCardListBinding
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.Job
@@ -41,6 +42,8 @@ class TaskCardListFragment : Fragment() {
         get() = (requireActivity().application as QgentApp).container.chatRepository
     private val githubRepository: GitHubRepository
         get() = (requireActivity().application as QgentApp).container.githubRepository
+    private val userRepository: UserRepository
+        get() = (requireActivity().application as QgentApp).container.userRepository
 
     private val taskAdapter = TaskCardAdapter { task ->
         findNavController().navigate(
@@ -157,7 +160,7 @@ class TaskCardListFragment : Fragment() {
         (requireActivity().application as QgentApp).container.projectEventStream.stop()
     }
 
-    /** 加载需求群 / 仓库候选（发起人候选在刷新筛选行时从任务列表提取） */
+    /** 加载需求群 / 仓库 / 发起人候选。发起人取项目成员（稳定来源，不随筛选收窄） */
     private fun loadCandidates(projectId: String) {
         viewLifecycleOwner.lifecycleScope.launch {
             chatRepository.getGroups(projectId).onSuccess { groups ->
@@ -169,15 +172,24 @@ class TaskCardListFragment : Fragment() {
                 repoOptions = repos.associate { it.id to it.displayName }
             }
         }
+        viewLifecycleOwner.lifecycleScope.launch {
+            val teamId = mainViewModel.currentTeamId() ?: return@launch
+            val memberNames = userRepository.getTeamMembers(teamId).getOrNull().orEmpty()
+                .associate { it.userId to it.displayName }
+            creatorOptions = userRepository.getProjectMembers(projectId).getOrNull().orEmpty()
+                .map { it.userId to (memberNames[it.userId] ?: it.userId) }
+        }
     }
 
     private fun refreshFilterRow(state: TaskListViewModel.TaskListUiState) {
         val f = state.filter
-        // 发起人候选：从当前任务列表提取去重
-        creatorOptions = state.tasks
+        // 发起人候选保持全量：项目成员为稳定来源，再与任务列表并集兜底，
+        // 避免筛选后任务列表收窄导致已选值之外的条件消失
+        val fromTasks = state.tasks
             .mapNotNull { it.createdByUser }
             .distinctBy { it.id }
-            .map { it.id to (it.displayName) }
+            .map { it.id to it.displayName }
+        creatorOptions = (creatorOptions + fromTasks).distinctBy { it.first }
         filterAdapter.submitList(
             listOf(
                 FilterChip(TaskFilterType.GROUP, "需求群", f.groupId?.let { groupOptions[it] }),
@@ -229,20 +241,22 @@ class TaskCardListFragment : Fragment() {
         title: String,
         options: List<Pair<String, String>>,   // 显示文本 -> 值
         selected: String?,
-        onSelect: (String) -> Unit
+        onSelect: (String?) -> Unit
     ) {
-        if (options.isEmpty()) {
-            Toast.makeText(requireContext(), "暂无可选项", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val labels = options.map { it.first }.toTypedArray()
-        AlertDialog.Builder(requireContext())
+        // 「全部」作为首项：选中后清除该维度筛选（null 表示不筛）；无候选时仍可点「全部」重置
+        val labels = arrayOf(getString(R.string.filter_all)) + options.map { it.first }.toTypedArray()
+        val selectedIndex = if (selected == null) 0
+        else options.indexOfFirst { it.second == selected }.takeIf { it >= 0 }?.plus(1) ?: 0
+        val builder = AlertDialog.Builder(requireContext())
             .setTitle(title)
-            .setItems(labels) { _, which ->
-                onSelect(options[which].second)
-            }
             .setNegativeButton(R.string.cancel, null)
-            .show()
+        var dialogRef: AlertDialog? = null
+        builder.setSingleChoiceItems(labels, selectedIndex) { _, which ->
+            onSelect(if (which == 0) null else options[which - 1].second)
+            dialogRef?.dismiss()
+        }
+        dialogRef = builder.create()
+        dialogRef.show()
     }
 
     private fun applyFilter(projectId: String, filter: TaskListViewModel.TaskFilter?) {

@@ -295,16 +295,40 @@ data class MessageContentDto(
     @SerializedName("name") val name: String? = null,
     @SerializedName("size") val size: Long? = null,
     @SerializedName("mimeType") val mimeType: String? = null,
-    // ── TASK_STATUS 卡片（文档 §7）：content 至少含 taskId、status ──
+    // ── TASK_STATUS 卡片（§23.3）：content 至少含 taskId、status ──
     @SerializedName("taskId") val taskId: String? = null,
     @SerializedName("status") val status: String? = null,
     @SerializedName("node") val node: String? = null,
     @SerializedName("message") val message: String? = null,
-    // ── DIFF 卡片（文档 §7）：content 至少含 diffId ──
+    // ── TASK_STATUS 卡片（v23 §23.3）：阶段 / 交付模式 / 计划快照 ──
+    @SerializedName("phase") val phase: String? = null,
+    @SerializedName("deliveryMode") val deliveryMode: String? = null,
+    @SerializedName("plan") val plan: PlanSnapshotDto? = null,
+    // ── DIFF 卡片（§23.4）：content 至少含 diffId ──
     @SerializedName("diffId") val diffId: String? = null,
     @SerializedName("title") val title: String? = null,
     @SerializedName("additions") val additions: Int? = null,
-    @SerializedName("deletions") val deletions: Int? = null
+    @SerializedName("deletions") val deletions: Int? = null,
+    // ── DIFF 卡片（v23 §23.4）：审核批次 / 审核状态 / 交付状态 ──
+    @SerializedName("reviewBatchId") val reviewBatchId: String? = null,
+    @SerializedName("reviewStatus") val reviewStatus: String? = null,
+    @SerializedName("deliveryStatus") val deliveryStatus: String? = null
+)
+
+/** TASK_STATUS 卡 plan 快照（v23 §23.3）：Planner 计划摘要 + TaskStep 快照列表 */
+data class PlanSnapshotDto(
+    val summary: String? = null,
+    val steps: List<TaskStepSnapshotDto>? = null
+)
+
+/** TASK_STATUS 卡 plan.steps 单步快照（v23 §23.3；stepId 为数据库 TaskStepEntity.id） */
+data class TaskStepSnapshotDto(
+    @SerializedName("stepId") val stepId: String? = null,
+    val sequence: Int? = null,
+    val title: String? = null,
+    val role: String? = null,
+    val status: String? = null,
+    val message: String? = null
 )
 
 /** 创建对象存储直传凭证（§18.1：POST /projects/{projectId}/attachments） */

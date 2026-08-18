@@ -5,6 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginTop="8dp"
+    android:elevation="3dp"
     android:background="@drawable/bg_card"
     android:backgroundTint="@color/white"
     android:orientation="vertical">
@@ -41,15 +42,22 @@
             tools:text="+12 -3" />
     </LinearLayout>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/divider" />
 
-    <!-- 代码行容器：逐行 inflate item_diff_line -->
-    <LinearLayout
-        android:id="@+id/containerDiffLines"
+    <!-- 代码区横向滚动：长代码行不截断，横向滑动查看完整内容；竖向滚动由详情页外层 ScrollView 承担。
+         fillViewport=true：短文件代码区铺满屏宽，长文件按内容宽撑开触发横向滚动 -->
+    <HorizontalScrollView
+        android:id="@+id/scrollDiffLines"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical" />
+        android:fillViewport="true"
+        android:scrollbars="horizontal"
+        android:overScrollMode="ifContentScrolls">
+
+        <!-- 代码行容器：逐行 inflate item_mr_diff_line；宽度为 wrap_content 以容纳超屏宽的长行 -->
+        <LinearLayout
+            android:id="@+id/containerDiffLines"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </HorizontalScrollView>
 </LinearLayout>

@@ -11,14 +11,16 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import com.example.qgent.QgentApp
 import com.example.qgent.R
-import com.example.qgent.data.model.DiffLineResponseDto
-import com.example.qgent.data.model.DiffFileResponseDto
 import com.example.qgent.data.model.MergeRequestDetailDto
+import com.example.qgent.data.model.toDiffFile
+import com.example.qgent.data.repository.DiffRepository
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.databinding.FragmentMrDetailBinding
-import com.example.qgent.databinding.ItemDiffLineBinding
 import com.example.qgent.databinding.ItemMrDiffFileBinding
+import com.example.qgent.databinding.ItemMrDiffLineBinding
+import com.example.qgent.model.DiffFile
+import com.example.qgent.model.DiffLine
 import com.example.qgent.model.DiffLineType
 import com.example.qgent.ui.personal.fillLinearLayout
 import kotlinx.coroutines.launch
@@ -33,6 +35,8 @@ class MergeRequestDetailFragment : Fragment() {
         get() = (requireActivity().application as QgentApp).container.taskRepository
     private val githubRepository: GitHubRepository
         get() = (requireActivity().application as QgentApp).container.githubRepository
+    private val diffRepository: DiffRepository
+        get() = (requireActivity().application as QgentApp).container.diffRepository
 
     private val mergeRequestId: String by lazy { arguments?.getString(ARG_MR_ID).orEmpty() }
     private val projectId: String by lazy { arguments?.getString(ARG_PROJECT_ID).orEmpty() }
@@ -87,13 +91,15 @@ class MergeRequestDetailFragment : Fragment() {
         loadDiffFiles(diffId)
     }
 
+    /** Diff 文件走 diffRepository（DiffFileDto），后端可能返回 hunks 或 lines 形态，
+     *  由 toDiffFile() 统一解析成扁平行（与聊天 DIFF 卡片同路径，避免代码行缺失） */
     private fun loadDiffFiles(diffId: String) {
         viewLifecycleOwner.lifecycleScope.launch {
-            taskRepository.getDiffFiles(projectId, diffId)
+            diffRepository.getDiffFiles(projectId, diffId)
                 .onSuccess { files ->
                     binding.loading.isVisible = false
                     binding.tvDiffEmpty.isVisible = files.isEmpty()
-                    fillLinearLayout(binding.containerDiffFiles, files, R.layout.item_mr_diff_file) { view, file ->
+                    fillLinearLayout(binding.containerDiffFiles, files.map { it.toDiffFile() }, R.layout.item_mr_diff_file) { view, file ->
                         bindDiffFile(view, file)
                     }
                 }
@@ -105,39 +111,34 @@ class MergeRequestDetailFragment : Fragment() {
         }
     }
 
-    private fun bindDiffFile(view: View, file: DiffFileResponseDto) {
+    private fun bindDiffFile(view: View, file: DiffFile) {
         val item = ItemMrDiffFileBinding.bind(view)
-        item.tvDiffFileName.text = file.path
+        item.tvDiffFileName.text = file.fileName
         item.tvDiffStats.text = "+${file.additions} -${file.deletions}"
-        val lines = file.lines.orEmpty()
-        if (lines.isEmpty()) {
+        if (file.lines.isEmpty()) {
             item.containerDiffLines.isVisible = false
             return
         }
-        fillLinearLayout(item.containerDiffLines, lines, R.layout.item_diff_line) { lineView, line ->
-            bindDiffLine(ItemDiffLineBinding.bind(lineView), line)
+        // 短文件由 fillViewport 铺满屏宽；长行按内容宽撑开，由 HorizontalScrollView 横向滚动查看完整代码
+        fillLinearLayout(item.containerDiffLines, file.lines, R.layout.item_mr_diff_line) { lineView, line ->
+            bindDiffLine(ItemMrDiffLineBinding.bind(lineView), line)
         }
     }
 
-    private fun bindDiffLine(item: ItemDiffLineBinding, line: DiffLineResponseDto) {
+    private fun bindDiffLine(item: ItemMrDiffLineBinding, line: DiffLine) {
         val context = binding.root.context
-        val type = when (line.type) {
-            "ADD" -> DiffLineType.ADD
-            "DELETE" -> DiffLineType.DELETE
-            else -> DiffLineType.CONTEXT
-        }
-        item.tvSign.text = when (type) {
+        item.tvSign.text = when (line.type) {
             DiffLineType.ADD -> "+"
             DiffLineType.DELETE -> "-"
             DiffLineType.CONTEXT -> " "
         }
-        item.tvSign.setTextColor(androidx.core.content.ContextCompat.getColor(context, when (type) {
+        item.tvSign.setTextColor(androidx.core.content.ContextCompat.getColor(context, when (line.type) {
             DiffLineType.ADD -> R.color.diff_add_fg
             DiffLineType.DELETE -> R.color.diff_del_fg
             DiffLineType.CONTEXT -> R.color.diff_line_no
         }))
         item.tvCode.text = line.text
-        item.root.setBackgroundColor(androidx.core.content.ContextCompat.getColor(context, when (type) {
+        item.root.setBackgroundColor(androidx.core.content.ContextCompat.getColor(context, when (line.type) {
             DiffLineType.ADD -> R.color.diff_add_bg
             DiffLineType.DELETE -> R.color.diff_del_bg
             DiffLineType.CONTEXT -> android.R.color.white
