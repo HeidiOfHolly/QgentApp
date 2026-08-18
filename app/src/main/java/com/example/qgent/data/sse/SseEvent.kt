@@ -58,6 +58,8 @@ enum class SseEventType(val wire: String) {
 
     /** 有人/Agent 发群消息；payload { projectId, groupId, messageId } */
     MESSAGE_CREATED("message.created"),
+    /** v23：已有群消息 content 被更新（TASK_STATUS/DIFF 卡单消息持续更新）；payload { projectId, groupId, messageId } */
+    MESSAGE_UPDATED("message.updated"),
     /** 群创建/改名/归档；payload { projectId, groupId } */
     GROUP_CREATED("group.created"),
     GROUP_UPDATED("group.updated"),

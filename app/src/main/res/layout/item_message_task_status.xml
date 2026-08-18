@@ -64,6 +64,47 @@
             tools:text="执行节点：DEVELOPER" />
 
         <TextView
+            android:id="@+id/tvTaskPhase"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:visibility="gone"
+            tools:text="阶段：CODING" />
+
+        <TextView
+            android:id="@+id/tvTaskDeliveryMode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:visibility="gone"
+            tools:text="交付模式：DIFF_FIRST" />
+
+        <TextView
+            android:id="@+id/tvTaskPlanSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            tools:text="修复需求群权限和上下文访问控制" />
+
+        <!-- 计划步骤快照（v23：plan.steps 按 sequence 升序） -->
+        <LinearLayout
+            android:id="@+id/containerTaskSteps"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="vertical"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/tvTaskMessage"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

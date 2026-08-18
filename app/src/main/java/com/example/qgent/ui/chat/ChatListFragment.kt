@@ -235,8 +235,11 @@ class ChatListFragment : Fragment() {
                 dialog.dismiss()
                 return@launch
             }
+            // 当前用户始终视为已在项目内（后端 GET /projects/{id}/members 可能不返回自己），
+            // 否则候选 = 团队成员 − 项目成员 会把「自己」误当成唯一可添加的人
+            val myId = SessionStore.user()?.id
             val existingIds = userRepository.getProjectMembers(projectId)
-                .getOrNull()?.map { it.userId }?.toSet().orEmpty()
+                .getOrNull()?.map { it.userId }?.toSet().orEmpty() + listOfNotNull(myId)
             val candidates = teamMembers.filter { it.userId !in existingIds }
             if (candidates.isEmpty()) {
                 Toast.makeText(requireContext(), R.string.add_member_empty, Toast.LENGTH_SHORT).show()
@@ -348,6 +351,12 @@ class ChatListFragment : Fragment() {
                 val nameById = teamMembers.associate { it.userId to it.displayName }
                 userRepository.getProjectMembers(projectId).getOrNull().orEmpty().forEach {
                     picks.add(GroupMemberPick(it.userId, nameById[it.userId] ?: "成员", it.role))
+                }
+                // 后端项目成员接口可能不返回当前用户：把自己补进可选列表（默认不勾选，可自行勾选进群）
+                val myId = SessionStore.user()?.id
+                val myName = SessionStore.user()?.displayName
+                if (myId != null && picks.none { it.userId == myId }) {
+                    picks.add(GroupMemberPick(myId, myName ?: "我", "PROJECT_MEMBER"))
                 }
                 // 团队 Agent 并入（isAgent 标记，默认勾选 = 自动加入需求群）
                 agentRepository().getAgents(teamId).getOrNull().orEmpty()

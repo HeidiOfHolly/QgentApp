@@ -11,6 +11,7 @@ import com.example.qgent.model.DiffLineType
 import com.example.qgent.model.GroupMember
 import com.example.qgent.model.MemberType
 import com.example.qgent.model.MessageType
+import com.example.qgent.model.TaskStepSnapshot
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -62,13 +63,31 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
         senderType = senderType,
         taskStatus = if (parsedType == MessageType.TASK_STATUS) content?.status else null,
         taskNode = if (parsedType == MessageType.TASK_STATUS) content?.node else null,
-        taskId = if (parsedType == MessageType.TASK_STATUS) content?.taskId else null,
+        taskId = if (parsedType == MessageType.TASK_STATUS || parsedType == MessageType.DIFF) content?.taskId else null,
+        // v23：TASK_STATUS 卡单消息持续更新，新增 phase / deliveryMode / plan 快照
+        taskPhase = if (parsedType == MessageType.TASK_STATUS) content?.phase else null,
+        taskDeliveryMode = if (parsedType == MessageType.TASK_STATUS) content?.deliveryMode else null,
+        taskPlanSummary = if (parsedType == MessageType.TASK_STATUS) content?.plan?.summary else null,
+        taskPlanSteps = if (parsedType == MessageType.TASK_STATUS) content?.plan?.steps?.map { it.toTaskStepSnapshot() } else null,
         diffId = if (parsedType == MessageType.DIFF) content?.diffId else null,
         diffTitle = if (parsedType == MessageType.DIFF) content?.title else null,
         diffAdditions = if (parsedType == MessageType.DIFF) content?.additions else null,
-        diffDeletions = if (parsedType == MessageType.DIFF) content?.deletions else null
+        diffDeletions = if (parsedType == MessageType.DIFF) content?.deletions else null,
+        reviewBatchId = if (parsedType == MessageType.DIFF) content?.reviewBatchId else null,
+        reviewStatus = if (parsedType == MessageType.DIFF) content?.reviewStatus else null,
+        deliveryStatus = if (parsedType == MessageType.DIFF) content?.deliveryStatus else null
     )
 }
+
+/** v23：TaskStepSnapshotDto → UI TaskStepSnapshot */
+private fun TaskStepSnapshotDto.toTaskStepSnapshot(): TaskStepSnapshot = TaskStepSnapshot(
+    stepId = stepId,
+    sequence = sequence,
+    title = title,
+    role = role,
+    status = status,
+    message = message
+)
 
 /** TASK_STATUS 卡片摘要：content JSON 含 taskId/status/node/message，拼成「状态 · 节点 · 说明」 */
 private fun GroupMessageDto.taskStatusSummary(): String {
@@ -101,7 +120,8 @@ private fun DiffHunkLineDto.toDiffLine(): DiffLine = DiffLine(
     type = runCatching { DiffLineType.valueOf(type ?: "CONTEXT") }.getOrDefault(DiffLineType.CONTEXT),
     oldLineNo = oldLineNo,
     newLineNo = newLineNo,
-    text = text
+    // text 后端可能为 null（Gson 绕过空安全），兜底空串避免 NPE
+    text = text ?: ""
 )
 
 /** 群列表摘要：图片/文件消息显示 [图片]/[文件]，DIFF 卡显示 [Diff 待验收]；senderName 为空（如 SYSTEM 消息）时只显示正文。 */
