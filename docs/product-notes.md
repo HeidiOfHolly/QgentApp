@@ -3,6 +3,24 @@
 > 本文件记录开发过程中确认的产品逻辑与契约决策，供任何新会话读取，
 > 避免依赖对话记忆。修改时同步更新。
 
+## TASK_STATUS / DIFF 卡：单消息持续更新（v23，2026-08-18 适配）
+
+- **机制**：每个 Task 在需求群最多两条自动化消息——一条 `TASK_STATUS`（clientMessageId=`task-card-{taskId}`）、
+  一条 `DIFF`（clientMessageId=`diff-card-{taskId}`）。状态变化时**更新原消息 content**（id/sequence/createdAt 不变），
+  不重复建卡、不增加未读数。卡片定位 = requirement_group_id + client_message_id。
+- **TASK_STATUS content（v23）**：`{taskId, status, phase(PLAN/CODING/TESTING/REVIEWING/DELIVERY), deliveryMode,
+  deliveryReason, node, message, currentStepId, plan:{summary, steps:[{stepId, sequence, title, role, status, message}]}}`。
+  steps[].stepId 必须是数据库 TaskStepEntity.id；按 sequence 升序。
+- **DIFF content（v23）**：`{taskId, diffId(必含), reviewBatchId, title, additions, deletions,
+  reviewStatus(PENDING_CONFIRMATION/ACCEPTED/REJECTED), deliveryStatus(NOT_STARTED/COMMITTED/PUSHED/MR_CREATED/DELIVERY_FAILED)}`。
+- **事件**：卡片 content 更新时发 `message.updated`（payload `{projectId, groupId, messageId}`），
+  不等于新建消息；客户端收到后拉群消息接口，**同 id 消息以网络内容覆盖本地**（前端不按连续性聚合）。
+- **发送身份**：默认 ORCHESTRATOR Agent（senderType=AGENT）；无可用 ORCHESTRATOR 时 SYSTEM 降级（senderId/name=null）。
+- **前端适配**：SseEventType 加 `MESSAGE_UPDATED`；`mergeWithNetwork` 改为 network 在前（同 id 网络内容覆盖）；
+  `MessageContentDto`/`ChatMessage`/`MessageEntity` 补 phase/deliveryMode/plan 快照/reviewBatchId/reviewStatus/deliveryStatus；
+  TASK_STATUS 卡展示计划摘要+步骤快照；DIFF 卡展示审核/交付状态。
+- **本地缓存**：MessageEntity 已持久化全部卡片字段（taskPlanSteps 以 JSON 串存储），升级 DB version 7（fallback 重建）。
+
 ## DIFF 卡前端任务清单（2026-08-19 存档，实施状态见各条勾选）
 
 > 来源：后端接口文档 v1.9.4 §7/§11/§12/§15/§16/§20；编排在正式 Diff 生成后向需求群回

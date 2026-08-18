@@ -1431,38 +1431,67 @@ class ChatDetailFragment : Fragment() {
     /**
      * DIFF 卡点击（§v1.9.4 A3）：
      * 优先用 diffId 反向映射反查 taskId → 打开 Task Diff 审核对话框（与 TASK_STATUS 卡同一审核面板）；
-     * 反查不到 taskId（历史消息/事件未缓存）时降级为全屏查看 diff 文件。
+     * 后端 DIFF 消息 content 可能不带 diffId（契约变化）→ 用消息里的 taskId 拉任务详情兜底；
+     * 都拿不到才提示缺少 diffId。
      */
     private fun onDiffCardClick(message: ChatMessage) {
         val projectId = mainViewModel.currentProjectId() ?: return
         val diffId = message.diffId
-        if (diffId.isNullOrBlank()) {
-            Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
+        if (!diffId.isNullOrBlank()) {
+            val taskId = diffIdToTaskIdMap[diffId]
+            if (taskId != null) {
+                openTaskDiffReview(projectId, taskId)
+            } else {
+                showDiffFilesDialog(projectId, diffId, message.diffTitle)
+            }
             return
         }
-        val taskId = diffIdToTaskIdMap[diffId]
-        if (taskId != null) {
+        val taskId = message.taskId
+        if (!taskId.isNullOrBlank()) {
+            openTaskDiffReview(projectId, taskId)
+            return
+        }
+        Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
+    }
+
+    /** 拉取任务详情 → 弹 Diff Review 审核对话框（TASK_STATUS 卡 / DIFF 卡共用） */
+    private fun openTaskDiffReview(projectId: String, taskId: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepo().getTaskDetail(projectId, taskId)
+                .onSuccess { detail -> showTaskDiffReviewDialog(projectId, taskId, detail) }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), "加载任务失败：${e.message}", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    /** DIFF 卡「完整 Diff」：全屏查看所有文件代码；diffId 缺失时用 taskId 拉任务详情解析兜底 */
+    private fun onViewFullDiffClick(message: ChatMessage) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val diffId = message.diffId
+        if (!diffId.isNullOrBlank()) {
+            showDiffFilesDialog(projectId, diffId, message.diffTitle)
+            return
+        }
+        val taskId = message.taskId
+        if (!taskId.isNullOrBlank()) {
             viewLifecycleOwner.lifecycleScope.launch {
                 taskRepo().getTaskDetail(projectId, taskId)
-                    .onSuccess { detail -> showTaskDiffReviewDialog(projectId, taskId, detail) }
+                    .onSuccess { detail ->
+                        val resolved = extractDiffId(detail.diffReviewSummary) ?: taskDiffIdMap[taskId]
+                        if (resolved.isNullOrBlank()) {
+                            Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
+                        } else {
+                            showDiffFilesDialog(projectId, resolved, message.diffTitle)
+                        }
+                    }
                     .onFailure { e ->
                         Toast.makeText(requireContext(), "加载任务失败：${e.message}", Toast.LENGTH_SHORT).show()
                     }
             }
-        } else {
-            showDiffFilesDialog(projectId, diffId, message.diffTitle)
-        }
-    }
-
-    /** DIFF 卡「完整 Diff」：全屏查看所有文件代码 */
-    private fun onViewFullDiffClick(message: ChatMessage) {
-        val projectId = mainViewModel.currentProjectId() ?: return
-        val diffId = message.diffId
-        if (diffId.isNullOrBlank()) {
-            Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
             return
         }
-        showDiffFilesDialog(projectId, diffId, message.diffTitle)
+        Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
     }
 
     /** 全屏查看 diff 文件：可滑动，绿加红减，文件头显示 basename（卡片点击 / 「完整 Diff」入口） */
@@ -1698,6 +1727,9 @@ class ChatDetailFragment : Fragment() {
      *
      * [keepLocal]=false（初次加载）：剔除所有未被后端确认的本地兜底消息（含历史残留）；
      * [keepLocal]=true（轮询）：仅剔除旧幽灵（无 local- 前缀的），本会话新发的 local- 消息保留显示。
+     *
+     * v23：同 id 以网络内容为准（network 在前），保证 TASK_STATUS/DIFF 卡「单消息持续更新」
+     * 的 content 变更能覆盖本地旧内容（原先 kept 在前会把旧卡片内容保留住，更新不生效）。
      */
     private fun mergeWithNetwork(network: List<ChatMessage>, keepLocal: Boolean = false): List<ChatMessage> {
         val networkIds = network.map { it.id }.toSet()
@@ -1708,7 +1740,7 @@ class ChatDetailFragment : Fragment() {
                 else -> !(msg.isMine && msg.sequence <= 0L)                    // 历史幽灵：自己发的且无 sequence
             }
         }
-        return (kept + network).distinctBy { it.id }.sortedChronologically()
+        return (network + kept).distinctBy { it.id }.sortedChronologically()
     }
 
     /** 按后端单调 sequence 排序（本地兜底消息无 sequence，恒排末尾）；timestamp 因时区不一致不可靠，仅作 sequence 相同时的次级排序 */
@@ -1775,6 +1807,14 @@ class ChatDetailFragment : Fragment() {
                     when (event.type) {
                         // 消息事件：当前群有新消息 → 立即拉取一次
                         SseEventType.MESSAGE_CREATED -> {
+                            val targetGroup = parseGroupId(event.data)
+                            if (targetGroup == groupId) {
+                                pollMessages(projectId, groupId)
+                            }
+                        }
+                        // v23：TASK_STATUS / DIFF 卡单消息持续更新 → 刷新消息列表，
+                        // 合并时同 id 以网络（新）内容覆盖本地（见 mergeWithNetwork）
+                        SseEventType.MESSAGE_UPDATED -> {
                             val targetGroup = parseGroupId(event.data)
                             if (targetGroup == groupId) {
                                 pollMessages(projectId, groupId)

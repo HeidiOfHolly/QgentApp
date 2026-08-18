@@ -140,7 +140,7 @@ class ChatMessageAdapter(
         }
     }
 
-    /** 任务状态卡片行：状态标签 + 执行节点 + 说明（Agent 任务进度）。
+    /** 任务状态卡片行：状态标签 + 执行节点 + 阶段/交付模式 + 计划摘要 + 步骤快照（v23 单消息持续更新）。
      *  待办：senderType=SYSTEM 时（ORCHESTRATOR 缺失降级）展示"系统"，不读 senderId/Agent 详情。
      *  可点击：待确认 Diff 时点击弹确认详情（onTaskStatusClick，由 Fragment 提供）。 */
     class TaskStatusVH(
@@ -152,12 +152,54 @@ class ChatMessageAdapter(
             val isSystem = message.senderType == "SYSTEM"
             binding.tvTaskStatus.text = if (isSystem) "系统" else (message.taskStatus ?: "运行中")
             binding.tvTaskNode.isVisible = !isSystem && !message.taskNode.isNullOrBlank()
-            if (!isSystem) message.taskNode?.let { binding.tvTaskNode.text = it }
-            binding.tvTaskMessage.isVisible = message.content.isNotBlank()
+            if (!isSystem) message.taskNode?.let { binding.tvTaskNode.text = "执行节点：$it" }
+            binding.tvTaskPhase.isVisible = !isSystem && !message.taskPhase.isNullOrBlank()
+            if (!isSystem) message.taskPhase?.let { binding.tvTaskPhase.text = "阶段：$it" }
+            binding.tvTaskDeliveryMode.isVisible = !isSystem && !message.taskDeliveryMode.isNullOrBlank()
+            if (!isSystem) message.taskDeliveryMode?.let { binding.tvTaskDeliveryMode.text = "交付模式：$it" }
+            binding.tvTaskPlanSummary.isVisible = !isSystem && !message.taskPlanSummary.isNullOrBlank()
+            if (!isSystem) binding.tvTaskPlanSummary.text = message.taskPlanSummary
+
+            // 计划步骤快照（v23）：按 sequence 升序逐行渲染
+            val steps = if (isSystem) emptyList() else message.taskPlanSteps.orEmpty()
+            binding.containerTaskSteps.removeAllViews()
+            binding.containerTaskSteps.isVisible = steps.isNotEmpty()
+            steps.forEach { step -> binding.containerTaskSteps.addView(stepRow(step)) }
+
+            binding.tvTaskMessage.isVisible = !isSystem && message.content.isNotBlank()
             binding.tvTaskMessage.text = message.content
             // 点击卡片 → 查看任务状态/Diff 确认详情
             binding.root.setOnClickListener { onTaskStatusClick?.invoke(message) }
         }
+
+        private fun stepRow(step: com.example.qgent.model.TaskStepSnapshot): TextView {
+            val ctx = binding.root.context
+            return TextView(ctx).apply {
+                text = buildString {
+                    step.sequence?.let { append(it).append(". ") }
+                    append(step.title ?: "")
+                    step.role?.let { append("（").append(it).append("）") }
+                    step.status?.let { append(" — ").append(stepStatusLabel(it)) }
+                    step.message?.takeIf { it.isNotBlank() }?.let { append("\n").append(it) }
+                }
+                textSize = 11f
+                setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
+                setPadding(0, dp(3), 0, dp(3))
+            }
+        }
+
+        private fun stepStatusLabel(status: String): String = when (status) {
+            "PENDING" -> "待执行"
+            "RUNNING" -> "执行中"
+            "SUCCEEDED" -> "成功"
+            "FAILED" -> "失败"
+            "SKIPPED" -> "已跳过"
+            "CANCELLED" -> "已取消"
+            else -> status
+        }
+
+        private fun dp(value: Int): Int =
+            (value * binding.root.resources.displayMetrics.density).toInt()
     }
 
     class MessageVH(
@@ -331,6 +373,13 @@ class ChatMessageAdapter(
             } else {
                 ""
             }
+            // v23：DIFF 卡审核/交付状态（content.reviewStatus / deliveryStatus）
+            val statusParts = listOfNotNull(
+                message.reviewStatus?.let { "审核：${diffReviewStatusLabel(it)}" },
+                message.deliveryStatus?.let { "交付：${diffDeliveryStatusLabel(it)}" }
+            ).joinToString(" · ")
+            binding.tvDiffStatusLine.isVisible = statusParts.isNotEmpty()
+            binding.tvDiffStatusLine.text = statusParts
             // 操作行：Diff 审核（确认/拒绝/重试）/ 完整 Diff 全屏查看
             binding.tvActionReview.setOnClickListener { onDiffCardClick?.invoke(message) }
             binding.tvActionFull.setOnClickListener { onViewFullDiff?.invoke(message) }
@@ -423,6 +472,24 @@ class ChatMessageAdapter(
             } else {
                 String.format(Locale.US, "%.1f MB", kb / 1024.0)
             }
+        }
+
+        /** v23：DIFF 卡 reviewStatus 文案（PENDING_CONFIRMATION/ACCEPTED/REJECTED） */
+        fun diffReviewStatusLabel(status: String): String = when (status) {
+            "PENDING_CONFIRMATION" -> "待确认"
+            "ACCEPTED" -> "已确认"
+            "REJECTED" -> "已拒绝"
+            else -> status
+        }
+
+        /** v23：DIFF 卡 deliveryStatus 文案（NOT_STARTED/COMMITTED/PUSHED/MR_CREATED/DELIVERY_FAILED） */
+        fun diffDeliveryStatusLabel(status: String): String = when (status) {
+            "NOT_STARTED" -> "未开始"
+            "COMMITTED" -> "已提交"
+            "PUSHED" -> "已推送"
+            "MR_CREATED" -> "已建 MR"
+            "DELIVERY_FAILED" -> "交付失败"
+            else -> status
         }
     }
 }

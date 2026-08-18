@@ -295,16 +295,41 @@ data class MessageContentDto(
     @SerializedName("name") val name: String? = null,
     @SerializedName("size") val size: Long? = null,
     @SerializedName("mimeType") val mimeType: String? = null,
-    // ── TASK_STATUS 卡片（文档 §7）：content 至少含 taskId、status ──
+    // ── TASK_STATUS 卡片（v23 单消息持续更新契约）：content 含 taskId/status/phase/node/message/plan ──
     @SerializedName("taskId") val taskId: String? = null,
     @SerializedName("status") val status: String? = null,
+    @SerializedName("phase") val phase: String? = null,
+    @SerializedName("deliveryMode") val deliveryMode: String? = null,
+    @SerializedName("deliveryReason") val deliveryReason: String? = null,
     @SerializedName("node") val node: String? = null,
     @SerializedName("message") val message: String? = null,
-    // ── DIFF 卡片（文档 §7）：content 至少含 diffId ──
-    @SerializedName("diffId") val diffId: String? = null,
+    @SerializedName("currentStepId") val currentStepId: String? = null,
+    @SerializedName("plan") val plan: TaskStatusPlanDto? = null,
+    // ── DIFF 卡片（v23）：content 必含 diffId + taskId，另带 reviewBatchId/reviewStatus/deliveryStatus ──
+    @SerializedName(value = "diffId", alternate = ["reviewId", "resourceId"])
+    val diffId: String? = null,
+    @SerializedName("reviewBatchId") val reviewBatchId: String? = null,
     @SerializedName("title") val title: String? = null,
     @SerializedName("additions") val additions: Int? = null,
-    @SerializedName("deletions") val deletions: Int? = null
+    @SerializedName("deletions") val deletions: Int? = null,
+    @SerializedName("reviewStatus") val reviewStatus: String? = null,
+    @SerializedName("deliveryStatus") val deliveryStatus: String? = null
+)
+
+/** TASK_STATUS 卡 plan（v23）：Planner 计划摘要 + TaskStep 快照（按 sequence 升序） */
+data class TaskStatusPlanDto(
+    val summary: String? = null,
+    val steps: List<TaskStepSnapshotDto>? = null
+)
+
+/** TASK_STATUS 卡 plan.steps 单步快照（stepId 为数据库 TaskStepEntity.id） */
+data class TaskStepSnapshotDto(
+    @SerializedName("stepId") val stepId: String? = null,
+    val sequence: Int? = null,
+    val title: String? = null,
+    val role: String? = null,
+    val status: String? = null,
+    val message: String? = null
 )
 
 /** 创建对象存储直传凭证（§18.1：POST /projects/{projectId}/attachments） */
@@ -577,7 +602,8 @@ data class DiffHunkLineDto(
     val type: String? = null,       // ADD / DELETE / CONTEXT
     @SerializedName("oldLineNo") val oldLineNo: Int? = null,
     @SerializedName("newLineNo") val newLineNo: Int? = null,
-    val text: String
+    // 后端可能缺省/返回 null（Gson 会绕过 Kotlin 空安全），映射时兜底为空串
+    val text: String? = null
 )
 
 /** Diff 确认/拒绝请求体（§15.3：POST /diffs/{diffId}/accept|reject，reason 可选） */

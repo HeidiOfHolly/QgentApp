@@ -25,8 +25,17 @@ data class ChatMessage(
     val taskId: String? = null,
     val taskStatus: String? = null,
     val taskNode: String? = null,
+    /** TASK_STATUS 卡片（v23）：阶段 / 交付模式 / 计划摘要 / 步骤快照 */
+    val taskPhase: String? = null,
+    val taskDeliveryMode: String? = null,
+    val taskPlanSummary: String? = null,
+    val taskPlanSteps: List<TaskStepSnapshot>? = null,
     /** DIFF 卡片：content 含 diffId，展示时用 DiffRepository 拉取文件内容 */
     val diffId: String? = null,
+    /** DIFF 卡片（v23）：审核批次 / 审核状态 / 交付状态 */
+    val reviewBatchId: String? = null,
+    val reviewStatus: String? = null,
+    val deliveryStatus: String? = null,
     /** DIFF 卡：任务标题（content.title，服务端保证必有，§v1.9.4 DIFF 卡契约） */
     val diffTitle: String? = null,
     /** DIFF 卡：总变更统计（content.additions / content.deletions） */
