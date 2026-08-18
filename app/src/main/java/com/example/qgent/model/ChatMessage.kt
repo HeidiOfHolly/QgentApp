@@ -51,7 +51,8 @@ data class ChatMessage(
         MessageType.IMAGE -> "[图片]"
         MessageType.FILE -> fileName ?: "[文件]"
         MessageType.SYSTEM -> content
-        MessageType.QUOTE -> replyToSummary?.let { "引用：$it" } ?: "[引用消息]"
+        // v2.0.4：QUOTE 消息 content.text 为消息自身正文（引用条已单独展示被引用摘要）
+        MessageType.QUOTE -> content.ifBlank { replyToSummary?.let { "引用：$it" } ?: "[引用消息]" }
         MessageType.DIFF -> "[代码变更]"
         MessageType.TASK_STATUS -> content.ifBlank { "[任务状态] " }
     }

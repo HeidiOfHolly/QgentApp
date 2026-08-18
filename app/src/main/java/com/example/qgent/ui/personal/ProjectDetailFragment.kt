@@ -14,7 +14,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
-import com.example.qgent.data.SessionStore
 import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.GitHubRepositoryDto
@@ -119,8 +118,9 @@ class ProjectDetailFragment : Fragment() {
                     .associate { it.userId to it.displayName }
             } else emptyMap()
             val members = userRepository.getProjectMembers(projectId).getOrNull().orEmpty()
-            val myId = SessionStore.user()?.id
-            isAdmin = members.firstOrNull { it.userId == myId }?.role == "PROJECT_ADMIN"
+            // 管理员判断以项目详情返回的当前用户有效角色为准（权限方案 v1.1）：
+            // Team Owner 兜底 PROJECT_ADMIN 已由后端在 role 体现，不再从成员列表查找自己
+            isAdmin = userRepository.getProject(projectId).getOrNull()?.role == "PROJECT_ADMIN"
             binding.tvAddMember.isVisible = isAdmin
             binding.tvAddRepository.isVisible = isAdmin
 

@@ -63,21 +63,16 @@ class MemoryPoolFragment : Fragment() {
     }
 
     /**
-     * 审核权限判断：项目 Admin 或 当前团队 Owner（文档 §3.1：Team Owner 对本团队项目有兜底管理权限）。
-     * 从项目成员角色 + 团队成员角色实时读取，不依赖写死的 isProjectAdmin。
+     * 审核权限判断（权限方案 v1.1）：只看项目详情返回的当前用户有效角色 role。
+     * Team Owner 的兜底管理员角色已由后端在 GET /projects/{id} 的 role 中体现，
+     * 客户端不再用成员列表/团队成员表兜底（后端对 Team Owner 有规范校验，本地兜底可能展示会被拒绝的操作）。
      */
     private suspend fun resolveAdminRole(): Boolean {
         val projectId = mainViewModel.currentProjectId() ?: return false
-        val teamId = mainViewModel.currentTeamId() ?: return false
-        val myId = com.example.qgent.data.SessionStore.user()?.id ?: return false
         val app = requireActivity().application as QgentApp
-        val projectAdmin = app.container.userRepository.getProjectMembers(projectId)
-            .getOrNull().orEmpty()
-            .any { it.userId == myId && it.role == "PROJECT_ADMIN" }
-        if (projectAdmin) return true
-        return app.container.userRepository.getTeamMembers(teamId)
-            .getOrNull().orEmpty()
-            .any { it.userId == myId && it.role == "TEAM_OWNER" }
+        return app.container.userRepository.getProject(projectId)
+            .getOrNull()
+            ?.role == "PROJECT_ADMIN"
     }
 
     private fun loadMemories() {

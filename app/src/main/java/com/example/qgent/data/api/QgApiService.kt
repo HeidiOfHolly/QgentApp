@@ -193,10 +193,19 @@ interface QgApiService {
         @Body body: UpdateProjectMemberRequest
     ): Response<ApiResponse<ProjectMemberDto>>
 
+    /** 项目成员列表（分页：cursor + limit，循环消费至 hasMore=false 拿全量） */
     @GET("projects/{projectId}/members")
     suspend fun getProjectMembers(
-        @Path("projectId") projectId: String
+        @Path("projectId") projectId: String,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 100
     ): Response<ApiResponse<List<ProjectMemberDto>>>
+
+    /** 项目详情：返回当前用户有效项目角色 role（PROJECT_ADMIN/PROJECT_MEMBER，含 Team Owner 兜底） */
+    @GET("projects/{projectId}")
+    suspend fun getProject(
+        @Path("projectId") projectId: String
+    ): Response<ApiResponse<ProjectDto>>
 
     // ── 群（Group） ──
 

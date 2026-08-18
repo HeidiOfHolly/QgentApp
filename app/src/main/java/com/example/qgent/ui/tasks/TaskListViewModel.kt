@@ -7,13 +7,17 @@ import androidx.lifecycle.viewModelScope
 import com.example.qgent.R
 import com.example.qgent.data.model.MergeRequestDto
 import com.example.qgent.data.model.TaskListItemDto
+import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.model.Agent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /** 任务页/任务卡片列表 ViewModel：任务、Agent 近况、MR 三列表 + 任务筛选 */
-class TaskListViewModel(private val repo: TaskRepository) : ViewModel() {
+class TaskListViewModel(
+    private val repo: TaskRepository,
+    private val githubRepo: GitHubRepository
+) : ViewModel() {
 
     /** 任务页「我的任务」最多展示条数 */
     companion object {
@@ -134,12 +138,25 @@ class TaskListViewModel(private val repo: TaskRepository) : ViewModel() {
         }
     }
 
+    /**
+     * 过滤 MR 只保留当前项目所属：
+     * 后端 GET /projects/{id}/merge-requests 实际返回团队级 MR，而详情接口按项目校验，
+     * 跨项目点击会报「MR 不存在或不可见」。MR 无 projectId，用 repositoryId
+     * （= project_repositories.id，唯一归属项目）与当前项目仓库绑定比对。
+     * 仓库列表拉取失败时不过滤（避免把有效 MR 误隐藏）。
+     */
+    private suspend fun filterMrByProject(projectId: String, mrs: List<MergeRequestDto>): List<MergeRequestDto> {
+        val repoIds = githubRepo.getProjectRepositories(projectId).getOrNull().orEmpty().map { it.id }.toSet()
+        if (repoIds.isEmpty()) return mrs
+        return mrs.filter { it.repositoryId in repoIds }
+    }
+
     private fun loadMergeRequests(projectId: String) {
         viewModelScope.launch {
             repo.getMergeRequests(projectId)
                 .onSuccess { mrs ->
-                    // 存全量；任务页展示时自行 take(MAX_MR)，MR 列表页用全量
-                    _uiState.value = _uiState.value.copy(mergeRequests = mrs)
+                    // 存全量（仅当前项目）；任务页展示时自行 take(MAX_MR)，MR 列表页用全量
+                    _uiState.value = _uiState.value.copy(mergeRequests = filterMrByProject(projectId, mrs))
                 }
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(error = e.message ?: "加载合并请求失败")
@@ -155,7 +172,7 @@ class TaskListViewModel(private val repo: TaskRepository) : ViewModel() {
         viewModelScope.launch {
             repo.getMergeRequests(projectId)
                 .onSuccess { mrs ->
-                    _uiState.value = _uiState.value.copy(mergeRequests = mrs)
+                    _uiState.value = _uiState.value.copy(mergeRequests = filterMrByProject(projectId, mrs))
                 }
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(error = e.message ?: "加载合并请求失败")

@@ -66,6 +66,10 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
         service.getProjects(teamId).toDataOrThrow()
     }
 
+    override suspend fun getProject(projectId: String): Result<ProjectDto> = apiCall {
+        service.getProject(projectId).toDataOrThrow()
+    }
+
     override suspend fun createProject(
         teamId: String,
         name: String,
@@ -97,7 +101,20 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
     }
 
     override suspend fun getProjectMembers(projectId: String): Result<List<ProjectMemberDto>> = apiCall {
-        service.getProjectMembers(projectId).toDataOrThrow()
+        // 循环消费分页（cursor + limit=100），直到 hasMore=false，对外返回完整列表；
+        // 任一分页请求失败整体失败（不返回部分结果，避免基于不完整成员做批量操作）
+        val all = mutableListOf<ProjectMemberDto>()
+        var cursor: String? = null
+        var pages = 0
+        do {
+            if (++pages > MAX_MEMBER_PAGES) throw IllegalStateException("项目成员分页异常：超过 $MAX_MEMBER_PAGES 页")
+            val resp = service.getProjectMembers(projectId, cursor, MEMBER_PAGE_SIZE)
+            val page = resp.body()?.page
+            val data = resp.toDataOrThrow()
+            all += data
+            cursor = if (page?.hasMore == true) page.nextCursor else null
+        } while (cursor != null)
+        all
     }
 
     override suspend fun createTeam(name: String, description: String?, idempotencyKey: String): Result<TeamDto> =
@@ -122,4 +139,9 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
         apiCall {
             service.markAllNotificationsRead(idempotencyKey).toUnitOrThrow()
         }
+
+    companion object {
+        private const val MEMBER_PAGE_SIZE = 100
+        private const val MAX_MEMBER_PAGES = 100
+    }
 }

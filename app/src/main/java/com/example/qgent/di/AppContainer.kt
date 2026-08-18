@@ -113,6 +113,6 @@ class AppContainer(context: Context) {
     }
 
     val taskListViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
-        initializer { TaskListViewModel(taskRepository) }
+        initializer { TaskListViewModel(taskRepository, githubRepository) }
     }
 }

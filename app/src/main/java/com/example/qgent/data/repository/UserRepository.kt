@@ -21,10 +21,13 @@ interface UserRepository {
     suspend fun acceptTeamInvitation(reference: String, idempotencyKey: String): Result<TeamMemberDto>
     suspend fun getReceivedInvitations(): Result<List<ReceivedInvitationDto>>
     suspend fun getProjects(teamId: String): Result<List<ProjectDto>>
+    /** 项目详情：含当前用户有效项目角色 role（权限判断统一以此为准，不用成员列表猜） */
+    suspend fun getProject(projectId: String): Result<ProjectDto>
     suspend fun createProject(teamId: String, name: String, description: String?, newRepository: com.example.qgent.data.model.NewRepositoryRequest? = null, idempotencyKey: String): Result<ProjectDto>
     suspend fun addProjectMember(projectId: String, userId: String, idempotencyKey: String): Result<ProjectMemberDto>
     /** 调整项目成员角色（§5.2）：PROJECT_MEMBER / PROJECT_ADMIN */
     suspend fun updateProjectMemberRole(projectId: String, userId: String, role: String, idempotencyKey: String): Result<ProjectMemberDto>
+    /** 项目成员全量列表（内部循环消费分页至 hasMore=false，对外始终返回完整 List） */
     suspend fun getProjectMembers(projectId: String): Result<List<ProjectMemberDto>>
     suspend fun createTeam(name: String, description: String? = null, idempotencyKey: String): Result<TeamDto>
     suspend fun deleteTeam(teamId: String, idempotencyKey: String): Result<TeamDto>

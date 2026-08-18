@@ -12,7 +12,10 @@ import com.example.qgent.data.model.toDataOrThrow
 class DiffRepositoryImpl(private val service: QgApiService) : DiffRepository {
 
     override suspend fun getDiffFiles(projectId: String, diffId: String, cursor: String?, limit: Int): Result<List<DiffFileDto>> = apiCall {
-        service.getDiffFiles(projectId, diffId, cursor, limit).toDataOrThrow()
+        val resp = service.getDiffFiles(projectId, diffId, cursor, limit)
+        // 诊断日志：diff 行内容为空（红绿行无代码）时核对后端实际返回结构
+        android.util.Log.d("DiffRaw", "getDiffFiles($diffId): ${resp.body()?.let { com.google.gson.Gson().toJson(it) }}")
+        resp.toDataOrThrow()
     }
 
     override suspend fun acceptDiff(projectId: String, diffId: String, reason: String?, idempotencyKey: String): Result<Unit> =

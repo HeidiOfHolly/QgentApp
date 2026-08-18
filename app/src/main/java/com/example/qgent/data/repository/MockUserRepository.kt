@@ -82,6 +82,17 @@ class MockUserRepository : UserRepository {
     override suspend fun getProjects(teamId: String): Result<List<ProjectDto>> =
         Result.success(MockDataSource.projectsOf(teamId))
 
+    override suspend fun getProject(projectId: String): Result<ProjectDto> = Result.success(
+        ProjectDto(
+            id = projectId,
+            teamId = "mock-team",
+            name = "演示项目",
+            description = null,
+            status = "ACTIVE",
+            role = "PROJECT_ADMIN"
+        )
+    )
+
     override suspend fun createProject(
         teamId: String,
         name: String,

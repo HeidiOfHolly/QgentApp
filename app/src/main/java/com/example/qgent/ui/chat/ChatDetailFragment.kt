@@ -75,6 +75,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
@@ -111,6 +113,13 @@ class ChatDetailFragment : Fragment() {
     private lateinit var adapter: ChatMessageAdapter
     private var pollingJob: Job? = null
     private var eventStreamJob: Job? = null
+
+    /**
+     * 发送串行锁：同一时刻只允许一个消息发送请求在途（文本/图片/文件/重发共用）。
+     * 「同时发多条消息」时后端对同群并发 POST 存在竞态（sequence 分配/幂等锁），
+     * 会随机拒绝其中一条；串行化后排队逐个发送，第二条自动等待。
+     */
+    private val sendMutex = Mutex()
 
     /** 当前引用的目标消息（非空时输入框上方显示引用条，发送时带 replyToId） */
     private var quoteTarget: ChatMessage? = null
@@ -253,7 +262,22 @@ class ChatDetailFragment : Fragment() {
         val replyToSummary = quoteTarget?.let { "${it.senderName}：${it.displayContent()}" }
         // B2/C2：引用 DIFF 卡发送 = 增量修改续作（服务端复用源 Workspace）
         val quotingDiff = quoteTarget?.type == MessageType.DIFF
-        Log.d("SendMsg", "send text=$text mentions=$mentions replyToId=$replyToId quotingDiff=$quotingDiff memberNamesById=$memberNamesById")
+        // 引用消息（带 replyToId）按契约用 type=QUOTE（内容 text 为回复正文），否则 TEXT
+        val isQuote = replyToId != null
+        val sendType = if (isQuote) "QUOTE" else "TEXT"
+        // v2.0.4：QUOTE 消息 content 需带引用信息（replyText + quotedText/quotedMessageId/quotedSenderName）
+        val content = if (isQuote) {
+            MessageContentDto(
+                text = null,
+                replyText = text,
+                quotedText = quoteTarget?.diffTitle?.takeIf { it.isNotBlank() } ?: quoteTarget?.displayContent(),
+                quotedMessageId = replyToId,
+                quotedSenderName = quoteTarget?.senderName
+            )
+        } else {
+            MessageContentDto(text = text)
+        }
+        Log.d("SendMsg", "send text=$text type=$sendType mentions=$mentions replyToId=$replyToId quotingDiff=$quotingDiff memberNamesById=$memberNamesById")
         binding.etInput.text.clear()
         clearQuote()
 
@@ -266,7 +290,7 @@ class ChatDetailFragment : Fragment() {
                 id = LOCAL_ID_PREFIX + UUID.randomUUID(),
                 senderName = "我",
                 content = text,
-                type = MessageType.TEXT,
+                type = if (isQuote) MessageType.QUOTE else MessageType.TEXT,
                 timestamp = System.currentTimeMillis(),
                 isMine = true,
                 sequence = 0,
@@ -276,25 +300,28 @@ class ChatDetailFragment : Fragment() {
             )
             appendMessage(local)
             viewLifecycleOwner.lifecycleScope.launch {
-                // Idempotency-Key 后端强制要求，防重复提交；每次发送都是全新消息，生成新 UUID
-                chatRepo.sendMessage(projectId, groupId, "TEXT", MessageContentDto(text = text), replyToId = replyToId, idempotencyKey = UUID.randomUUID().toString())
-                    .onSuccess { dto ->
-                        Log.d("SendMsg", "send success id=${dto.id} senderId=${dto.senderId} mentions=${dto.mentions} replyTo=${dto.replyToId}")
-                        replaceLocalMessage(local.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
-                        // @ 了 Agent → 发送成功后弹「发起任务」弹窗，确认后调 trigger-task（契约 §7）
-                        if (agentMentioned) {
-                            showCreateTaskDialog(
-                                prefillTitle = text.take(30),
-                                prefillRequirement = text,
-                                messageId = dto.id,
-                                quotingDiff = quotingDiff
-                            )
+                // 串行发送：排队等待前一条完成，避免同群并发 POST 被后端拒绝（同时发多条必现）
+                sendMutex.withLock {
+                    // Idempotency-Key 后端强制要求，防重复提交；每次发送都是全新消息，生成新 UUID
+                    chatRepo.sendMessage(projectId, groupId, sendType, content, replyToId = replyToId, idempotencyKey = UUID.randomUUID().toString())
+                        .onSuccess { dto ->
+                            Log.d("SendMsg", "send success id=${dto.id} senderId=${dto.senderId} mentions=${dto.mentions} replyTo=${dto.replyToId}")
+                            replaceLocalMessage(local.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
+                            // @ 了 Agent → 发送成功后弹「发起任务」弹窗，确认后调 trigger-task（契约 §7）
+                            if (agentMentioned) {
+                                showCreateTaskDialog(
+                                    prefillTitle = text.take(30),
+                                    prefillRequirement = text,
+                                    messageId = dto.id,
+                                    quotingDiff = quotingDiff
+                                )
+                            }
                         }
-                    }
-                    .onFailure { e ->
-                        Log.e("SendMsg", "send FAILED: ${e::class.simpleName} message=${e.message}", e)
-                        markSendFailed(local.id, e.message)
-                    }
+                        .onFailure { e ->
+                            Log.e("SendMsg", "send FAILED: ${e::class.simpleName} message=${e.message}", e)
+                            markSendFailed(local.id, e.message)
+                        }
+                }
             }
         } else {
             Log.d("SendMsg", "no projectId/groupId → local fallback. projectId=$projectId groupId=$groupId")
@@ -378,15 +405,18 @@ class ChatDetailFragment : Fragment() {
                             name = meta.fileName, size = size, mimeType = meta.mimeType
                         )
                     }
-                    chatRepo.sendMessage(projectId, groupId, type, content, replyToId = quoteTarget?.id, idempotencyKey = UUID.randomUUID().toString())
-                        .onSuccess { dto ->
-                            clearQuote()
-                            replaceLocalMessage(local.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
-                        }
-                        .onFailure { e ->
-                            Log.e("SendMsg", "media send FAILED: ${e.message}", e)
-                            markSendFailed(local.id, e.message)
-                        }
+                    // 串行发送：与文本消息共用发送锁，避免同群并发 POST 被后端拒绝
+                    sendMutex.withLock {
+                        chatRepo.sendMessage(projectId, groupId, type, content, replyToId = quoteTarget?.id, idempotencyKey = UUID.randomUUID().toString())
+                            .onSuccess { dto ->
+                                clearQuote()
+                                replaceLocalMessage(local.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
+                            }
+                            .onFailure { e ->
+                                Log.e("SendMsg", "media send FAILED: ${e.message}", e)
+                                markSendFailed(local.id, e.message)
+                            }
+                    }
                 }
                 .onFailure { e ->
                     Log.e("SendMsg", "media upload FAILED: ${e.message}", e)
@@ -974,8 +1004,11 @@ class ChatDetailFragment : Fragment() {
         scrollToBottom()
     }
 
-    /** 发送成功后用服务端确认消息替换本地乐观消息（并落缓存） */
+    /** 发送成功后用服务端确认消息替换本地乐观消息（并落缓存）。
+     *  轮询可能在发送成功前已把服务端消息插入列表（v23 网络优先合并），
+     *  先清掉同 id 旧条目再替换，避免同一消息短暂显示两次。 */
     private fun replaceLocalMessage(localId: String, network: ChatMessage) {
+        messages.removeAll { it.id == network.id }
         val idx = messages.indexOfFirst { it.id == localId }
         if (idx >= 0) {
             messages[idx] = network
@@ -1029,7 +1062,7 @@ class ChatDetailFragment : Fragment() {
             return
         }
         when (message.type) {
-            MessageType.TEXT -> resendText(message, projectId, groupId)
+            MessageType.TEXT, MessageType.QUOTE -> resendText(message, projectId, groupId)
             MessageType.IMAGE, MessageType.FILE -> resendMedia(message, projectId, groupId)
             else -> removeLocalMessage(message.id) // 其他类型不支持重发，直接移除
         }
@@ -1039,29 +1072,43 @@ class ChatDetailFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             // 契约 §7：消息体不再携带 mentions；仅客户端解析 @Agent 决定是否弹「触发任务」
             val agentMentioned = extractMentions(message.content).any { it.type == "AGENT" }
-            chatRepo.sendMessage(
-                projectId, groupId, "TEXT",
-                MessageContentDto(text = message.content),
-                replyToId = message.replyToId,
-                idempotencyKey = UUID.randomUUID().toString()
-            )
-                .onSuccess { dto ->
-                    replaceLocalMessage(message.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
-                    // 引用 DIFF 卡重发（增量修改续作判定：被引用消息为 DIFF）
-                    val quotingDiff = messages.firstOrNull { it.id == message.replyToId }?.type == MessageType.DIFF
-                    if (agentMentioned) {
-                        showCreateTaskDialog(
-                            prefillTitle = message.content.take(30),
-                            prefillRequirement = message.content,
-                            messageId = dto.id,
-                            quotingDiff = quotingDiff
-                        )
+            // 引用消息重发保持 type=QUOTE，并从 replyToSummary（"发送者：被引用文本"）还原引用信息
+            val sendType = if (message.replyToId != null) "QUOTE" else "TEXT"
+            val content = if (message.replyToId != null) {
+                MessageContentDto(
+                    text = null,
+                    replyText = message.content,
+                    quotedText = message.replyToSummary?.substringAfter("："),
+                    quotedMessageId = message.replyToId,
+                    quotedSenderName = message.replyToSummary?.substringBefore("：")?.takeIf { it.isNotBlank() }
+                )
+            } else {
+                MessageContentDto(text = message.content)
+            }
+            sendMutex.withLock {
+                chatRepo.sendMessage(
+                    projectId, groupId, sendType, content,
+                    replyToId = message.replyToId,
+                    idempotencyKey = UUID.randomUUID().toString()
+                )
+                    .onSuccess { dto ->
+                        replaceLocalMessage(message.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
+                        // 引用 DIFF 卡重发（增量修改续作判定：被引用消息为 DIFF）
+                        val quotingDiff = messages.firstOrNull { it.id == message.replyToId }?.type == MessageType.DIFF
+                        if (agentMentioned) {
+                            showCreateTaskDialog(
+                                prefillTitle = message.content.take(30),
+                                prefillRequirement = message.content,
+                                messageId = dto.id,
+                                quotingDiff = quotingDiff
+                            )
+                        }
                     }
-                }
-                .onFailure { e ->
-                    Log.e("SendMsg", "resend text FAILED: ${e.message}", e)
-                    markSendFailed(message.id, e.message)
-                }
+                    .onFailure { e ->
+                        Log.e("SendMsg", "resend text FAILED: ${e.message}", e)
+                        markSendFailed(message.id, e.message)
+                    }
+            }
         }
     }
 
@@ -1089,20 +1136,22 @@ class ChatDetailFragment : Fragment() {
                             name = meta.fileName, size = size, mimeType = meta.mimeType
                         )
                     }
-                    chatRepo.sendMessage(
-                        projectId, groupId,
-                        if (message.type == MessageType.IMAGE) "IMAGE" else "FILE",
-                        content,
-                        replyToId = message.replyToId,
-                        idempotencyKey = UUID.randomUUID().toString()
-                    )
-                        .onSuccess { dto ->
-                            replaceLocalMessage(message.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
-                        }
-                        .onFailure { e ->
-                            Log.e("SendMsg", "resend media FAILED: ${e.message}", e)
-                            markSendFailed(message.id, e.message)
-                        }
+                    sendMutex.withLock {
+                        chatRepo.sendMessage(
+                            projectId, groupId,
+                            if (message.type == MessageType.IMAGE) "IMAGE" else "FILE",
+                            content,
+                            replyToId = message.replyToId,
+                            idempotencyKey = UUID.randomUUID().toString()
+                        )
+                            .onSuccess { dto ->
+                                replaceLocalMessage(message.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
+                            }
+                            .onFailure { e ->
+                                Log.e("SendMsg", "resend media FAILED: ${e.message}", e)
+                                markSendFailed(message.id, e.message)
+                            }
+                    }
                 }
                 .onFailure { e ->
                     Log.e("SendMsg", "resend media upload FAILED: ${e.message}", e)
@@ -1764,12 +1813,23 @@ class ChatDetailFragment : Fragment() {
                 msg
             }
         }
+        // 是否保持吸底：初始为空（首次加载）或用户正停在底部附近时自动滚动；
+        // 向上翻阅历史时（轮询触发刷新）保持当前位置，不强制跳底
+        val wasEmpty = rows.isEmpty()
+        val pinned = wasEmpty || isNearBottom()
         messages.clear()
         messages.addAll(resolved)
         rows.clear()
         rows.addAll(buildRows(messages))
         adapter.notifyDataSetChanged()
-        scrollToBottom()
+        if (pinned) scrollToBottom()
+    }
+
+    /** 用户是否停留在消息列表底部附近（最后可见项距底部 ≤2 行视为吸底） */
+    private fun isNearBottom(): Boolean {
+        val lm = binding.rvMessages.layoutManager as? LinearLayoutManager ?: return true
+        val lastVisible = lm.findLastVisibleItemPosition()
+        return lastVisible >= adapter.itemCount - 2
     }
 
     override fun onResume() {

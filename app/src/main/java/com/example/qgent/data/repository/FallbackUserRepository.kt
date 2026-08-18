@@ -33,6 +33,8 @@ class FallbackUserRepository(
 
     override suspend fun getProjects(teamId: String) = fb.call { getProjects(teamId) }
 
+    override suspend fun getProject(projectId: String) = fb.call { getProject(projectId) }
+
     override suspend fun createProject(teamId: String, name: String, description: String?, newRepository: com.example.qgent.data.model.NewRepositoryRequest?, idempotencyKey: String) =
         fb.call { createProject(teamId, name, description, newRepository, idempotencyKey) }
 

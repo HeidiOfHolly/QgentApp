@@ -13,7 +13,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
-import com.example.qgent.data.SessionStore
 import com.example.qgent.data.repository.SkillRepository
 import com.example.qgent.databinding.FragmentSkillPoolBinding
 import com.example.qgent.model.SkillItem
@@ -57,33 +56,27 @@ class SkillPoolFragment : Fragment() {
         binding.rvReviewList.layoutManager = LinearLayoutManager(requireContext())
         binding.rvApprovedList.layoutManager = LinearLayoutManager(requireContext())
 
-        checkAdminRole()
         loadSkills()
     }
 
     /**
-     * 审核权限判断：项目 Admin 或 当前团队 Owner（文档 §3.1：Team Owner 对本团队项目有兜底管理权限）。
-     * 从项目成员角色 + 团队成员角色实时读取，不依赖写死的 isProjectAdmin。
+     * 审核权限判断（权限方案 v1.1）：只看项目详情返回的当前用户有效角色 role。
+     * Team Owner 的兜底管理员角色已由后端在 GET /projects/{id} 的 role 中体现，
+     * 客户端不再用成员列表/团队成员表兜底（后端对 Team Owner 有规范校验，本地兜底可能展示会被拒绝的操作）。
      */
-    private fun checkAdminRole() {
-        val projectId = mainViewModel.currentProjectId() ?: return
-        val teamId = mainViewModel.currentTeamId() ?: return
-        val myId = SessionStore.user()?.id ?: return
-        viewLifecycleOwner.lifecycleScope.launch {
-            val app = requireActivity().application as QgentApp
-            val projectAdmin = app.container.userRepository.getProjectMembers(projectId)
-                .getOrNull().orEmpty()
-                .any { it.userId == myId && it.role == "PROJECT_ADMIN" }
-            val teamOwner = app.container.userRepository.getTeamMembers(teamId)
-                .getOrNull().orEmpty()
-                .any { it.userId == myId && it.role == "TEAM_OWNER" }
-            isAdmin = projectAdmin || teamOwner
-        }
+    private suspend fun resolveAdminRole(): Boolean {
+        val projectId = mainViewModel.currentProjectId() ?: return false
+        val app = requireActivity().application as QgentApp
+        return app.container.userRepository.getProject(projectId)
+            .getOrNull()
+            ?.role == "PROJECT_ADMIN"
     }
 
     private fun loadSkills() {
         val projectId = mainViewModel.currentProjectId() ?: return
         viewLifecycleOwner.lifecycleScope.launch {
+            // 先确认审核权限再渲染列表，避免权限未就绪时（或普通成员）误显示 通过/拒绝 按钮
+            isAdmin = resolveAdminRole()
             skillRepo.getSkills(projectId).onSuccess { dtos ->
                 val pending = dtos.filter { it.status == "PENDING_REVIEW" }.map { it.toSkillItem() }
                 val approved = dtos.filter { it.status == "PUBLISHED" }.map { it.toSkillItem() }

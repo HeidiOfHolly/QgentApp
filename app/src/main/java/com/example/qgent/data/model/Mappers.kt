@@ -46,7 +46,22 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
     val displayContent = when {
         parsedType == MessageType.IMAGE || parsedType == MessageType.FILE -> content?.url ?: ""
         parsedType == MessageType.TASK_STATUS -> taskStatusSummary()
+        // v2.0.4：QUOTE 消息正文 = content.replyText（被引用内容由引用条展示）
+        parsedType == MessageType.QUOTE -> content?.replyText ?: content?.text ?: ""
         else -> content?.text ?: ""
+    }
+    // v2.0.4：QUOTE 消息的引用摘要由后端直接给出（quotedSenderName + quotedText），
+    // 优于本地按 replyToId 反查（反查不到时为 null，交由调用方兜底）
+    val quoteSummary = if (parsedType == MessageType.QUOTE) {
+        val qText = content?.quotedText
+        val qSender = content?.quotedSenderName
+        when {
+            !qText.isNullOrBlank() && !qSender.isNullOrBlank() -> "$qSender：$qText"
+            !qText.isNullOrBlank() -> qText
+            else -> null
+        }
+    } else {
+        null
     }
     return ChatMessage(
         id = id,
@@ -60,6 +75,7 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
         fileSize = content?.size,
         sequence = sequence,
         replyToId = replyToId,
+        replyToSummary = quoteSummary,
         senderType = senderType,
         taskStatus = if (parsedType == MessageType.TASK_STATUS) content?.status else null,
         taskNode = if (parsedType == MessageType.TASK_STATUS) content?.node else null,

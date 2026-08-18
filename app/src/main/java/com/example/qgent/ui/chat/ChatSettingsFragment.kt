@@ -113,8 +113,10 @@ class ChatSettingsFragment : Fragment() {
                 dialog.dismiss()
                 return@launch
             }
+            // 当前用户始终视为已在项目内（后端 GET /projects/{id}/members 可能不返回自己/Team Owner 兜底无成员行），
+            // 否则候选 = 团队成员 − 项目成员 会把「自己」误当成唯一可添加的人
             val existingIds = userRepository.getProjectMembers(projectId)
-                .getOrNull()?.map { it.userId }?.toSet().orEmpty()
+                .getOrNull()?.map { it.userId }?.toSet().orEmpty() + listOfNotNull(SessionStore.user()?.id)
             val candidates = teamMembers.filter { it.userId !in existingIds }
             if (candidates.isEmpty()) {
                 Toast.makeText(requireContext(), R.string.add_member_empty, Toast.LENGTH_SHORT).show()

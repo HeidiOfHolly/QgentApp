@@ -343,6 +343,7 @@ class ChatListFragment : Fragment() {
         }
 
         // 加载项目成员（关联团队成员显示名字）+ 团队 Agent（需求群自动带 Agent，默认勾选）
+        // 创建者由后端自动加入需求群（GroupService 无条件入群），故列表不包含当前用户、memberIds 也不提交自己
         viewLifecycleOwner.lifecycleScope.launch {
             val teamId = mainViewModel.currentTeamId()
             val picks = mutableListOf<GroupMemberPick>()
@@ -351,12 +352,6 @@ class ChatListFragment : Fragment() {
                 val nameById = teamMembers.associate { it.userId to it.displayName }
                 userRepository.getProjectMembers(projectId).getOrNull().orEmpty().forEach {
                     picks.add(GroupMemberPick(it.userId, nameById[it.userId] ?: "成员", it.role))
-                }
-                // 后端项目成员接口可能不返回当前用户：把自己补进可选列表（默认不勾选，可自行勾选进群）
-                val myId = SessionStore.user()?.id
-                val myName = SessionStore.user()?.displayName
-                if (myId != null && picks.none { it.userId == myId }) {
-                    picks.add(GroupMemberPick(myId, myName ?: "我", "PROJECT_MEMBER"))
                 }
                 // 团队 Agent 并入（isAgent 标记，默认勾选 = 自动加入需求群）
                 agentRepository().getAgents(teamId).getOrNull().orEmpty()
