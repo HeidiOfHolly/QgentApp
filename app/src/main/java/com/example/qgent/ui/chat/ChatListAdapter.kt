@@ -60,10 +60,12 @@ class ChatListAdapter(
                 binding.tvLastMessage.text = group.lastMessage
                 binding.tvLastMessage.setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
             }
+            // 总群（PROJECT_MAIN 默认置顶）与手动置顶群都显示置顶背景色
+            val pinned = group.isPinned || group.type == GroupType.PROJECT_MAIN
             binding.root.setBackgroundColor(
                 ContextCompat.getColor(
                     context,
-                    if (group.isPinned) R.color.bg_chat_pinned else android.R.color.transparent
+                    if (pinned) R.color.bg_chat_pinned_row else android.R.color.transparent
                 )
             )
         }

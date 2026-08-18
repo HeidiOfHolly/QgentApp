@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.isVisible
@@ -68,9 +69,6 @@ class ChatSettingsFragment : Fragment() {
         loadGroupData()
         loadAdminPermission()
 
-        // 添加成员：从团队成员中拉人进当前项目（与群列表页一致，含身份选择）
-        binding.btnAddMember.setOnClickListener { showAddMemberDialog() }
-
         // 查看聊天记录：弹出搜索弹窗，按关键词过滤消息
         binding.btnViewHistory.setOnClickListener { showSearchDialog() }
 
@@ -78,12 +76,16 @@ class ChatSettingsFragment : Fragment() {
         binding.btnExitGroup.setOnClickListener { confirmExitGroup() }
     }
 
-    /** 判定当前用户是否为项目管理员（团长由后端兜底 PROJECT_ADMIN）：仅团长/管理员可见添加成员 */
+    /** 当前用户是否项目管理员（团长由后端兜底 PROJECT_ADMIN）：控制成员网格的 添加/删除 控件显隐 */
+    private var isAdmin = false
+
+    /** 判定当前用户是否为项目管理员：仅团长/管理员显示成员网格的 添加/删除 控件 */
     private fun loadAdminPermission() {
         val projectId = mainViewModel.currentProjectId() ?: return
         viewLifecycleOwner.lifecycleScope.launch {
-            val isAdmin = userRepository.getProject(projectId).getOrNull()?.role == "PROJECT_ADMIN"
-            binding.btnAddMember.isVisible = isAdmin
+            isAdmin = userRepository.getProject(projectId).getOrNull()?.role == "PROJECT_ADMIN"
+            // 成员网格已渲染时重新填充，刷新控件格
+            loadGroupData()
         }
     }
 
@@ -178,6 +180,9 @@ class ChatSettingsFragment : Fragment() {
         val projectId = mainViewModel.currentProjectId()
         val groupId = arguments?.getString("groupId").orEmpty()
 
+        // 刷新时重置删除模式，避免重渲染残留
+        deleteMode = false
+
         if (projectId == null || groupId.isEmpty()) {
             renderMembers(emptyList())
             return
@@ -197,21 +202,127 @@ class ChatSettingsFragment : Fragment() {
     private fun renderMembers(members: List<GroupMemberDto>) {
         binding.containerMembers.removeAllViews()
         binding.tvMemberCount.text = getString(R.string.group_member_count, members.size)
-        for (member in members) {
-            val row = layoutInflater.inflate(R.layout.item_chat_member, binding.containerMembers, false)
-            val name = member.resolvedName
-            row.findViewById<TextView>(R.id.tvMemberName)?.text = name
-            // 群成员 DTO 含 memberType（USER/AGENT），Agent 显示标签（文档 §7）
-            row.findViewById<TextView>(R.id.tvAgentTag)?.isVisible = member.isAgent
-            // 头像：avatar 为空显示默认占位，否则 Glide 带鉴权头加载
-            val ivAvatar = row.findViewById<ImageView>(R.id.ivMemberAvatar)
-            if (member.avatar.isNullOrBlank()) {
-                ivAvatar?.setImageResource(R.drawable.ic_avatar_default)
-            } else {
-                ivAvatar?.let { Glide.with(it).load(authedGlideUrl(member.avatar)).into(it) }
-            }
-            binding.containerMembers.addView(row)
+        // 网格 4 列 × 3 行：成员占前 N 格，末尾两个空位放 添加/删除 控件，其余空格位占位，
+        // 一排不足 4 个时剩余格子留空（子项靠左）
+        val cells = mutableListOf<View>()
+        for (member in members.take(10)) {
+            val cell = layoutInflater.inflate(R.layout.item_chat_member_grid, binding.containerMembers, false)
+            bindMemberCell(cell, member)
+            cells.add(cell)
         }
+        // 非删除模式下，管理员/团长在末尾显示 添加/删除 控件格
+        if (isAdmin && !deleteMode) {
+            cells.add(buildControlCell(R.drawable.ic_add, "添加") { showAddMemberDialog() })
+            cells.add(buildControlCell(R.drawable.ic_close, "删除") { enterDeleteMode() })
+        }
+        renderMemberGrid(cells)
+    }
+
+    /** 按 4 列固定 3 行填充：每行一个横向 LinearLayout（子项等宽、靠左），不足补空格位 */
+    private fun renderMemberGrid(cells: List<View>) {
+        binding.containerMembers.removeAllViews()
+        // 每格宽 = 屏宽 / 4
+        val cellWidth = resources.displayMetrics.widthPixels / 4
+        for (row in 0 until 3) {
+            val rowLayout = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            }
+            for (col in 0 until 4) {
+                val index = row * 4 + col
+                val cell = cells.getOrNull(index)
+                if (cell != null) {
+                    cell.layoutParams = LinearLayout.LayoutParams(cellWidth, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    rowLayout.addView(cell)
+                } else {
+                    // 空格位占位：保持 4 列布局与靠左
+                    rowLayout.addView(View(requireContext()), LinearLayout.LayoutParams(cellWidth, 1))
+                }
+            }
+            binding.containerMembers.addView(rowLayout)
+        }
+    }
+
+    /** 成员网格子项：头像 / 名称 / 身份（Agent 显示标签）；删除模式显示删除角标 */
+    private fun bindMemberCell(cell: View, member: GroupMemberDto) {
+        val name = member.resolvedName
+        cell.findViewById<TextView>(R.id.tvMemberName)?.text = name
+        // 身份：Agent 显示「Agent」，真人隐藏
+        cell.findViewById<TextView>(R.id.tvMemberRole)?.isVisible = member.isAgent
+        // 头像：avatar 为空显示默认占位，否则 Glide 带鉴权头加载
+        val ivAvatar = cell.findViewById<ImageView>(R.id.ivMemberAvatar)
+        if (member.avatar.isNullOrBlank()) {
+            ivAvatar?.setImageResource(R.drawable.ic_avatar_default)
+        } else {
+            ivAvatar?.let { Glide.with(it).load(authedGlideUrl(member.avatar)).into(it) }
+        }
+        // 删除角标：仅删除模式显示
+        val ivDelete = cell.findViewById<ImageView>(R.id.ivDeleteMember)
+        ivDelete?.isVisible = deleteMode
+        ivDelete?.setOnClickListener { confirmRemoveMember(member) }
+    }
+
+    private var deleteMode = false
+
+    /** 构建一个控件格：圆形图标 + 底部文字，点击回调（layoutParams 由 renderMemberGrid 统一设置） */
+    private fun buildControlCell(iconRes: Int, label: String, onClick: () -> Unit): View {
+        val cell = layoutInflater.inflate(R.layout.item_chat_member_grid, binding.containerMembers, false)
+        cell.findViewById<ImageView>(R.id.ivMemberAvatar)?.apply {
+            setImageResource(iconRes)
+            setBackgroundResource(R.drawable.bg_oval)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(
+                androidx.core.content.ContextCompat.getColor(requireContext(), R.color.bg_chat_pinned)
+            )
+        }
+        cell.findViewById<TextView>(R.id.tvMemberName)?.text = label
+        cell.findViewById<TextView>(R.id.tvMemberRole)?.isVisible = false
+        cell.setOnClickListener { onClick() }
+        return cell
+    }
+
+    /** 进入删除模式：成员子项显示删除角标（重新渲染网格，去掉控件格、成员格显示角标） */
+    private fun enterDeleteMode() {
+        deleteMode = true
+        val projectId = mainViewModel.currentProjectId() ?: run {
+            deleteMode = false
+            return
+        }
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (projectId == null || groupId.isEmpty()) {
+            deleteMode = false
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            chatRepo.getMembers(projectId, groupId).getOrNull()?.let { renderMembers(it) }
+        }
+    }
+
+    /** 确认删除群成员（v2.0.6 §9）：弹确认后调接口，成功后刷新 */
+    private fun confirmRemoveMember(member: GroupMemberDto) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (groupId.isEmpty()) return
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("移出群聊")
+            .setMessage("确定将 ${member.resolvedName} 移出该群？")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("移出") { _, _ ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    chatRepo.removeGroupMember(projectId, groupId, member.id, UUID.randomUUID().toString())
+                        .onSuccess {
+                            deleteMode = false
+                            Toast.makeText(requireContext(), "已移出 ${member.resolvedName}", Toast.LENGTH_SHORT).show()
+                            loadGroupData()
+                        }
+                        .onFailure { e ->
+                            Toast.makeText(requireContext(), "移出失败：${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                }
+            }
+            .show()
     }
 
     /** 聊天记录搜索弹窗：加载当前群消息后按关键词本地过滤（后端暂无消息搜索接口） */

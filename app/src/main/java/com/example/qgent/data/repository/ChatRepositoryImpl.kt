@@ -68,6 +68,10 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         service.leaveGroup(projectId, groupId, idempotencyKey).toUnitOrThrow()
     }
 
+    override suspend fun removeGroupMember(projectId: String, groupId: String, memberUserId: String, idempotencyKey: String): Result<Unit> = apiCall {
+        service.removeGroupMember(projectId, groupId, memberUserId, idempotencyKey).toUnitOrThrow()
+    }
+
     override suspend fun getMessages(
         projectId: String,
         groupId: String,

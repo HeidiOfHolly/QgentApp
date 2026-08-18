@@ -20,6 +20,8 @@ interface ChatRepository {
     suspend fun archiveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<GroupDto>
     suspend fun getMembers(projectId: String, groupId: String): Result<List<GroupMemberDto>>
     suspend fun leaveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<Unit>
+    /** v2.0.6 §9：移出群成员（群创建者或 Project Admin；仅 REQUIREMENT 群） */
+    suspend fun removeGroupMember(projectId: String, groupId: String, memberUserId: String, idempotencyKey: String): Result<Unit>
     suspend fun getMessages(projectId: String, groupId: String, cursor: String? = null, limit: Int = 30): Result<List<GroupMessageDto>>
     /** v2.0.6 §1.3：按消息 ID 拉取单条群消息（通知直达被 @ 消息定位） */
     suspend fun getMessage(projectId: String, groupId: String, messageId: String): Result<GroupMessageDto>

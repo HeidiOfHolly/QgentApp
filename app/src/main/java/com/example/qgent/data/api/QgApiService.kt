@@ -290,6 +290,15 @@ interface QgApiService {
         @Path("groupId") groupId: String
     ): Response<ApiResponse<List<GroupMemberDto>>>
 
+    /** 移出群成员（v2.0.6 §9）：仅 REQUIREMENT 群，群创建者本人不可移出 */
+    @DELETE("projects/{projectId}/groups/{groupId}/members/{memberUserId}")
+    suspend fun removeGroupMember(
+        @Path("projectId") projectId: String,
+        @Path("groupId") groupId: String,
+        @Path("memberUserId") memberUserId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<Unit>
+
     @POST("projects/{projectId}/groups/{groupId}/leave")
     suspend fun leaveGroup(
         @Path("projectId") projectId: String,

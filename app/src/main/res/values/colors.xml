@@ -40,6 +40,8 @@
 
     <color name="team_item_normal">#8896AE</color>
     <color name="bg_chat_pinned">#ECEEF2</color>
+    <!-- 置顶群聊列表行背景（深一档灰，区别于普通群聊透明底） -->
+    <color name="bg_chat_pinned_row">#D9DEE8</color>
     <!-- 多选模式：普通行浅底色 / 选中行加深底色 -->
     <color name="bg_chat_multi_select">#F4F6FA</color>
     <color name="bg_chat_selected">#DDE7F5</color>
