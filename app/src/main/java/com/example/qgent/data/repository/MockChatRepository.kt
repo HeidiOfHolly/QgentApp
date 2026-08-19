@@ -7,6 +7,7 @@ import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.model.GroupReadResponse
 import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
+import com.example.qgent.data.model.MessagePageDto
 
 class MockChatRepository : ChatRepository {
 
@@ -101,6 +102,10 @@ class MockChatRepository : ChatRepository {
 
     override suspend fun getMessage(projectId: String, groupId: String, messageId: String): Result<GroupMessageDto> =
         Result.failure(UnsupportedOperationException("mock 不支持单条消息定位"))
+
+    override suspend fun getMessagesPage(projectId: String, groupId: String, cursor: String?, limit: Int): Result<MessagePageDto> =
+        getMessages(projectId, groupId, cursor, limit)
+            .map { MessagePageDto(messages = it, nextCursor = null, hasMore = false) }
 
     override suspend fun markGroupRead(projectId: String, groupId: String, idempotencyKey: String): Result<GroupReadResponse> =
         Result.success(GroupReadResponse(groupId = groupId))

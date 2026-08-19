@@ -6,6 +6,7 @@ import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.model.GroupReadResponse
 import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
+import com.example.qgent.data.model.MessagePageDto
 
 /**
  * 群聊仓库。所有写操作（createGroup / updateGroup / archiveGroup / leaveGroup / sendMessage）
@@ -25,6 +26,8 @@ interface ChatRepository {
     /** v2.0.6 §9：移出群成员（群创建者或 Project Admin；仅 REQUIREMENT 群） */
     suspend fun removeGroupMember(projectId: String, groupId: String, memberUserId: String, idempotencyKey: String): Result<Unit>
     suspend fun getMessages(projectId: String, groupId: String, cursor: String? = null, limit: Int = 30): Result<List<GroupMessageDto>>
+    /** 消息分页：返回本页消息 + nextCursor/hasMore（上滑加载更早消息用） */
+    suspend fun getMessagesPage(projectId: String, groupId: String, cursor: String? = null, limit: Int = 30): Result<MessagePageDto>
     /** v2.0.6 §1.3：按消息 ID 拉取单条群消息（通知直达被 @ 消息定位） */
     suspend fun getMessage(projectId: String, groupId: String, messageId: String): Result<GroupMessageDto>
     /** v2.0.6 §1.2：进群全读（后端已读游标推进，前端不再本地假已读） */

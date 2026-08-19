@@ -95,7 +95,9 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
         reviewStatus = if (parsedType == MessageType.DIFF) content?.reviewStatus else null,
         deliveryStatus = if (parsedType == MessageType.DIFF) content?.deliveryStatus else null,
         // §7.1 MESSAGE_MENTION 通知直达：记录 @ 提及 id，resourceId 缺失时兜底定位「最上面一条被 @ 的消息」
-        mentionIds = mentions?.mapNotNull { it.id }
+        mentionIds = mentions?.mapNotNull { it.id },
+        // 幂等键回显：重发时复用同一 clientMessageId，后端按幂等返回原消息
+        clientMessageId = clientMessageId
     )
 }
 

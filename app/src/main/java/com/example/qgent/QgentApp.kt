@@ -3,11 +3,14 @@ package com.example.qgent
 import android.app.Activity
 import android.app.Application
 import android.content.Intent
+import android.util.Log
 import android.widget.Toast
 import com.example.qgent.data.SessionExpiryNotifier
 import com.example.qgent.data.SessionStore
+import com.example.qgent.data.ws.RealtimeFrame
 import com.example.qgent.di.AppContainer
 import com.example.qgent.ui.auth.LoginActivity
+import com.example.qgent.ui.notify.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,10 +28,25 @@ class QgentApp : Application() {
     /** 当前处于前台（resumed）的 Activity，用于弹 Toast 的上下文 */
     private var resumedActivity: WeakReference<Activity>? = null
 
+    /** 前台 Activity 计数（onActivityStarted/Stopped 维护），决定后台是否弹通知 */
+    private var startedActivities = 0
+
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
         SessionStore.init(this)
+        NotificationHelper.ensureChannel(this)
+
+        // WS 常驻连接（Application 级）：进程活着就一直连着，登录后 token 生效自动连上；
+        // 后台收到 message.created 事件直接弹通知（事件驱动，不依赖协程轮询，App Standby 冻结不到）
+        container.realtimeClient.start()
+        appScope.launch {
+            container.realtimeClient.events.collect { frame ->
+                if (frame.type == "message.created" && !NotificationHelper.isAppForeground) {
+                    notifyMessageCreated(frame)
+                }
+            }
+        }
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
@@ -39,9 +57,20 @@ class QgentApp : Application() {
                 if (resumedActivity?.get() === activity) resumedActivity = null
             }
 
+            override fun onActivityStarted(activity: Activity) {
+                startedActivities++
+                NotificationHelper.isAppForeground = true
+            }
+
+            override fun onActivityStopped(activity: Activity) {
+                startedActivities--
+                if (startedActivities <= 0) {
+                    startedActivities = 0
+                    NotificationHelper.isAppForeground = false
+                }
+            }
+
             override fun onActivityCreated(activity: Activity, savedInstanceState: android.os.Bundle?) {}
-            override fun onActivityStarted(activity: Activity) {}
-            override fun onActivityStopped(activity: Activity) {}
             override fun onActivityDestroyed(activity: Activity) {}
             override fun onActivitySaveInstanceState(activity: Activity, outState: android.os.Bundle) {}
         })
@@ -52,6 +81,29 @@ class QgentApp : Application() {
                 forceLogout()
             }
         }
+    }
+
+    /** 后台收到 message.created：拉该群最新消息弹通知（前台界面已刷新，不弹） */
+    private suspend fun notifyMessageCreated(frame: RealtimeFrame) {
+        val projectId = frame.projectId ?: return
+        val groupId = frame.groupId ?: return
+        val myId = SessionStore.user()?.id
+        val repo = container.chatRepository
+        // 群名 + 未读数：群列表里找（找不到兜底「群聊」/无未读数）
+        val group = repo.getGroups(projectId).getOrNull()?.firstOrNull { it.id == groupId }
+        val groupName = group?.title ?: "群聊"
+        val unread = group?.unreadCount
+        // 最新一条消息摘要（后端新在前，第一条最新）
+        val latest = repo.getMessagesPage(projectId, groupId, limit = 5).getOrNull()?.messages?.firstOrNull()
+        val body = latest?.let { dto ->
+            val name = dto.senderName?.takeIf { it.isNotBlank() } ?: "成员"
+            val text = dto.content?.text ?: dto.replyText
+                ?: dto.content?.url?.takeIf { it.isNotBlank() }?.let { "[图片]" }
+                ?: "[${dto.type}]"
+            "$name：$text"
+        } ?: "新消息"
+        val mentioned = latest?.mentions?.any { it.type == "USER" && it.id == myId } == true
+        NotificationHelper.showChatNotification(this, groupId, groupName, body, mentioned, unread)
     }
 
     private fun forceLogout() {

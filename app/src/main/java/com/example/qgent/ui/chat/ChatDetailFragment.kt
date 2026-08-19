@@ -32,6 +32,7 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
@@ -114,6 +115,11 @@ class ChatDetailFragment : Fragment() {
     private var pollingJob: Job? = null
     private var eventStreamJob: Job? = null
     private var wsJob: Job? = null
+
+    /** 消息分页（上滑加载更早消息）：下一页游标 / 是否还有更多 / 是否正在加载 */
+    private var nextCursor: String? = null
+    private var hasMoreMessages = true
+    private var loadingOlder = false
 
     /** WebSocket 实时通道（单连接用户级聚合，聊天实时主通道；规避 SSE 被 CDN 掐断） */
     private val realtimeClient: com.example.qgent.data.ws.RealtimeClient
@@ -257,6 +263,16 @@ class ChatDetailFragment : Fragment() {
         binding.rvMessages.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMessages.adapter = adapter
 
+        // 上滑接近顶部 → 加载更早消息（游标分页）
+        binding.rvMessages.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return
+                if (hasMoreMessages && !loadingOlder && lm.findFirstVisibleItemPosition() <= 3) {
+                    loadOlderMessages()
+                }
+            }
+        })
+
         // 取消引用：关闭引用条，发送不再带 replyToId
         binding.btnCancelQuote.setOnClickListener { clearQuote() }
 
@@ -307,7 +323,8 @@ class ChatDetailFragment : Fragment() {
         val groupId = arguments?.getString("groupId").orEmpty()
 
         if (projectId != null && groupId.isNotEmpty()) {
-            // 乐观插入本地消息（发送中：旁边显示小加载标），成功后替换为服务端消息，失败标记红色感叹号
+            // 乐观插入本地消息（发送中：旁边显示小加载标），成功后替换为服务端消息，失败标记红色感叹号。
+            // clientMessageId：本地固定生成，重发/断线重试复用同一值 → 后端幂等去重（§7）
             val local = ChatMessage(
                 id = LOCAL_ID_PREFIX + UUID.randomUUID(),
                 senderName = "我",
@@ -318,7 +335,8 @@ class ChatDetailFragment : Fragment() {
                 sequence = 0,
                 replyToId = replyToId,
                 replyToSummary = replyToSummary,
-                sendState = SendState.SENDING
+                sendState = SendState.SENDING,
+                clientMessageId = UUID.randomUUID().toString()
             )
             appendMessage(local)
             viewLifecycleOwner.lifecycleScope.launch {
@@ -327,6 +345,7 @@ class ChatDetailFragment : Fragment() {
                     // Idempotency-Key 后端强制要求，防重复提交；每次发送都是全新消息，生成新 UUID
                     chatRepo.sendMessage(
                         projectId, groupId, sendType, content,
+                        clientMessageId = local.clientMessageId,
                         mentions = mentions,
                         replyText = if (isQuote) text else null,
                         replyToId = replyToId,
@@ -399,7 +418,8 @@ class ChatDetailFragment : Fragment() {
             return
         }
         val meta = readFileMeta(uri)
-        // 乐观占位消息：图片/文件气泡先展示本地内容（content=本地 uri），发送成功后替换
+        // 乐观占位消息：图片/文件气泡先展示本地内容（content=本地 uri），发送成功后替换。
+        // clientMessageId：本地固定生成，重发/断线重试复用同一值 → 后端幂等去重（§7）
         val local = ChatMessage(
             id = LOCAL_ID_PREFIX + UUID.randomUUID(),
             senderName = "我",
@@ -410,7 +430,8 @@ class ChatDetailFragment : Fragment() {
             sequence = 0,
             fileName = if (type == "FILE") meta.fileName else null,
             fileSize = if (type == "FILE") meta.sizeBytes else null,
-            sendState = SendState.SENDING
+            sendState = SendState.SENDING,
+            clientMessageId = UUID.randomUUID().toString()
         )
         appendMessage(local)
 
@@ -435,7 +456,12 @@ class ChatDetailFragment : Fragment() {
                     }
                     // 串行发送：与文本消息共用发送锁，避免同群并发 POST 被后端拒绝
                     sendMutex.withLock {
-                        chatRepo.sendMessage(projectId, groupId, type, content, replyToId = quoteTarget?.id, idempotencyKey = UUID.randomUUID().toString())
+                        chatRepo.sendMessage(
+                            projectId, groupId, type, content,
+                            clientMessageId = local.clientMessageId,
+                            replyToId = quoteTarget?.id,
+                            idempotencyKey = UUID.randomUUID().toString()
+                        )
                             .onSuccess { dto ->
                                 clearQuote()
                                 replaceLocalMessage(local.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
@@ -703,6 +729,7 @@ class ChatDetailFragment : Fragment() {
 
             override fun onLoadFailed(errorDrawable: Drawable?) {
                 loading.isVisible = false
+                android.util.Log.e("ChatImage", "preview load FAILED: ${RetrofitClient.resolveMediaUrl(uri)}")
             }
         })
         previewBinding.ivPreview.onSingleTap = { dialog.dismiss() }
@@ -735,17 +762,22 @@ class ChatDetailFragment : Fragment() {
 
     /** 下载附件到 cacheDir/downloads，返回本地文件；失败返回 null */
     private suspend fun downloadFile(url: String, fileName: String, cacheDir: File): File? = withContext(Dispatchers.IO) {
-        runCatching {
+        val resolved = RetrofitClient.resolveMediaUrl(url)
+        val result = runCatching {
             val target = File(File(cacheDir, "downloads"), fileName)
             target.parentFile?.mkdirs()
-            val request = Request.Builder().url(RetrofitClient.resolveMediaUrl(url)).build()
+            val request = Request.Builder().url(resolved).build()
             RetrofitClient.httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
                 val body = response.body ?: throw IllegalStateException("empty body")
                 target.outputStream().use { out -> body.byteStream().copyTo(out) }
             }
             target
-        }.getOrNull()
+        }
+        if (result.isFailure) {
+            android.util.Log.e("ChatFile", "download FAILED: $resolved, ${result.exceptionOrNull()?.message}")
+        }
+        result.getOrNull()
     }
 
     private suspend fun readTextContent(file: File): String = withContext(Dispatchers.IO) {
@@ -1123,6 +1155,8 @@ class ChatDetailFragment : Fragment() {
             sendMutex.withLock {
                 chatRepo.sendMessage(
                     projectId, groupId, sendType, content,
+                    // 重发复用原 clientMessageId → 后端幂等返回原消息，不产生重复消息
+                    clientMessageId = message.clientMessageId,
                     mentions = mentions,
                     replyText = if (message.replyToId != null) message.content else null,
                     replyToId = message.replyToId,
@@ -1178,6 +1212,8 @@ class ChatDetailFragment : Fragment() {
                             projectId, groupId,
                             if (message.type == MessageType.IMAGE) "IMAGE" else "FILE",
                             content,
+                            // 重发复用原 clientMessageId → 后端幂等返回原消息，不产生重复消息
+                            clientMessageId = message.clientMessageId,
                             replyToId = message.replyToId,
                             idempotencyKey = UUID.randomUUID().toString()
                         )
@@ -1521,25 +1557,20 @@ class ChatDetailFragment : Fragment() {
 
     /**
      * DIFF 卡点击（§v1.9.4 A3）：
-     * 优先用 diffId 反向映射反查 taskId → 打开 Task Diff 审核对话框（与 TASK_STATUS 卡同一审核面板）；
-     * 后端 DIFF 消息 content 可能不带 diffId（契约变化）→ 用消息里的 taskId 拉任务详情兜底；
-     * 都拿不到才提示缺少 diffId。
+     * 优先用 DIFF 卡自带 taskId（content 含 taskId）→ 打开 Task Diff 审核对话框（与 TASK_STATUS 卡同一审核面板，
+     * 含确认/拒绝按钮）；taskId 缺失时用 diffId 反向映射（diff.created 事件缓存）兜底；
+     * 都拿不到才退化纯 diff 文件查看。修复「diffIdToTaskIdMap 事件缓存未命中时看不到确认按钮」。
      */
     private fun onDiffCardClick(message: ChatMessage) {
         val projectId = mainViewModel.currentProjectId() ?: return
-        val diffId = message.diffId
-        if (!diffId.isNullOrBlank()) {
-            val taskId = diffIdToTaskIdMap[diffId]
-            if (taskId != null) {
-                openTaskDiffReview(projectId, taskId)
-            } else {
-                showDiffFilesDialog(projectId, diffId, message.diffTitle)
-            }
-            return
-        }
-        val taskId = message.taskId
+        val taskId = message.taskId ?: message.diffId?.let { diffIdToTaskIdMap[it] }
         if (!taskId.isNullOrBlank()) {
             openTaskDiffReview(projectId, taskId)
+            return
+        }
+        val diffId = message.diffId
+        if (!diffId.isNullOrBlank()) {
+            showDiffFilesDialog(projectId, diffId, message.diffTitle)
             return
         }
         Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
@@ -1670,8 +1701,10 @@ class ChatDetailFragment : Fragment() {
         SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
 
     private fun scrollToBottom() {
-        binding.rvMessages.post {
-            binding.rvMessages.scrollToPosition(adapter.itemCount - 1)
+        val rv = binding.rvMessages
+        rv.post {
+            // view 已销毁（onDestroyView → _binding=null）时跳过，避免 getBinding 抛 NPE
+            if (_binding != null) rv.scrollToPosition(adapter.itemCount - 1)
         }
     }
 
@@ -1712,9 +1745,12 @@ class ChatDetailFragment : Fragment() {
     private fun scrollToMessage(messageId: String) {
         val rowIndex = rows.indexOfFirst { (it as? ChatRow.Message)?.message?.id == messageId }
         if (rowIndex < 0) return
-        binding.rvMessages.post {
-            binding.rvMessages.scrollToPosition(rowIndex)
-            highlightMessage(messageId)
+        val rv = binding.rvMessages
+        rv.post {
+            if (_binding != null) {
+                rv.scrollToPosition(rowIndex)
+                highlightMessage(messageId)
+            }
         }
     }
 
@@ -1727,9 +1763,12 @@ class ChatDetailFragment : Fragment() {
         }
         if (rowIndex < 0) return
         val id = (rows[rowIndex] as ChatRow.Message).message.id
-        binding.rvMessages.post {
-            binding.rvMessages.scrollToPosition(rowIndex)
-            highlightMessage(id)
+        val rv = binding.rvMessages
+        rv.post {
+            if (_binding != null) {
+                rv.scrollToPosition(rowIndex)
+                highlightMessage(id)
+            }
         }
     }
 
@@ -1787,7 +1826,7 @@ class ChatDetailFragment : Fragment() {
 
             // 并行拉成员表 + 消息（原串行改并发）
             val membersDeferred = async { chatRepo.getMembers(projectId, groupId) }
-            val messagesDeferred = async { chatRepo.getMessages(projectId, groupId) }
+            val messagesDeferred = async { chatRepo.getMessagesPage(projectId, groupId) }
 
             val membersResult = membersDeferred.await()
             membersResult.onSuccess { dtos ->
@@ -1801,8 +1840,10 @@ class ChatDetailFragment : Fragment() {
 
             val messagesResult = messagesDeferred.await()
             val myId = SessionStore.user()?.id
-            messagesResult.onSuccess { dtos ->
-                val list = dtos.map { it.toChatMessage(myId, memberNamesById) }
+            messagesResult.onSuccess { page ->
+                nextCursor = page.nextCursor
+                hasMoreMessages = page.hasMore
+                val list = page.messages.map { it.toChatMessage(myId, memberNamesById) }
                 // 合并时必须以「当前内存列表」为基准（而非开头读的 cached 快照）：
                 // 若初始 getMessages 较慢，期间用户已发出消息并 append 到 messages，
                 // 用 cached 会把这几天新消息连同网络结果一起覆盖掉，导致「发出后几秒消失」。
@@ -1815,6 +1856,47 @@ class ChatDetailFragment : Fragment() {
                 // 网络失败但已有缓存时保留缓存显示，不清空
                 if (messages.isEmpty()) setMessages(emptyList())
             }
+        }
+    }
+
+    /**
+     * 上滑加载更早消息（游标分页）：拉下一页合并到列表顶部，保持滚动位置；
+     * 新拉到的消息 sequence 更小，按序插入前方（与 sortedChronologically 排序一致）。
+     */
+    private fun loadOlderMessages() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val groupId = arguments?.getString("groupId").orEmpty()
+        val cursor = nextCursor
+        if (projectId == null || groupId.isEmpty() || cursor.isNullOrEmpty()) return
+        if (loadingOlder || !hasMoreMessages) return
+        loadingOlder = true
+        binding.pbLoadingOlder.isVisible = true
+        viewLifecycleOwner.lifecycleScope.launch {
+            // 记录当前首个可见项位置，插入顶部后恢复（避免列表跳动）
+            val lm = binding.rvMessages.layoutManager as? LinearLayoutManager
+            val firstPos = lm?.findFirstVisibleItemPosition() ?: 0
+            val firstTop = binding.rvMessages.getChildAt(0)?.top ?: 0
+            val before = messages.size
+            chatRepo.getMessagesPage(projectId, groupId, cursor)
+                .onSuccess { page ->
+                    nextCursor = page.nextCursor
+                    hasMoreMessages = page.hasMore
+                    val older = page.messages.map {
+                        it.toChatMessage(SessionStore.user()?.id, memberNamesById)
+                    }
+                    if (older.isNotEmpty()) {
+                        val merged = (older + messages).distinctBy { it.id }.sortedChronologically()
+                        setMessages(merged)
+                        // 顶部插入了 (merged.size - before) 条 → 原首个可见项下移对应行数
+                        val inserted = merged.size - before
+                        lm?.scrollToPositionWithOffset(firstPos + inserted, firstTop)
+                    }
+                }
+                .onFailure { e ->
+                    Log.w("ChatPage", "加载更早消息失败: ${e.message}")
+                }
+            loadingOlder = false
+            binding.pbLoadingOlder.isVisible = false
         }
     }
 
@@ -2025,13 +2107,6 @@ class ChatDetailFragment : Fragment() {
         val groupId = arguments?.getString("groupId").orEmpty()
         if (groupId.isEmpty()) return
         eventStream.startProject(projectId)
-        realtimeClient.start()
-        // 断线重连成功后重查当前群消息（REST 兜底补齐断线期间事件）
-        realtimeClient.onReconnected = {
-            if (groupId.isNotEmpty()) {
-                viewLifecycleOwner.lifecycleScope.launch { pollMessages(projectId, groupId) }
-            }
-        }
         if (eventStreamJob == null) {
             eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
                 eventStream.events.collect { event ->
@@ -2144,7 +2219,6 @@ class ChatDetailFragment : Fragment() {
         wsJob?.cancel()
         wsJob = null
         eventStream.stop()
-        realtimeClient.stop()
     }
 
     override fun onDestroyView() {
