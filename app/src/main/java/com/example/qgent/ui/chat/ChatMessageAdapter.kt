@@ -346,13 +346,13 @@ class ChatMessageAdapter(
                         loading.isVisible = false
                         view.setImageDrawable(resource)
                     }
-
                     override fun onLoadCleared(placeholder: Drawable?) {
                         loading.isVisible = false
                     }
 
                     override fun onLoadFailed(errorDrawable: Drawable?) {
                         loading.isVisible = false
+                        android.util.Log.e("ChatImage", "bubble image load FAILED: ${RetrofitClient.resolveMediaUrl(uri)}")
                     }
                 })
             view.setOnClickListener { onImageClick?.invoke(uri) }

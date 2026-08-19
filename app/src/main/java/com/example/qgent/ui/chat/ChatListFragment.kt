@@ -87,14 +87,12 @@ class ChatListFragment : Fragment() {
      * 实时事件（SSE §12.1 + WebSocket 单连接聚合，后端 2026-08-17）：
      * 仅当事件影响群列表（新消息、群变更、成员变动）时刷新群列表摘要/未读，
      * 任务/Diff 类事件不触发全量刷新，避免事件风暴导致列表频繁重建。
-     * WS 为主实时通道（规避 SSE 长连接被 CDN/网关掐断），SSE 保留兜底；事件幂等，重复到达无害。
-     * 轮询仍保留作为无事件时的兜底。
+     * WS 连接由 Application 级常驻（后台广播用），Fragment 只订阅事件；
+     * SSE 保留兜底；事件幂等，重复到达无害。轮询仍保留作为无事件时的兜底。
      */
     private fun startEventStream() {
         val projectId = mainViewModel.currentProjectId() ?: return
         eventStream.startProject(projectId)
-        realtimeClient.start()
-        realtimeClient.onReconnected = { mainViewModel.refreshGroups() }
         if (eventStreamJob == null) {
             eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
                 eventStream.events.collect { event ->
@@ -137,7 +135,6 @@ class ChatListFragment : Fragment() {
         wsJob?.cancel()
         wsJob = null
         eventStream.stop()
-        realtimeClient.stop()
     }
 
     /** 轮询群聊列表：后端暂无聊天推送，用定时 refreshGroups 兜底实现别人发消息红点实时显示 */

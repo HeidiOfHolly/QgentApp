@@ -18,6 +18,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /**
  * 实时通道事件帧（WebSocket 单连接用户级聚合，后端更新说明 2026-08-17）：
@@ -45,8 +46,16 @@ data class RealtimeFrame(
  */
 class RealtimeClient(
     private val httpClient: OkHttpClient,
-    private val baseUrl: String
+    private val baseUrl: String,
+    /** 握手 401 时刷新 access token（WS token 在 query，OkHttp Authenticator 无法修复），成功后重连自动用新 token */
+    private val refreshAccessToken: suspend () -> Boolean = { false }
 ) {
+
+    /** WebSocket 专用 client：客户端主动 Ping 保活（20s），避免连接因空闲被网关/防火墙超时掐断
+     *  （日志特征：Software caused connection abort，约 70s 一次） */
+    private val wsClient: OkHttpClient = httpClient.newBuilder()
+        .pingInterval(PING_INTERVAL_S, TimeUnit.SECONDS)
+        .build()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -115,7 +124,7 @@ class RealtimeClient(
         val signal = CompletableDeferred<Unit>()
         var opened = false
         closeSignal = signal
-        val ws = httpClient.newWebSocket(request, object : WebSocketListener() {
+        val ws = wsClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 opened = true
                 backoffMs = INITIAL_BACKOFF_MS
@@ -139,6 +148,10 @@ class RealtimeClient(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.w(TAG, "ws failure: ${t.message}")
+                // 握手 401：access token 过期 → 主动刷新写回 SessionStore，重连时自动用新 token
+                if (response?.code == 401) {
+                    scope.launch { refreshAccessToken() }
+                }
                 signal.complete(Unit)
             }
         })
@@ -177,5 +190,8 @@ class RealtimeClient(
         private const val TAG = "RealtimeClient"
         private const val INITIAL_BACKOFF_MS = 1_000L
         private const val MAX_BACKOFF_MS = 30_000L
+
+        /** 客户端 Ping 保活间隔（秒）：小于网关空闲超时（约 70s），持续活跃防掐断 */
+        private const val PING_INTERVAL_S = 20L
     }
 }

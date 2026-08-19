@@ -48,7 +48,12 @@ data class ChatMessage(
     /** 发送失败原因（后端错误码/文案，仅 FAILED 时可能非空，用于重发弹窗展示） */
     val sendError: String? = null,
     /** 本条消息 @ 提及的 id 列表（USER=userId / AGENT=agentId，§7.1 通知直达兜底定位用） */
-    val mentionIds: List<String>? = null
+    val mentionIds: List<String>? = null,
+    /**
+     * 客户端幂等键（§7：同一群内唯一，断线重试命中返回原消息）。
+     * 本地乐观消息生成后固定不变，重发/断线重试复用同一值 → 后端幂等去重，不产生重复消息。
+     */
+    val clientMessageId: String? = null
 ) {
     fun displayContent(): String = when (type) {
         MessageType.TEXT, MessageType.CODE -> content

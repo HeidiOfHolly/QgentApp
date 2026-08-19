@@ -25,6 +25,13 @@ data class PageInfo(
     val hasMore: Boolean
 )
 
+/** 消息分页结果（data + 游标，供聊天页上滑加载更早消息；新消息在前，nextCursor 拉更早） */
+data class MessagePageDto(
+    val messages: List<GroupMessageDto>,
+    val nextCursor: String?,
+    val hasMore: Boolean
+)
+
 /** API 异常：包含服务端返回的错误码、提示与 requestId（500 等内部错误时展示 requestId 便于后端排查） */
 class ApiException(
     val code: String,

@@ -1,5 +1,8 @@
 package com.example.qgent.data.api
 
+import com.example.qgent.data.SessionStore
+import com.example.qgent.data.model.RefreshRequest
+import com.example.qgent.data.model.toDataOrThrow
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -31,6 +34,18 @@ object RetrofitClient {
             .create(QgApiService::class.java)
     }
 
+    /** 主动刷新 access token（WebSocket 握手 401 用：WS 的 token 在 query，Authenticator 改不了），
+     *  成功写回 SessionStore；refresh 也失败返回 false（交给上层退避重试） */
+    suspend fun refreshAccessToken(): Boolean {
+        val refreshToken = SessionStore.refreshToken() ?: return false
+        return runCatching {
+            refreshService.refresh(RefreshRequest(refreshToken)).toDataOrThrow()
+        }.map { r ->
+            SessionStore.updateTokens(r.accessToken, r.refreshToken)
+            true
+        }.getOrDefault(false)
+    }
+
     // 带鉴权拦截器的通用 client：供 Retrofit service 与附件下载（GET content.url）共用
     val httpClient: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(AuthInterceptor())
@@ -47,10 +62,25 @@ object RetrofitClient {
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    /** content.url 相对路径 → 绝对地址；本地 uri / http 原样返回 */
+    /**
+     * content.url 相对路径 → 绝对地址；本地 uri 原样返回。
+     * 附件鉴权代理 URL（/projects/{id}/attachments/{id}/content）即使存的是完整地址
+     * （如 web 开发环境存的 http://localhost:8080/...），也提取路径段用本端 BASE_URL 重建，
+     * 保证「发送方环境地址」对接收方可访问；其余完整 URL（头像 OSS 直链等）原样返回。
+     */
     fun resolveMediaUrl(path: String): String = when {
-        path.startsWith("content://") || path.startsWith("http") -> path
+        path.startsWith("content://") || path.startsWith("file://") -> path
+        path.startsWith("http://") || path.startsWith("https://") -> {
+            val p = runCatching { android.net.Uri.parse(path).path }.getOrNull() ?: return path
+            if (p.contains("/attachments/")) rebuildAttachmentPath(p) else path
+        }
         else -> BASE_URL.trimEnd('/') + (if (path.startsWith("/")) path else "/$path")
+    }
+
+    /** 从路径提取 /projects/... 段并用本端 BASE_URL 重建（附件统一走本端后端地址） */
+    private fun rebuildAttachmentPath(path: String): String {
+        val segment = if (path.contains("/projects/")) path.substring(path.indexOf("/projects/")) else path
+        return BASE_URL.trimEnd('/') + segment
     }
 
     val service: QgApiService by lazy {

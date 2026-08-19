@@ -120,6 +120,16 @@
             android:paddingTop="4dp"
             android:paddingBottom="8dp" />
 
+        <!-- 上滑加载更早消息：顶部加载指示 -->
+        <ProgressBar
+            android:id="@+id/pbLoadingOlder"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
         <!-- 未读「有人@你」提示条（对齐 web ChatPanel）：点击滚动到被 @ 的消息并高亮，点击后消失 -->
         <TextView
             android:id="@+id/btnMentionBar"

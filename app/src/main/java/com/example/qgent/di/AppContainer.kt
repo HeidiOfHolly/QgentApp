@@ -102,9 +102,14 @@ class AppContainer(context: Context) {
 
     /**
      * WebSocket 实时通道（后端 2026-08-17 新增：单连接用户级聚合，SSE 保留兼容）。
-     * 握手 ?token= 鉴权；聊天页实时刷新优先走它（规避 SSE 长连接被 CDN/网关掐断）。
+     * 握手 ?token= 鉴权；聊天页实时刷新优先走它（规避 SSE 长连接被 CDN/网关掐断）；
+     * 握手 401 时用 refresh token 换新 access token 自动重连。
      */
-    val realtimeClient = com.example.qgent.data.ws.RealtimeClient(RetrofitClient.httpClient, RetrofitClient.BASE_URL)
+    val realtimeClient = com.example.qgent.data.ws.RealtimeClient(
+        RetrofitClient.httpClient,
+        RetrofitClient.BASE_URL,
+        refreshAccessToken = { RetrofitClient.refreshAccessToken() }
+    )
 
     val authViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer { AuthViewModel(authRepository) }

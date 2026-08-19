@@ -100,6 +100,9 @@ class MainActivity : AppCompatActivity() {
                     routeInitialDestination()
                 }
             }
+            // 通知权限引导（Android 13+ 未授权时提示去开启，否则后台广播收不到）
+            maybePromptNotificationPermission()
+            handleNotificationIntent(intent)
         }
     }
 
@@ -108,7 +111,38 @@ class MainActivity : AppCompatActivity() {
         setIntent(intent)
         if (::navController.isInitialized) {
             handleDeepLink(intent)
+            handleNotificationIntent(intent)
         }
+    }
+
+    /** 通知权限未授予（Android 13+）→ 弹窗引导去系统设置开启 */
+    private fun maybePromptNotificationPermission() {
+        if (com.example.qgent.ui.notify.NotificationHelper.hasPermission(this)) return
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("开启通知权限")
+            .setMessage("需要通知权限才能在应用外收到群聊消息提醒。请前往系统设置允许通知。")
+            .setNegativeButton("以后再说", null)
+            .setPositiveButton("去设置") { _, _ ->
+                com.example.qgent.ui.notify.NotificationHelper.openSettings(this)
+            }
+            .show()
+    }
+
+    /** 通知点击（extras: groupId/groupName）→ 跳进对应群聊 */
+    private fun handleNotificationIntent(intent: Intent?) {
+        val groupId = intent?.getStringExtra("groupId") ?: return
+        val groupName = intent?.getStringExtra("groupName").orEmpty()
+        intent.removeExtra("groupId")
+        if (!::navController.isInitialized) return
+        navController.navigate(
+            R.id.chatListFragment,
+            null,
+            navOptions { popUpTo(R.id.chatListFragment) { inclusive = false } }
+        )
+        navController.navigate(
+            R.id.chatDetailFragment,
+            bundleOf("groupName" to groupName, "groupId" to groupId)
+        )
     }
 
     override fun onResume() {

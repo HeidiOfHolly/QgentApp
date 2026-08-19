@@ -40,6 +40,9 @@ class FallbackChatRepository(
     override suspend fun getMessages(projectId: String, groupId: String, cursor: String?, limit: Int) =
         fb.call { getMessages(projectId, groupId, cursor, limit) }
 
+    override suspend fun getMessagesPage(projectId: String, groupId: String, cursor: String?, limit: Int) =
+        fb.call { getMessagesPage(projectId, groupId, cursor, limit) }
+
     override suspend fun getMessage(projectId: String, groupId: String, messageId: String) =
         fb.call { getMessage(projectId, groupId, messageId) }
 

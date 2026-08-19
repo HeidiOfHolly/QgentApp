@@ -10,6 +10,8 @@ import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.model.GroupReadResponse
 import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
+import com.example.qgent.data.model.MessagePageDto
+import com.example.qgent.data.model.requireData
 import com.example.qgent.data.model.SendMessageRequest
 import com.example.qgent.data.model.UpdateGroupRequest
 import com.example.qgent.data.model.toDataOrThrow
@@ -87,6 +89,24 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         limit: Int
     ): Result<List<GroupMessageDto>> = apiCall {
         service.getMessages(projectId, groupId, cursor, limit).toDataOrThrow()
+    }
+
+    /** 消息分页：解析 data + page（nextCursor/hasMore），供聊天页上滑加载更早消息 */
+    override suspend fun getMessagesPage(
+        projectId: String,
+        groupId: String,
+        cursor: String?,
+        limit: Int
+    ): Result<MessagePageDto> = apiCall {
+        val resp = service.getMessages(projectId, groupId, cursor, limit)
+        val body = resp.body()
+        val data = body?.requireData()
+            ?: throw com.example.qgent.data.model.ApiException("EMPTY_RESPONSE", "响应为空")
+        MessagePageDto(
+            messages = data,
+            nextCursor = body.page?.nextCursor,
+            hasMore = body.page?.hasMore ?: false
+        )
     }
 
     override suspend fun getMessage(projectId: String, groupId: String, messageId: String): Result<GroupMessageDto> = apiCall {
