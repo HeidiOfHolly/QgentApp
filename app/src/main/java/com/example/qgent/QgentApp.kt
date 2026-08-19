@@ -25,6 +25,9 @@ class QgentApp : Application() {
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    /** 应用级协程作用域：不随 Activity/Fragment 生命周期取消，用于必须完成的网络请求（如通知已读） */
+    val applicationScope: CoroutineScope get() = appScope
+
     /** 当前处于前台（resumed）的 Activity，用于弹 Toast 的上下文 */
     private var resumedActivity: WeakReference<Activity>? = null
 
