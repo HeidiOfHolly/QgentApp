@@ -912,6 +912,8 @@ data class TaskDetailDto(
     /** diffReviewSummary 后端结构可能变化，用 JsonElement 兼容（解析见 ChatDetailFragment） */
     @SerializedName("diffReviewSummary") val diffReviewSummary: com.google.gson.JsonElement?,
     val capabilities: TaskCapabilitiesDto?,
+    /** Task 启动失败原因（§34.1，Sandbox/Worker 初始化失败且未创建 TaskRun 时返回；成功/进行中为 null） */
+    @SerializedName("statusReason") val statusReason: TaskStatusReasonDto? = null,
     @SerializedName("createdAt") val createdAt: String,
     @SerializedName("updatedAt") val updatedAt: String
 )
@@ -940,7 +942,15 @@ data class WorkspaceDiffPreviewFileDto(
     @SerializedName("changeType") val changeType: String?,
     val additions: Int = 0,
     val deletions: Int = 0,
-    val binary: Boolean = false
+    val binary: Boolean = false)
+/** Task 启动失败原因（§34.1）：failureCode 为稳定错误码（SANDBOX_WORKER_ERROR / GIT_BASE_REF_NOT_FOUND 等），summary 为脱敏文案 */
+data class TaskStatusReasonDto(
+    @SerializedName("code") val code: String?,
+    @SerializedName("failureCode") val failureCode: String?,
+    @SerializedName("title") val title: String?,
+    @SerializedName("summary") val summary: String?,
+    @SerializedName("retryable") val retryable: Boolean = false,
+    @SerializedName("occurredAt") val occurredAt: String?
 )
 
 /** Diff 审查摘要（任务详情 §16.2 / §20.4）：待确认 Diff 时 available=true。

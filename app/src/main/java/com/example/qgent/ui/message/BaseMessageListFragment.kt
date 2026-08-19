@@ -79,6 +79,9 @@ abstract class BaseMessageListFragment : Fragment() {
         binding.rvMessageList.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMessageList.adapter = adapter
 
+        // 下拉刷新：重新拉取通知列表（子类按各自 filter 加载）
+        binding.swipeRefresh.setOnRefreshListener { loadNotifications() }
+
         loadNotifications()
     }
 
@@ -89,7 +92,10 @@ abstract class BaseMessageListFragment : Fragment() {
                 items.addAll(list.filter(notificationsFilter))
                 adapter.notifyDataSetChanged()
                 updateEmptyState()
+                // 刷新完成 → 收起下拉刷新动画
+                binding.swipeRefresh.isRefreshing = false
             }.onFailure { e ->
+                binding.swipeRefresh.isRefreshing = false
                 Toast.makeText(requireContext(), e.message ?: getString(R.string.load_failed), Toast.LENGTH_SHORT).show()
             }
         }
