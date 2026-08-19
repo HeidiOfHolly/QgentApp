@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -116,6 +117,7 @@ class AgentFragment : Fragment() {
             findNavController().navigate(R.id.action_agent_to_memoryPool)
         }
         binding.rvMemoryPreview.adapter = adapter
+        binding.tvMemoryPreviewEmpty.isVisible = items.isEmpty()
     }
 
     private fun renderSkillPreview(items: List<SkillItem>) {
@@ -123,6 +125,7 @@ class AgentFragment : Fragment() {
             findNavController().navigate(R.id.action_agent_to_skillPool)
         }
         binding.rvSkillPreview.adapter = adapter
+        binding.tvSkillPreviewEmpty.isVisible = items.isEmpty()
     }
 
     override fun onResume() {

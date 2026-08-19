@@ -99,6 +99,7 @@ class SkillPoolFragment : Fragment() {
         binding.rvApprovedList.adapter = PoolResourceAdapter(approved) { item ->
             onItemClick(item)
         }
+        binding.tvApprovedEmpty.isVisible = approved.isEmpty()
     }
 
     /** 审核队列详情卡片：显示内容 + 右上角通过/拒绝（非 Admin 无按钮） */

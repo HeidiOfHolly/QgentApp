@@ -896,28 +896,7 @@ class ChatDetailFragment : Fragment() {
         // repositoryIds 必须用 getProjectRepositories 返回的 id（project_repositories.id，清单二）
         // 续作引用时不加载仓库（C2：不得传 repositoryIds，否则 409 WORKSPACE_CONTINUATION_REPOSITORIES_FORBIDDEN）
         val repoBranchMap = mutableMapOf<String, String>()   // repoId -> defaultBranch
-        if (!quotingDiff) {
-            viewLifecycleOwner.lifecycleScope.launch {
-                val repos = githubRepo().getProjectRepositories(projectId).getOrNull().orEmpty()
-                if (repos.isEmpty()) {
-                    tvRepoLabel.text = getString(R.string.start_task_repo_required)
-                    return@launch
-                }
-                repos.forEach { repo ->
-                    val cb = android.widget.CheckBox(requireContext()).apply {
-                        text = repo.displayName
-                        textSize = 14f
-                        tag = repo.id
-                        isChecked = repos.size == 1
-                    }
-                    repoBranchMap[repo.id] = repo.defaultBranch
-                    repoChecks.add(cb)
-                    container.addView(cb)
-                }
-            }
-        }
-
-        MaterialAlertDialogBuilder(requireContext())
+        val dialog = MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.start_task_title)
             .setView(container)
             .setNegativeButton(R.string.cancel, null)
@@ -936,7 +915,41 @@ class ChatDetailFragment : Fragment() {
                     else -> createTask(projectId, groupId, title, requirement, repoIds, baseRef)
                 }
             }
-            .show()
+            .create()
+        // 非续作需加载仓库：加载完成前禁用确认，避免空 CheckBox 假提交；失败 toast 真实原因（不再静默吞错）。
+        // 注意：AppCompat AlertDialog 的按钮在 show() 时才创建（create() 后 getButton 为 null），
+        // 必须在 OnShowListener 里取按钮并启动加载，否则弹窗弹出即 NPE 闪退。
+        if (!quotingDiff) {
+            dialog.setOnShowListener {
+                dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                viewLifecycleOwner.lifecycleScope.launch {
+                    githubRepo().getProjectRepositories(projectId)
+                        .onSuccess { repos ->
+                            if (repos.isEmpty()) {
+                                tvRepoLabel.text = getString(R.string.start_task_repo_required)
+                            } else {
+                                repos.forEach { repo ->
+                                    val cb = android.widget.CheckBox(requireContext()).apply {
+                                        text = repo.displayName
+                                        textSize = 14f
+                                        tag = repo.id
+                                        isChecked = repos.size == 1
+                                    }
+                                    repoBranchMap[repo.id] = repo.defaultBranch
+                                    repoChecks.add(cb)
+                                    container.addView(cb)
+                                }
+                            }
+                            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled = repos.isNotEmpty()
+                        }
+                        .onFailure { e ->
+                            tvRepoLabel.text = getString(R.string.start_task_repo_load_failed)
+                            Toast.makeText(requireContext(), "加载仓库失败：${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun createTask(
@@ -1017,7 +1030,14 @@ class ChatDetailFragment : Fragment() {
         val popup = PopupMenu(requireContext(), binding.btnPlus)
         popup.menu.add(getString(R.string.image))
         popup.menu.add(getString(R.string.file))
-        popup.menu.add(getString(R.string.start_task))
+        // 仅需求群可发起任务（契约 §2865：Task 必须从 ACTIVE REQUIREMENT 群创建；
+        // 项目总群 PROJECT_MAIN 发起后端必返回 404 REQUIREMENT_GROUP_NOT_FOUND）
+        val isMainGroup = mainViewModel.groups.value.orEmpty()
+            .firstOrNull { it.id == arguments?.getString("groupId") }
+            ?.type == GroupType.PROJECT_MAIN
+        if (!isMainGroup) {
+            popup.menu.add(getString(R.string.start_task))
+        }
         popup.setOnMenuItemClickListener { item ->
             when (item.title) {
                 getString(R.string.image) -> pickImage.launch(

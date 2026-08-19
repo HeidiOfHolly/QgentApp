@@ -427,15 +427,19 @@ class TaskDetailFragment : Fragment() {
     }
 
     /**
-     * 任务失败原因（需求与任务步骤之间）：任务状态为 FAILED 时展示；
-     * 原因优先取失败运行 statusReason.summary/title（§16.4），其次 statusSummary，兜底通用文案。
+     * 任务失败原因（需求与任务步骤之间）：任务状态为 FAILED 时展示。
+     * 原因优先级：Task 启动失败 statusReason（§34.1，Sandbox/Worker/基线初始化失败时返回，
+     * 此时尚未创建 TaskRun）→ 失败运行 statusReason（§16.4）→ statusSummary → 兜底通用文案。
      */
     private fun updateFailureReason() {
         val taskFailed = lastDetail?.status == "FAILED"
         binding.layoutFailureReason.isVisible = taskFailed
         if (!taskFailed) return
+        val taskReason = lastDetail?.statusReason
         val failedRun = lastRuns.firstOrNull { it.status == "FAILED" }
-        val reason = failedRun?.statusReason?.summary
+        val reason = taskReason?.summary
+            ?: taskReason?.title
+            ?: failedRun?.statusReason?.summary
             ?: failedRun?.statusReason?.title
             ?: failedRun?.statusSummary
             ?: "Agent 任务执行失败，详见任务运行执行日志"
