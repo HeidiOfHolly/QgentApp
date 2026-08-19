@@ -25,6 +25,9 @@ import com.example.qgent.model.Agent
 import com.example.qgent.model.ChatGroup
 import com.example.qgent.model.GroupType
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -115,6 +118,12 @@ class MainViewModel(
 
     // 冷启动路由进行中标记：首个团队项目为空或群聊加载完成后解除（供 hasGroups 判断）
     private var routingInitPending = false
+
+    /** 群 id → 后端已读游标（lastReadSequenceNo）：群聊页「有人@你」未读 @ 判定基准（对齐 web ChatPanel） */
+    private val lastReadSeqByGroup = mutableMapOf<String, Long>()
+
+    /** 群 id → 当前用户是否在群内（isGroupMember 缓存，避免每次 loadGroups 对每个群重复调 getMembers） */
+    private val groupMemberCache = mutableMapOf<String, Boolean>()
 
     // ── 用户权限（当前为演示阶段默认 Project Admin，接入真实权限后替换） ──
 
@@ -220,14 +229,21 @@ class MainViewModel(
         return projectIdsByTeam[teamId]?.get(_currentProject.value)
     }
 
-    /** 退回列表页时刷新群聊最新消息摘要（onResume 调用）；projectId 未就绪时跳过，避免冷启动误清空 */
+    /**
+     * 退回列表页时刷新群聊最新消息摘要（onResume 调用）；projectId 未就绪时跳过，避免冷启动误清空。
+     * 轮询/SSE 高频调用：上一次加载仍在途（接口慢于轮询间隔）时跳过本次，
+     * 避免 loadGroupsJob 被反复 cancel 导致请求永远完不成（列表/未读永不刷新）。
+     */
     fun refreshGroups() {
         if (currentProjectId() == null) return
+        if (loadGroupsJob?.isActive == true) return
         loadGroups(_currentProject.value)
     }
 
     /** 标记群聊为已读（v2.0.6 §1.2）：调用后端 read 接口推进已读游标，本地立即清未读/@我。
-     *  不再用本地时间戳模拟已读（此前跨端不同步、重启即失效）。 */
+     *  不再用本地时间戳模拟已读（此前跨端不同步、重启即失效）。
+     *  成功后记录后端返回的 lastReadSequenceNo，作为群聊页「有人@你」未读 @ 判定基准
+     *  （对齐 web ChatPanel：seq > 游标 且 mentions 含我 的才触发提示）。 */
     fun markGroupRead(groupId: String, lastSeenAt: Long? = null) {
         val projectId = currentProjectId() ?: return
         _groups.value = _groups.value.map {
@@ -235,8 +251,15 @@ class MainViewModel(
         }
         viewModelScope.launch {
             chatRepo.markGroupRead(projectId, groupId, UUID.randomUUID().toString())
+                .onSuccess { resp ->
+                    lastReadSeqByGroup[groupId] = resp.lastReadSequenceNo
+                }
+            // 失败保持现状：游标由下次进群重试覆盖（对齐 web「已读失败不打断」）
         }
     }
+
+    /** 该群已读游标（进群 markRead 成功后才有值；null = 尚未完成进群全读，不提示未读 @） */
+    fun lastReadSeq(groupId: String): Long? = lastReadSeqByGroup[groupId]
 
     /** 切换群聊置顶状态，重新排序后发出 */
     fun togglePin(groupId: String) {
@@ -340,26 +363,50 @@ class MainViewModel(
         loadGroupsJob?.cancel()
         if (showLoading) _groupsLoading.value = true
         loadGroupsJob = viewModelScope.launch {
-            val dtos = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
-            val myId = SessionStore.user()?.id
-            val visible = if (myId == null) {
-                dtos
-            } else {
-                dtos.filter { dto ->
-                    dto.type == "PROJECT_MAIN" || isGroupMember(projectId, dto.id, myId)
+            try {
+                val dtos = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
+                // 诊断：核对后端 mentionedUnread / latestMessage 是否随群列表返回（角标与摘要依赖）
+                dtos.forEach { dto ->
+                    Log.d("GroupBadge", "group=${dto.title} type=${dto.type} unread=${dto.unreadCount} mentioned=${dto.mentionedUnread} latest=${dto.latestMessage?.text}")
                 }
+                val myId = SessionStore.user()?.id
+                val visible = if (myId == null) {
+                    dtos
+                } else {
+                    // 并发校验成员身份：避免对每个群串行 getMembers 拖慢整个 loadGroups
+                    coroutineScope {
+                        dtos.map { dto ->
+                            async { dto.type == "PROJECT_MAIN" || isGroupMember(projectId, dto.id, myId) }
+                        }.awaitAll().zip(dtos) { ok, dto -> if (ok) dto else null }
+                    }.filterNotNull()
+                }
+                // v2.0.6 §1.1：未读/@我 直接用后端权威值（unreadCount / mentionedUnread）
+                _groups.value = toChatGroups(visible)
+            } catch (e: Exception) {
+                Log.e("Groups", "loadGroups FAILED: ${e::class.simpleName}: ${e.message}", e)
             }
-            // v2.0.6 §1.1：未读/@我 直接用后端权威值（unreadCount / mentionedUnread）
-            _groups.value = toChatGroups(visible)
             if (showLoading) _groupsLoading.value = false
             resolveRoutingReady()
         }
     }
 
-    /** 当前用户是否在该群成员列表中（成员拉取失败时按「不在群」处理，避免把不存在的群展示给用户） */
+    /** 当前用户是否在该群成员列表中。成员关系缓存避免每次 loadGroups 对每个群重复调 getMembers；
+     *  成员拉取失败时按「在群内」处理（信任 getGroups 返回的群列表），
+     *  避免后端成员接口抖动导致需求群被整体误隐藏（列表/摘要/未读全部不更新）。 */
     private suspend fun isGroupMember(projectId: String, groupId: String, myId: String): Boolean {
-        val members = chatRepo.getMembers(projectId, groupId).getOrNull() ?: return false
-        return members.any { it.id == myId }
+        groupMemberCache[groupId]?.let { return it }
+        val result = chatRepo.getMembers(projectId, groupId)
+            .fold(
+                onSuccess = { members -> members.any { it.id == myId } },
+                onFailure = { true }
+            )
+        groupMemberCache[groupId] = result
+        return result
+    }
+
+    /** 成员变动（SSE group.member.updated / 移入移出群后）清空成员缓存 */
+    fun clearGroupMemberCache() {
+        groupMemberCache.clear()
     }
 
     /** GroupDto → ChatGroup 映射（v2.0.6 §1.1：未读/@我 直接用后端权威值 unreadCount / mentionedUnread） */
@@ -374,7 +421,8 @@ class MainViewModel(
                 unread = (dto.unreadCount ?: 0).coerceAtLeast(0),
                 lastActiveTime = lastActive,
                 mentionedMe = (dto.mentionedUnread ?: 0) > 0,
-                type = if (dto.type == "PROJECT_MAIN") GroupType.PROJECT_MAIN else GroupType.REQUIREMENT
+                type = if (dto.type == "PROJECT_MAIN") GroupType.PROJECT_MAIN else GroupType.REQUIREMENT,
+                lastMessageType = dto.latestMessage?.type
             )
         })
 

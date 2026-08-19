@@ -318,6 +318,8 @@ data class GroupMemberDto(
     val id: String,
     val nickname: String?,
     @SerializedName("displayName") val displayName: String? = null,
+    /** 头像字段名后端可能为 avatar / avatarUrl（文档未冻结，兼容两者） */
+    @SerializedName(value = "avatar", alternate = ["avatarUrl", "headUrl"])
     val avatar: String?,
     /** 成员类型：USER / AGENT（文档 §7：群成员 = 项目成员 + 参与群聊的 Agent） */
     @SerializedName("memberType") val memberType: String? = null

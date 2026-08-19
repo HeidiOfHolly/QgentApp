@@ -113,6 +113,11 @@ class ChatDetailFragment : Fragment() {
     private lateinit var adapter: ChatMessageAdapter
     private var pollingJob: Job? = null
     private var eventStreamJob: Job? = null
+    private var wsJob: Job? = null
+
+    /** WebSocket 实时通道（单连接用户级聚合，聊天实时主通道；规避 SSE 被 CDN 掐断） */
+    private val realtimeClient: com.example.qgent.data.ws.RealtimeClient
+        get() = (requireActivity().application as QgentApp).container.realtimeClient
 
     /**
      * 发送串行锁：同一时刻只允许一个消息发送请求在途（文本/图片/文件/重发共用）。
@@ -136,6 +141,21 @@ class ChatDetailFragment : Fragment() {
     /** 多选模式：长按消息选「多选」进入，点击消息切换选中，用于生成 Memory 草稿 */
     private var multiSelectMode = false
     private val selectedMessageIds = mutableSetOf<String>()
+
+    /** §7.1 通知直达：目标消息 id（跳群后滚动高亮到该消息；null=非直达进入） */
+    private val targetMessageId: String? get() = arguments?.getString(ARG_TARGET_MESSAGE_ID)
+
+    /** §7.1 通知直达：来源是否为 @ 提及（resourceId 缺失时兜底滚到最上面一条被 @ 的消息） */
+    private val fromMention: Boolean get() = arguments?.getBoolean(ARG_FROM_MENTION) == true
+
+    /** 当前群 id（多次使用，抽成 getter） */
+    private val groupId: String get() = arguments?.getString("groupId").orEmpty()
+
+    /** 已忽略的「有人@你」消息 id（对齐 web ChatPanel：点击后按钮消失，新 @ 消息再来重新出现） */
+    private var dismissedMentionId: String? = null
+
+    /** 当前提示条指向的未读 @ 消息 id（点击跳转目标） */
+    private var currentMentionMessageId: String? = null
 
     // 系统相册选图：免存储权限，返回图片 content:// URI
     private val pickImage = registerForActivityResult(
@@ -239,6 +259,9 @@ class ChatDetailFragment : Fragment() {
 
         // 取消引用：关闭引用条，发送不再带 replyToId
         binding.btnCancelQuote.setOnClickListener { clearQuote() }
+
+        // 未读「有人@你」提示条：点击滚动到被 @ 的消息并高亮，点击后消失（对齐 web ChatPanel）
+        binding.btnMentionBar.setOnClickListener { onMentionBarClick() }
 
         // 多选操作条：取消 / 生成 Memory 草稿
         binding.btnCancelMultiSelect.setOnClickListener { exitMultiSelect() }
@@ -457,12 +480,12 @@ class ChatDetailFragment : Fragment() {
     private fun appendLocalMessage(text: String) {
         appendMessage(
             ChatMessage(
-                LOCAL_ID_PREFIX + UUID.randomUUID(),
-                "我",
-                text,
-                MessageType.TEXT,
-                System.currentTimeMillis(),
-                true,
+                id = LOCAL_ID_PREFIX + UUID.randomUUID(),
+                senderName = "我",
+                content = text,
+                type = MessageType.TEXT,
+                timestamp = System.currentTimeMillis(),
+                isMine = true,
                 sequence = 0,
                 sendState = SendState.FAILED
             )
@@ -1013,14 +1036,21 @@ class ChatDetailFragment : Fragment() {
      *  轮询可能在发送成功前已把服务端消息插入列表（v23 网络优先合并），
      *  先清掉同 id 旧条目再替换，避免同一消息短暂显示两次。 */
     private fun replaceLocalMessage(localId: String, network: ChatMessage) {
+        // 防御：后端回显 QUOTE 若缺 replyText（气泡正文空），保留用户刚输入的回复正文，避免显示成「引用：xxx」
+        val local = messages.firstOrNull { it.id == localId }
+        val resolved = if (local != null && network.type == MessageType.QUOTE && network.content.isBlank() && local.content.isNotBlank()) {
+            network.copy(content = local.content)
+        } else {
+            network
+        }
         messages.removeAll { it.id == network.id }
         val idx = messages.indexOfFirst { it.id == localId }
         if (idx >= 0) {
-            messages[idx] = network
+            messages[idx] = resolved
             refreshRows()
             saveCache()
         } else {
-            appendMessage(network)
+            appendMessage(resolved)
         }
     }
 
@@ -1640,6 +1670,102 @@ class ChatDetailFragment : Fragment() {
         }
     }
 
+    // ── §7.1 通知直达被 @ 消息：滚动 + 高亮 ──
+
+    /**
+     * 直达定位：目标消息 id 在已加载分页内 → 直接滚动高亮；
+     * 在分页窗口外（较旧）→ 单消息 GET 分页外定位（接口文档 §7.1），
+     * 拉取后合并进本地列表再滚动高亮；GET 失败或 resourceId 缺失（@ 提及来源）→
+     * 兜底滚到列表中最上面一条被 @ 的消息。
+     */
+    private fun locateTargetMessage(projectId: String, groupId: String) {
+        val target = targetMessageId
+        // 消费一次：定位后移除参数，避免轮询刷新/配置变更重复触发
+        arguments?.remove(ARG_TARGET_MESSAGE_ID)
+        if (target.isNullOrEmpty()) {
+            if (fromMention) scrollToTopMentioned()
+            return
+        }
+        if (messages.any { it.id == target }) {
+            scrollToMessage(target)
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            chatRepo.getMessage(projectId, groupId, target)
+                .onSuccess { dto ->
+                    val msg = dto.toChatMessage(SessionStore.user()?.id, memberNamesById)
+                    setMessages(mergeWithNetwork(listOf(msg)))
+                    scrollToMessage(target)
+                }
+                .onFailure {
+                    scrollToTopMentioned()
+                }
+        }
+    }
+
+    /** 滚动到目标消息行并高亮（高亮 3s 后自动清除） */
+    private fun scrollToMessage(messageId: String) {
+        val rowIndex = rows.indexOfFirst { (it as? ChatRow.Message)?.message?.id == messageId }
+        if (rowIndex < 0) return
+        binding.rvMessages.post {
+            binding.rvMessages.scrollToPosition(rowIndex)
+            highlightMessage(messageId)
+        }
+    }
+
+    /** §7.1 resourceId 缺失兜底：滚动到列表中最上面（最旧）一条 @ 我的消息 */
+    private fun scrollToTopMentioned() {
+        val myId = SessionStore.user()?.id ?: return
+        val rowIndex = rows.indexOfFirst { row ->
+            val m = (row as? ChatRow.Message)?.message ?: return@indexOfFirst false
+            m.senderId != myId && m.mentionIds?.contains(myId) == true
+        }
+        if (rowIndex < 0) return
+        val id = (rows[rowIndex] as ChatRow.Message).message.id
+        binding.rvMessages.post {
+            binding.rvMessages.scrollToPosition(rowIndex)
+            highlightMessage(id)
+        }
+    }
+
+    /** 目标消息整行高亮，HIGHLIGHT_DURATION_MS 后自动清除（滚动/轮询重绘期间保持） */
+    private fun highlightMessage(messageId: String) {
+        adapter.setHighlightMessageId(messageId)
+        binding.root.postDelayed({ adapter.setHighlightMessageId(null) }, HIGHLIGHT_DURATION_MS)
+    }
+
+    // ── 未读「↑ 有人@你」提示条（对齐 web ChatPanel：seq > 已读游标 且 mentions 含我 且非本人发送） ──
+
+    /** 未读「@ 我」消息（升序）；lastReadSeq 为空（进群全读完成前）不提示，避免把历史 @ 消息当未读 */
+    private fun unreadMentionMessages(): List<ChatMessage> {
+        val lastRead = mainViewModel.lastReadSeq(groupId) ?: return emptyList()
+        val myId = SessionStore.user()?.id ?: return emptyList()
+        return messages.filter { m ->
+            m.senderId != myId &&
+                m.sequence > lastRead &&
+                m.mentionIds?.contains(myId) == true
+        }
+    }
+
+    /** 更新提示条显隐：最新一条未读 @ 消息存在且未被忽略时显示（消息列表变化后调用） */
+    private fun updateMentionBar() {
+        val mentionMessage = unreadMentionMessages().lastOrNull()
+        currentMentionMessageId = mentionMessage?.id
+        val show = mentionMessage != null && mentionMessage.id != dismissedMentionId
+        binding.btnMentionBar.isVisible = show
+        // 诊断：提示条未显示时核对判定条件（游标 / 未读 @ 候选）
+        Log.d("MentionBar", "lastReadSeq=${mainViewModel.lastReadSeq(groupId)} myId=${SessionStore.user()?.id} " +
+            "mentionCandidates=${unreadMentionMessages().size} dismissed=${dismissedMentionId} show=$show")
+    }
+
+    /** 点击提示条：滚动高亮到被 @ 的消息，并忽略该条（新 @ 消息再来时重新出现，对齐 web） */
+    private fun onMentionBarClick() {
+        val id = currentMentionMessageId ?: return
+        dismissedMentionId = id
+        binding.btnMentionBar.isVisible = false
+        scrollToMessage(id)
+    }
+
     private fun loadInitialData() {
         val projectId = mainViewModel.currentProjectId()
         val groupId = arguments?.getString("groupId").orEmpty()
@@ -1678,6 +1804,8 @@ class ChatDetailFragment : Fragment() {
                 val merged = mergeWithNetwork(list)
                 setMessages(merged)
                 messageCache.save(groupId, merged)
+                // §7.1 通知直达被 @ 消息：目标在分页窗口内直接滚动高亮，否则单消息 GET 分页外定位
+                locateTargetMessage(projectId, groupId)
             }.onFailure {
                 // 网络失败但已有缓存时保留缓存显示，不清空
                 if (messages.isEmpty()) setMessages(emptyList())
@@ -1711,6 +1839,8 @@ class ChatDetailFragment : Fragment() {
         groupMembers = mergedMembers
         memberNamesById = mergedMembers.associate { it.id to it.name }
         memberById = mergedMembers.associate { it.id to it }
+        // 成员头像映射 → 消息气泡旁展示他人头像
+        adapter.setMemberAvatars(mergedMembers.mapNotNull { m -> m.avatar?.takeIf { it.isNotBlank() }?.let { m.id to it } }.toMap())
     }
 
     /** 群成员变动（group.member.updated）后刷新成员表：@ 列表/成员映射立即包含新成员 */
@@ -1718,6 +1848,8 @@ class ChatDetailFragment : Fragment() {
         val projectId = mainViewModel.currentProjectId() ?: return
         val groupId = arguments?.getString("groupId").orEmpty()
         if (groupId.isEmpty()) return
+        // 成员变动 → 清 MainViewModel 成员关系缓存（isGroupMember 结果可能过期）
+        mainViewModel.clearGroupMemberCache()
         viewLifecycleOwner.lifecycleScope.launch {
             chatRepo.getMembers(projectId, groupId)
                 .onSuccess { dtos ->
@@ -1796,7 +1928,17 @@ class ChatDetailFragment : Fragment() {
                 else -> !(msg.isMine && msg.sequence <= 0L)                    // 历史幽灵：自己发的且无 sequence
             }
         }
-        return (network + kept).distinctBy { it.id }.sortedChronologically()
+        // 防御：QUOTE 网络回显缺 replyText 时沿用旧内容（避免轮询把气泡正文刷成「引用：xxx」）
+        return (network + kept).distinctBy { it.id }
+            .map { net ->
+                if (net.type == MessageType.QUOTE && net.content.isBlank()) {
+                    val old = messages.firstOrNull { it.id == net.id }
+                    if (old != null && old.content.isNotBlank()) net.copy(content = old.content) else net
+                } else {
+                    net
+                }
+            }
+            .sortedChronologically()
     }
 
     /** 按后端单调 sequence 排序（本地兜底消息无 sequence，恒排末尾）；timestamp 因时区不一致不可靠，仅作 sequence 相同时的次级排序 */
@@ -1830,6 +1972,8 @@ class ChatDetailFragment : Fragment() {
         rows.addAll(buildRows(messages))
         adapter.notifyDataSetChanged()
         if (pinned) scrollToBottom()
+        // 消息列表变化 → 重算未读「有人@你」提示条
+        updateMentionBar()
     }
 
     /** 用户是否停留在消息列表底部附近（最后可见项距底部 ≤2 行视为吸底） */
@@ -1845,7 +1989,14 @@ class ChatDetailFragment : Fragment() {
         startEventStream()
         // 进入群聊即标记已读（v2.0.6 §1.2 后端游标推进），未读/@我 立即清零
         val groupId = arguments?.getString("groupId").orEmpty()
-        if (groupId.isNotEmpty()) mainViewModel.markGroupRead(groupId)
+        if (groupId.isNotEmpty()) {
+            mainViewModel.markGroupRead(groupId)
+            // 等 markRead 返回游标后刷新「有人@你」提示条（未读 @ 判定依赖 lastReadSeq；轮询 3s 兜底）
+            viewLifecycleOwner.lifecycleScope.launch {
+                delay(1_500L)
+                if (_binding != null) updateMentionBar()
+            }
+        }
     }
 
     override fun onPause() {
@@ -1858,9 +2009,10 @@ class ChatDetailFragment : Fragment() {
     }
 
     /**
-     * 项目级 SSE 事件流（文档 §12.1 + message.created 补充）：
+     * 实时事件（SSE §12.1 + WebSocket 单连接聚合，后端 2026-08-17）：
      * 只对 message.created 且 groupId 匹配当前群的事件刷新消息；
      * 其他任务/Diff 事件（无 groupId）不触发消息拉取，避免事件风暴导致列表频繁重建。
+     * WS 为主实时通道（规避 SSE 长连接被 CDN/网关掐断），SSE 保留兜底；事件幂等，重复到达无害。
      * 3s 轮询保留作为无事件时的兜底。
      */
     private fun startEventStream() {
@@ -1868,22 +2020,24 @@ class ChatDetailFragment : Fragment() {
         val groupId = arguments?.getString("groupId").orEmpty()
         if (groupId.isEmpty()) return
         eventStream.startProject(projectId)
+        realtimeClient.start()
+        // 断线重连成功后重查当前群消息（REST 兜底补齐断线期间事件）
+        realtimeClient.onReconnected = {
+            if (groupId.isNotEmpty()) {
+                viewLifecycleOwner.lifecycleScope.launch { pollMessages(projectId, groupId) }
+            }
+        }
         if (eventStreamJob == null) {
             eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
                 eventStream.events.collect { event ->
                     when (event.type) {
-                        // 消息事件：当前群有新消息 → 立即拉取一次
-                        SseEventType.MESSAGE_CREATED -> {
-                            val targetGroup = parseGroupId(event.data)
-                            if (targetGroup == groupId) {
-                                pollMessages(projectId, groupId)
-                            }
-                        }
-                        // v23：TASK_STATUS / DIFF 卡单消息持续更新 → 刷新消息列表，
-                        // 合并时同 id 以网络（新）内容覆盖本地（见 mergeWithNetwork）
+                        // 消息事件：当前群有新消息 → 立即拉取一次。
+                        // groupId 解析失败时不静默丢弃：当前页面只显示一个群，收到消息事件直接刷新当前群
+                        SseEventType.MESSAGE_CREATED,
                         SseEventType.MESSAGE_UPDATED -> {
                             val targetGroup = parseGroupId(event.data)
-                            if (targetGroup == groupId) {
+                            Log.d("ChatSSE", "${event.type.wire} payload=${event.data} targetGroup=$targetGroup currentGroup=$groupId")
+                            if (targetGroup == null || targetGroup == groupId) {
                                 pollMessages(projectId, groupId)
                             }
                         }
@@ -1918,6 +2072,38 @@ class ChatDetailFragment : Fragment() {
                 }
             }
         }
+        // WebSocket 通道：帧 type 与 SSE 事件名一致，逻辑对齐 SSE
+        if (wsJob == null) {
+            wsJob = viewLifecycleOwner.lifecycleScope.launch {
+                realtimeClient.events.collect { frame ->
+                    when (frame.type) {
+                        "message.created", "message.updated" -> {
+                            val targetGroup = frame.groupId
+                            Log.d("ChatSSE", "ws ${frame.type} groupId=$targetGroup currentGroup=$groupId")
+                            if (targetGroup == null || targetGroup == groupId) {
+                                pollMessages(projectId, groupId)
+                            }
+                        }
+                        "group.member.updated" -> {
+                            pollMessages(projectId, groupId)
+                            refreshGroupMembers()
+                        }
+                        "diff.created", "diff-review.created", "task.awaiting-diff-confirmation" -> {
+                            frame.payload?.let { cacheTaskDiffId(it) }
+                        }
+                        "delivery.started" -> {
+                            val key = frame.payload?.let { DiffReviewRules.deliveryStartedKeyFromPayload(it) }
+                            if (key == null || deliveryStartedSeen.add(key)) {
+                                pollMessages(projectId, groupId)
+                            }
+                        }
+                        "delivery.failed", "delivery.completed", "delivery.repository.updated" ->
+                            pollMessages(projectId, groupId)
+                        else -> Unit
+                    }
+                }
+            }
+        }
     }
 
     /** 缓存事件 payload 中的 taskId → diffId 映射（后端任务详情可能不返回 diffId）；
@@ -1943,7 +2129,10 @@ class ChatDetailFragment : Fragment() {
     private fun stopEventStream() {
         eventStreamJob?.cancel()
         eventStreamJob = null
+        wsJob?.cancel()
+        wsJob = null
         eventStream.stop()
+        realtimeClient.stop()
     }
 
     override fun onDestroyView() {
@@ -1956,6 +2145,15 @@ class ChatDetailFragment : Fragment() {
         private const val TIME_GAP_MS = 5 * 60 * 1000L
         private const val POLL_INTERVAL_MS = 3_000L
         private const val MAX_PREVIEW_CHARS = 100_000
+
+        /** §7.1 通知直达：目标消息 id 参数（跳群后滚动高亮到该消息） */
+        const val ARG_TARGET_MESSAGE_ID = "targetMessageId"
+
+        /** §7.1 通知直达：来源是否为 @ 提及（resourceId 缺失时兜底滚到最上面一条被 @ 的消息） */
+        const val ARG_FROM_MENTION = "fromMention"
+
+        /** 直达高亮持续时长（自动清除） */
+        private const val HIGHLIGHT_DURATION_MS = 3_000L
 
         /** 本地兜底消息（发送失败）id 前缀：不落缓存、合并时剔除，防止幽灵消息残留 */
         private const val LOCAL_ID_PREFIX = "local-"

@@ -45,6 +45,8 @@
     <!-- 多选模式：普通行浅底色 / 选中行加深底色 -->
     <color name="bg_chat_multi_select">#F4F6FA</color>
     <color name="bg_chat_selected">#DDE7F5</color>
+    <!-- 通知直达目标消息高亮（浅琥珀半透明，整行铺底） -->
+    <color name="message_highlight">#40FFC107</color>
 
     <!-- Diff 代码块 -->
     <color name="diff_add_bg">#E6FFEC</color>

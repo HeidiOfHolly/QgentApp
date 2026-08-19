@@ -21,10 +21,10 @@ import okhttp3.Request
 /**
  * SSE 事件流客户端（文档 §12.1 + 团队/通知级补充）。
  *
- * 支持三种流，同一时刻只保持一条连接（调用 [startXxx] 切换时自动断开旧连接）：
+ * 支持三种流并行（各自独立连接与续传游标，对齐 web 前端逐流独立连接）：
  * - 项目级：`GET /projects/{projectId}/events`（任务/Diff/消息/群/Memory）
  * - 团队级：`GET /teams/{teamId}/events`（成员/项目动态）
- * - 通知级：`GET /notifications/events`（当前用户通知）
+ * - 通知级：`GET /notifications/events`（当前用户通知，驱动铃铛红点实时刷新）
  *
  * 复用 [httpClient]（已带 AuthInterceptor + TokenAuthenticator，鉴权与自动刷新由调用方注入的 client 承担）。
  *
@@ -34,7 +34,7 @@ import okhttp3.Request
  * - 续传点过期返回 `409 EVENT_CURSOR_EXPIRED` → 清空游标、丢弃游标重连；
  * - 事件仅用于刷新界面：上层收到事件后必须重新拉取对应查询接口，不把 payload 当完整 DTO。
  *
- * 线程模型：连接循环运行在内部 [CoroutineScope]（SupervisorJob + IO），
+ * 线程模型：每条流的连接循环运行在内部 [CoroutineScope]（SupervisorJob + IO），
  * 通过 [events] SharedFlow 向订阅者（Fragment 的 lifecycleScope）分发事件。
  * 使用方必须在不再需要时调用 [stop]（Fragment onPause / onDestroyView）。
  */
@@ -44,24 +44,24 @@ class ProjectEventStream(
 ) {
 
     private val sseClient: OkHttpClient = httpClient.newBuilder()
-        // 服务端 15s 心跳：90s 内无任何字节视为死连接，readUtf8Line 抛 SocketTimeoutException 触发重连
-        .readTimeout(90, TimeUnit.SECONDS)
+        // SSE 长连接：不设 readTimeout（对齐浏览器语义，避免后端心跳缺失/间隔超长时
+        // 连接被误判死亡反复重连导致事件丢失）；服务端断开时 readUtf8Line 返回 EOF 检测，
+        // 配合 Last-Event-ID 续传重连补齐断线期间事件。
+        // connectTimeout 缩短到 10s：后端偶发不可达时快速失败重连，缩短事件丢失窗口。
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
         .build()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private var connectJob: Job? = null
+    /** 流标识（project:xxx / team:xxx / notifications）→ 连接任务；各流独立、可并行 */
+    private val connectJobs = mutableMapOf<String, Job>()
 
-    /** 最后收到的事件 id（sequenceNo），作为 Last-Event-ID 续传游标；409 时清空 */
-    @Volatile
-    private var lastEventId: String? = null
+    /** 流标识 → 最后收到的事件 id（sequenceNo），作为 Last-Event-ID 续传游标；409 时清空 */
+    private val lastEventIdByStream = mutableMapOf<String, String>()
 
     private val _events = MutableSharedFlow<SseEvent>(extraBufferCapacity = 32)
     val events: SharedFlow<SseEvent> = _events
-
-    /** 当前连接的流标识；切换流时自动断开旧连接 */
-    @Volatile
-    private var currentStreamKey: String? = null
 
     /** 建立（或保持）项目级事件流连接。幂等：同 projectId 重复调用不重启。 */
     fun startProject(projectId: String) = start("project:$projectId") {
@@ -73,29 +73,27 @@ class ProjectEventStream(
         "/teams/$teamId/events"
     }
 
-    /** 建立（或保持）通知级事件流连接（当前用户）。 */
-    fun startNotifications() = start("notifications") {
-        "/notifications/events"
-    }
-
-    /** 断开连接并停止重连。重新 [startXxx] 可从最新事件开始（游标同时清空）。 */
-    fun stop() {
-        currentStreamKey = null
-        connectJob?.cancel()
-        connectJob = null
+    /** 断开指定流；streamKey 为空时断开全部并清空游标。重新 [startXxx] 可从最新事件开始。 */
+    fun stop(streamKey: String? = null) {
+        if (streamKey == null) {
+            connectJobs.keys.toList().forEach { stop(it) }
+        } else {
+            connectJobs.remove(streamKey)?.cancel()
+            lastEventIdByStream.remove(streamKey)
+        }
     }
 
     private fun start(streamKey: String, pathBuilder: () -> String) {
-        if (currentStreamKey == streamKey && connectJob?.isActive == true) return
-        stop()
-        currentStreamKey = streamKey
-        lastEventId = null // 切流时从最新开始（sequenceNo 不可跨流复用）
-        connectJob = scope.launch { connectLoop(streamKey, pathBuilder) }
+        if (connectJobs[streamKey]?.isActive == true) return
+        connectJobs[streamKey] = scope.launch { connectLoop(streamKey, pathBuilder) }
     }
+
+    private fun isStreamActive(streamKey: String): Boolean =
+        connectJobs[streamKey]?.isActive == true
 
     private suspend fun connectLoop(streamKey: String, pathBuilder: () -> String) {
         var backoffMs = INITIAL_BACKOFF_MS
-        while (scope.isActive && currentStreamKey == streamKey) {
+        while (scope.isActive && isStreamActive(streamKey)) {
             val outcome = try {
                 connectAndRead(streamKey, pathBuilder)
             } catch (e: CancellationException) {
@@ -104,8 +102,8 @@ class ProjectEventStream(
                 Log.w(TAG, "sse error: ${e::class.simpleName}: ${e.message}")
                 Outcome.ERROR
             }
-            // 连接被 stop() 取消或切换流后退出
-            if (currentStreamKey != streamKey) return
+            // 流被 stop() 取消后退出
+            if (!isStreamActive(streamKey)) return
 
             when (outcome) {
                 Outcome.UNAUTHORIZED -> {
@@ -129,15 +127,15 @@ class ProjectEventStream(
             val builder = Request.Builder()
                 .url(url)
                 .header("Accept", "text/event-stream")
-            lastEventId?.let { builder.header("Last-Event-ID", it) }
+            lastEventIdByStream[streamKey]?.let { builder.header("Last-Event-ID", it) }
 
             try {
                 sseClient.newCall(builder.build()).execute().use { response ->
                     when {
                         response.code == 409 -> {
                             // EVENT_CURSOR_EXPIRED：续传点已过期（事件保留 24h），清游标从最新重连
-                            Log.w(TAG, "sse 409 cursor expired, reset cursor")
-                            lastEventId = null
+                            Log.w(TAG, "sse 409 cursor expired, reset cursor: $streamKey")
+                            lastEventIdByStream.remove(streamKey)
                             Outcome.CURSOR_EXPIRED
                         }
                         response.code == 401 -> {
@@ -171,7 +169,7 @@ class ProjectEventStream(
                                         val name = eventName
                                         if (name != null) {
                                             SseEventType.fromWire(name)?.let { type ->
-                                                if (id != null) lastEventId = id
+                                                id?.let { lastEventIdByStream[streamKey] = it }
                                                 // 诊断日志：记录流上收到的每个事件（名称 + id + 原始 payload）
                                                 Log.d(TAG, "sse event: $name id=$id data=${dataLines}")
                                                 _events.tryEmit(SseEvent(id, type, dataLines.toString()))

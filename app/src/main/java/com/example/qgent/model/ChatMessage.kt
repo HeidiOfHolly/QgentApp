@@ -7,6 +7,8 @@ enum class SendState { SENDING, FAILED }
 
 data class ChatMessage(
     val id: String,
+    /** 发送者 id（USER=userId / AGENT=agentId），用于反查成员头像 */
+    val senderId: String? = null,
     val senderName: String,
     val content: String,
     val type: MessageType,
@@ -44,7 +46,9 @@ data class ChatMessage(
     /** 发送状态（仅自己发送的消息有效）：发送中 / 失败 */
     val sendState: SendState? = null,
     /** 发送失败原因（后端错误码/文案，仅 FAILED 时可能非空，用于重发弹窗展示） */
-    val sendError: String? = null
+    val sendError: String? = null,
+    /** 本条消息 @ 提及的 id 列表（USER=userId / AGENT=agentId，§7.1 通知直达兜底定位用） */
+    val mentionIds: List<String>? = null
 ) {
     fun displayContent(): String = when (type) {
         MessageType.TEXT, MessageType.CODE -> content

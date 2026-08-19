@@ -3,6 +3,30 @@
 > 本文件记录开发过程中确认的产品逻辑与契约决策，供任何新会话读取，
 > 避免依赖对话记忆。修改时同步更新。
 
+## 开发约定：做功能先给方案，不直接改代码（2026-08-19）
+
+- **收到「实现某功能 / 改某逻辑」的需求时，先写多个方案（含取舍：工作量/风险/效果），让用户选择后再动手改代码。**
+- 不直接改代码、不直接替换实现；涉及行为/契约变更的改动必须先把方案列表摆出来询问。
+- 纯 bug 修复（明确报错、编译错）可直接修，但涉及「要不要改、怎么改」的设计选择必须先问。
+
+## 消息实时刷新：SSE 连接不稳定的现状与候选方案（2026-08-19 存档，待用户决策）
+
+- **现状**：聊天列表/详情页 = SSE（`GET /projects/{projectId}/events`，文档 §12.1）+ 3s 轮询兜底。
+  移动端连 `http://47.113.224.195:32500/api/v1`（IP:端口）；web 前端默认 mock，生产示例域名
+  `https://api.qgents.dpdns.org/api/v1`。日志显示移动端 SSE 长连接被掐断/超时
+  （`sse io: timeout / failed to connect / unexpected end of stream`），事件收不到 → 消息靠 3s 轮询兜底（约 3 秒出现）。
+- **已做（不改回）**：`ProjectEventStream` readTimeout 90s→0（对齐浏览器语义，避免后端心跳缺失被误杀）、
+  connectTimeout 30s→10s（快速重连）；`ChatDetailFragment` 的 message.created/updated 在 payload 解析不出
+  groupId 时不再静默丢弃（直接刷新当前群 + ChatSSE 日志）。
+- **待决策方案**（用户选择后再动）：
+  1. **保持现状**：3s 轮询兜底 + SSE 加速（SSE 通时 1s 内，不通时 3s）。
+  2. **轮询降频**：1~1.5s 轮询，接近实时（代价：请求量/耗电增加）。
+  3. **换域名/问后端**：确认 32500 端口 SSE 为何被掐断；或把 BASE_URL 切到 web 生产域名
+     `https://api.qgents.dpdns.org/api/v1`（需确认该域名可达且是同一后端）。
+  4. **纯 SSE 去掉轮询**：SSE 断线时靠重连 + Last-Event-ID 补事件（后端事件缺失时无兜底）。
+- 注：SSE 端点通不通本身是后端/网络层问题，移动端只能调整连接参数与兜底策略。
+
+
 ## TASK_STATUS / DIFF 卡：单消息持续更新（v23，2026-08-18 适配）
 
 - **机制**：每个 Task 在需求群最多两条自动化消息——一条 `TASK_STATUS`（clientMessageId=`task-card-{taskId}`）、

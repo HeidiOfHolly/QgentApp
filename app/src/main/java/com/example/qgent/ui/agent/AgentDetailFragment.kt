@@ -107,6 +107,24 @@ class AgentDetailFragment : Fragment() {
                     renderIdentity(dto.toAgent())
                     setupActions(teamId, dto)
                 }
+                .onFailure {
+                    // 详情接口失败：用列表快照（含 createdBy）兜底渲染身份卡与管理按钮，
+                    // 保证自定义 Agent 创建后仍能看到 编辑/发布/下线
+                    val fallback = AgentDto(
+                        id = agentId,
+                        name = arguments?.getString("agentName").orEmpty(),
+                        avatar = null,
+                        role = arguments?.getString("agentRole").orEmpty(),
+                        capabilities = emptyList(),
+                        prompt = null,
+                        description = arguments?.getString("agentDescription").orEmpty(),
+                        visibility = "PRIVATE",
+                        status = "ACTIVE",
+                        isDefault = arguments?.getBoolean("agentIsDefault") ?: false,
+                        createdBy = arguments?.getString("agentCreatedBy").orEmpty()
+                    )
+                    setupActions(teamId, fallback)
+                }
         }
     }
 

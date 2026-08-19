@@ -106,15 +106,40 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- 消息列表 -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvMessages"
+    <!-- 消息列表 + 未读「有人@你」提示条（悬浮于列表底部居中） -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:paddingTop="4dp"
-        android:paddingBottom="8dp" />
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvMessages"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingTop="4dp"
+            android:paddingBottom="8dp" />
+
+        <!-- 未读「有人@你」提示条（对齐 web ChatPanel）：点击滚动到被 @ 的消息并高亮，点击后消失 -->
+        <TextView
+            android:id="@+id/btnMentionBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/bg_mention_bar"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingStart="16dp"
+            android:paddingTop="7dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="7dp"
+            android:text="@string/mention_bar_text"
+            android:textColor="@color/status_yellow"
+            android:textSize="13sp"
+            android:visibility="gone"
+            tools:visibility="visible" />
+    </FrameLayout>
 
     <View
         android:layout_width="match_parent"

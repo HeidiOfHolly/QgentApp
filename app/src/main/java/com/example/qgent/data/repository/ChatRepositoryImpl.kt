@@ -62,7 +62,10 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
     }
 
     override suspend fun getMembers(projectId: String, groupId: String): Result<List<GroupMemberDto>> = apiCall {
-        service.getGroupMembers(projectId, groupId).toDataOrThrow()
+        val resp = service.getGroupMembers(projectId, groupId)
+        // 诊断日志：群友头像不显示时核对后端成员响应的实际字段名（avatar / avatarUrl / …）
+        android.util.Log.d("MemberRaw", "getMembers($groupId): ${resp.body()?.let { com.google.gson.Gson().toJson(it) }}")
+        resp.toDataOrThrow()
     }
 
     override suspend fun leaveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<Unit> = apiCall {

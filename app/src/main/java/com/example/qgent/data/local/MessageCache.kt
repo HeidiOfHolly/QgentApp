@@ -16,6 +16,7 @@ class MessageCache(private val dao: MessageDao) {
 
     private fun MessageEntity.toChatMessage(): ChatMessage = ChatMessage(
         id = id,
+        senderId = senderId,
         senderName = senderName,
         content = content,
         type = runCatching { MessageType.valueOf(type) }.getOrDefault(MessageType.TEXT),
@@ -48,6 +49,7 @@ class MessageCache(private val dao: MessageDao) {
     private fun ChatMessage.toEntity(groupId: String): MessageEntity = MessageEntity(
         id = id,
         groupId = groupId,
+        senderId = senderId,
         senderName = senderName,
         content = content,
         type = type.name,
