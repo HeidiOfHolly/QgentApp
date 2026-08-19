@@ -49,12 +49,11 @@
         android:layout_height="1dp"
         android:background="@color/divider" />
 
-    <!-- 可滚动内容区 -->
+    <!-- 可滚动内容区：不强制拉伸（fillViewport 去掉），内容不足时避免底部大片空白 -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:fillViewport="true">
+        android:layout_weight="1">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -117,10 +116,12 @@
                         android:layout_marginBottom="8dp"
                         android:background="@color/divider" />
 
-                    <!-- 群成员标题行 -->
+                    <!-- 群成员标题行：点击「更多」跳转成员列表页 -->
                     <LinearLayout
+                        android:id="@+id/btnMore"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:background="?attr/selectableItemBackground"
                         android:gravity="center_vertical"
                         android:orientation="horizontal"
                         android:paddingTop="4dp"
@@ -149,7 +150,7 @@
                             android:src="@drawable/ic_chevron_right" />
                     </LinearLayout>
 
-                    <!-- 成员网格：横向最多 4 个，纵向最多 3 个（末尾两个空位放 添加/删除 控件） -->
+                    <!-- 成员网格：固定 4 列，行数按成员数自动（最多 3 行）；无需空 View 占位 -->
                     <GridLayout
                         android:id="@+id/containerMembers"
                         android:layout_width="match_parent"

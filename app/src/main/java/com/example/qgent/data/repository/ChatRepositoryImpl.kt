@@ -2,6 +2,7 @@ package com.example.qgent.data.repository
 
 import android.util.Log
 import com.example.qgent.data.api.QgApiService
+import com.example.qgent.data.model.AddGroupMemberRequest
 import com.example.qgent.data.model.CreateGroupRequest
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
@@ -66,6 +67,10 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
 
     override suspend fun leaveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<Unit> = apiCall {
         service.leaveGroup(projectId, groupId, idempotencyKey).toUnitOrThrow()
+    }
+
+    override suspend fun addGroupMember(projectId: String, groupId: String, userId: String, idempotencyKey: String): Result<GroupMemberDto> = apiCall {
+        service.addGroupMember(projectId, groupId, idempotencyKey, AddGroupMemberRequest(userId)).toDataOrThrow()
     }
 
     override suspend fun removeGroupMember(projectId: String, groupId: String, memberUserId: String, idempotencyKey: String): Result<Unit> = apiCall {

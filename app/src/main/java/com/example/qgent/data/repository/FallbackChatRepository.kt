@@ -31,6 +31,9 @@ class FallbackChatRepository(
     override suspend fun leaveGroup(projectId: String, groupId: String, idempotencyKey: String) =
         fb.call { leaveGroup(projectId, groupId, idempotencyKey) }
 
+    override suspend fun addGroupMember(projectId: String, groupId: String, userId: String, idempotencyKey: String) =
+        fb.call { addGroupMember(projectId, groupId, userId, idempotencyKey) }
+
     override suspend fun removeGroupMember(projectId: String, groupId: String, memberUserId: String, idempotencyKey: String) =
         fb.call { removeGroupMember(projectId, groupId, memberUserId, idempotencyKey) }
 

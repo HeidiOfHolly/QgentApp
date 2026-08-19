@@ -3,6 +3,7 @@ package com.example.qgent.data.api
 import com.example.qgent.data.model.AgentDto
 import com.example.qgent.data.model.AgentSkillBindingsRequest
 import com.example.qgent.data.model.AgentSkillBindingsResponse
+import com.example.qgent.data.model.AddGroupMemberRequest
 import com.example.qgent.data.model.AddProjectMemberRequest
 import com.example.qgent.data.model.ApiResponse
 import com.example.qgent.data.model.AttachmentDto
@@ -44,6 +45,8 @@ import com.example.qgent.data.model.RefreshRequest
 import com.example.qgent.data.model.ReplaceAgentRequest
 import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.SendMessageRequest
+import com.example.qgent.data.model.SendVerificationCodeRequest
+import com.example.qgent.data.model.SendVerificationCodeResponse
 import com.example.qgent.data.model.SkillDto
 import com.example.qgent.data.model.TaskTriggerRequest
 import com.example.qgent.data.model.TeamDto
@@ -95,6 +98,10 @@ interface QgApiService {
 
     @POST("auth/register")
     suspend fun register(@Body body: RegisterRequest): Response<ApiResponse<AuthSessionDto>>
+
+    /** 发送注册邮箱验证码（v2.0.6 §11.1：匿名，先发验证码再带码注册） */
+    @POST("auth/register/verification-codes")
+    suspend fun sendRegisterVerificationCode(@Body body: SendVerificationCodeRequest): Response<ApiResponse<SendVerificationCodeResponse>>
 
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): Response<ApiResponse<AuthSessionDto>>
@@ -289,6 +296,15 @@ interface QgApiService {
         @Path("projectId") projectId: String,
         @Path("groupId") groupId: String
     ): Response<ApiResponse<List<GroupMemberDto>>>
+
+    /** 邀请项目成员入群（v2.0.6 §9）：仅 REQUIREMENT 群，主群返回 422；body {userId} */
+    @POST("projects/{projectId}/groups/{groupId}/members")
+    suspend fun addGroupMember(
+        @Path("projectId") projectId: String,
+        @Path("groupId") groupId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: AddGroupMemberRequest
+    ): Response<ApiResponse<GroupMemberDto>>
 
     /** 移出群成员（v2.0.6 §9）：仅 REQUIREMENT 群，群创建者本人不可移出 */
     @DELETE("projects/{projectId}/groups/{groupId}/members/{memberUserId}")

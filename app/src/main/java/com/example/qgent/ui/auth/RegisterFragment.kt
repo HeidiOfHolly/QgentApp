@@ -50,17 +50,61 @@ class RegisterFragment : Fragment() {
             }
         }
 
+        // 验证码输入框（6 位数字）：错误提示随输入清除
+        binding.etCode.doAfterTextChanged {
+            if (binding.codeLayout.error != null) binding.codeLayout.error = null
+        }
+
+        // 发送验证码：先校验邮箱格式，成功后进入 60s 重发倒计时
+        binding.btnSendCode.setOnClickListener {
+            val email = binding.etEmail.text.toString().trim()
+            if (email.isEmpty()) {
+                binding.emailLayout.error = getString(R.string.error_email_required)
+                return@setOnClickListener
+            }
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                binding.emailLayout.error = getString(R.string.error_email_invalid)
+                return@setOnClickListener
+            }
+            viewModel.sendVerificationCode(email)
+        }
+
         binding.btnRegister.setOnClickListener {
             if (validate()) {
                 viewModel.register(
                     binding.etEmail.text.toString(),
                     binding.etDisplayName.text.toString(),
-                    binding.etPassword.text.toString()
+                    binding.etPassword.text.toString(),
+                    binding.etCode.text.toString()
                 )
             }
         }
 
         observeViewModel()
+        observeCodeState()
+    }
+
+    /** 观察发送验证码状态：按钮文案/倒计时/错误提示 */
+    private fun observeCodeState() {
+        viewModel.codeState.observe(viewLifecycleOwner) { state ->
+            binding.btnSendCode.isEnabled = state.retryInSeconds <= 0
+            binding.btnSendCode.text = if (state.retryInSeconds > 0) {
+                getString(R.string.register_resend_code, state.retryInSeconds)
+            } else {
+                getString(R.string.register_send_code)
+            }
+            if (state.sending) {
+                binding.btnSendCode.isEnabled = false
+                binding.btnSendCode.text = getString(R.string.register_sending_code)
+            }
+            state.error?.let {
+                Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
+                viewModel.consumeCodeError()
+            }
+            if (state.sent && state.retryInSeconds == 60) {
+                Toast.makeText(requireContext(), R.string.register_code_sent, Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun popBackToLogin() {
@@ -94,6 +138,7 @@ class RegisterFragment : Fragment() {
         val displayName = binding.etDisplayName.text.toString().trim()
         val password = binding.etPassword.text.toString()
         val confirm = binding.etConfirm.text.toString()
+        val code = binding.etCode.text.toString().trim()
 
         var valid = true
         if (email.isEmpty()) {
@@ -101,6 +146,14 @@ class RegisterFragment : Fragment() {
             valid = false
         } else if (!EMAIL_PATTERN.matcher(email).matches()) {
             binding.emailLayout.error = getString(R.string.error_email_invalid)
+            valid = false
+        }
+        // 验证码：必填且为 6 位数字
+        if (code.isEmpty()) {
+            binding.codeLayout.error = getString(R.string.error_code_required)
+            valid = false
+        } else if (!CODE_PATTERN.matcher(code).matches()) {
+            binding.codeLayout.error = getString(R.string.error_code_invalid)
             valid = false
         }
         if (displayName.isEmpty()) {
@@ -127,5 +180,7 @@ class RegisterFragment : Fragment() {
         val EMAIL_PATTERN: Pattern = Pattern.compile(
             "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
         )
+        /** 验证码：6 位数字（v2.0.6 §11.2 长度固定 6） */
+        val CODE_PATTERN: Pattern = Pattern.compile("^\\d{6}$")
     }
 }

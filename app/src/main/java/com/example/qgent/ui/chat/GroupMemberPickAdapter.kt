@@ -27,51 +27,69 @@ class GroupMemberPickAdapter(
     private val onRoleClick: ((GroupMemberPick) -> Unit)? = null
 ) : RecyclerView.Adapter<GroupMemberPickAdapter.VH>() {
 
-    private val items = mutableListOf<GroupMemberPick>()
+    /** 全部候选（含被搜索过滤隐藏的项，勾选/身份状态保留） */
+    private val allItems = mutableListOf<GroupMemberPick>()
+    /** 当前可见项（按 [query] 过滤后的子集，仅用于展示与点击） */
+    private val visibleItems = mutableListOf<GroupMemberPick>()
+    private var query: String = ""
 
     fun submitList(list: List<GroupMemberPick>) {
-        items.clear()
-        items.addAll(list)
+        allItems.clear()
+        allItems.addAll(list)
+        applyFilter()
+    }
+
+    /** 按关键字过滤候选成员（匹配名称，不区分大小写）；空关键字显示全部 */
+    fun filter(query: String?) {
+        this.query = query?.trim().orEmpty()
+        applyFilter()
+    }
+
+    private fun applyFilter() {
+        val q = query
+        visibleItems.clear()
+        visibleItems.addAll(
+            if (q.isEmpty()) allItems
+            else allItems.filter { it.name.contains(q, ignoreCase = true) }
+        )
         notifyDataSetChanged()
     }
 
     fun toggle(member: GroupMemberPick) {
-        val index = items.indexOfFirst { it.userId == member.userId }
-        if (index >= 0) {
-            items[index].checked = !items[index].checked
-            notifyItemChanged(index)
+        allItems.firstOrNull { it.userId == member.userId }?.let {
+            it.checked = !it.checked
         }
+        notifyDataSetChanged()
     }
 
     /** 切换成员身份（PROJECT_MEMBER ↔ PROJECT_ADMIN），用于添加成员场景 */
     fun toggleRole(member: GroupMemberPick) {
-        val index = items.indexOfFirst { it.userId == member.userId }
-        if (index >= 0) {
-            items[index].role = if (items[index].role == "PROJECT_ADMIN") "PROJECT_MEMBER" else "PROJECT_ADMIN"
-            notifyItemChanged(index)
+        allItems.firstOrNull { it.userId == member.userId }?.let {
+            it.role = if (it.role == "PROJECT_ADMIN") "PROJECT_MEMBER" else "PROJECT_ADMIN"
         }
-    }
-
-    fun setAllChecked(checked: Boolean) {
-        items.forEach { it.checked = checked }
         notifyDataSetChanged()
     }
 
-    /** 当前勾选的成员 userId 列表 */
-    fun checkedIds(): List<String> = items.filter { it.checked }.map { it.userId }
+    fun setAllChecked(checked: Boolean) {
+        allItems.forEach { it.checked = checked }
+        applyFilter()
+    }
+
+    /** 当前勾选的成员 userId 列表（含被搜索过滤隐藏但已勾选的项） */
+    fun checkedIds(): List<String> = allItems.filter { it.checked }.map { it.userId }
 
     /** 当前勾选的「真实用户」id（排除 Agent：Agent 是团队级，入群靠 sendAsAgent 回消息，不随创建群提交） */
-    fun checkedUserIds(): List<String> = items.filter { it.checked && !it.isAgent }.map { it.userId }
+    fun checkedUserIds(): List<String> = allItems.filter { it.checked && !it.isAgent }.map { it.userId }
 
     /** 当前各成员的期望身份（userId → PROJECT_MEMBER / PROJECT_ADMIN） */
-    fun roleById(): Map<String, String> = items.associate { it.userId to it.role }
+    fun roleById(): Map<String, String> = allItems.associate { it.userId to it.role }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
         VH(ItemGroupMemberPickBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
-    override fun onBindViewHolder(holder: VH, position: Int) = holder.bind(items[position])
+    override fun onBindViewHolder(holder: VH, position: Int) = holder.bind(visibleItems[position])
 
-    override fun getItemCount(): Int = items.size
+    override fun getItemCount(): Int = visibleItems.size
 
     inner class VH(private val binding: ItemGroupMemberPickBinding) : RecyclerView.ViewHolder(binding.root) {
 

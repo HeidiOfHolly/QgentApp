@@ -93,12 +93,23 @@ fun Response<*>.toUnitOrThrow() {
 
 // ── 认证 DTO ──
 
-/** 注册请求：密码需用平台 RSA 公钥加密后 Base64 */
+/** 注册请求：密码需用平台 RSA 公钥加密后 Base64；v2.0.6 §11 起必填 verificationCode（6 位邮箱验证码） */
 data class RegisterRequest(
     val email: String,
+    @SerializedName("verificationCode") val verificationCode: String,
     @SerializedName("passwordKeyId") val passwordKeyId: String,
     val password: String,
     @SerializedName("displayName") val displayName: String
+)
+
+/** 发送注册邮箱验证码（v2.0.6 §11.1：POST /auth/register/verification-codes，匿名） */
+data class SendVerificationCodeRequest(
+    val email: String
+)
+
+/** 发送注册邮箱验证码响应（v2.0.6 §11.1：{"message":"验证码已发送到邮箱，10 分钟内有效"}） */
+data class SendVerificationCodeResponse(
+    val message: String? = null
 )
 
 /** 登录请求：密码需用平台 RSA 公钥加密后 Base64 */
@@ -279,7 +290,9 @@ data class GroupDto(
     /** v2.0.6 §1.1：未读消息数（后端权威，前端直接用） */
     @SerializedName("unreadCount") val unreadCount: Int? = 0,
     /** v2.0.6 §1.1：未读「@我」消息数（后端权威；>0 显示「有人@你」角标） */
-    @SerializedName("mentionedUnread") val mentionedUnread: Int? = 0
+    @SerializedName("mentionedUnread") val mentionedUnread: Int? = 0,
+    /** 群创建者 userId（PROJECT_MAIN 总群为 null）；成员管理仅创建者或 Project Admin，见 §7/§24.4 */
+    @SerializedName("createdBy") val createdBy: String? = null
 )
 
 /** v2.0.6 §1.2：标记群已读响应（POST .../groups/{groupId}/read） */
@@ -287,6 +300,11 @@ data class GroupReadResponse(
     @SerializedName("groupId") val groupId: String,
     @SerializedName("lastReadSequenceNo") val lastReadSequenceNo: Long = 0,
     @SerializedName("unreadCount") val unreadCount: Int = 0
+)
+
+/** 邀请项目成员入群（v2.0.6 §9：POST .../groups/{groupId}/members，仅 REQUIREMENT 群，body {userId}） */
+data class AddGroupMemberRequest(
+    @SerializedName("userId") val userId: String
 )
 
 /** 群列表摘要（文档 §7 群列表 DTO 补充）：{ senderName, text }；SYSTEM 消息 senderName 为空 */

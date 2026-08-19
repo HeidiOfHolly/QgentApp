@@ -5,11 +5,14 @@ import com.example.qgent.data.crypto.PasswordEncryptor
 import com.example.qgent.data.model.AuthSessionDto
 import com.example.qgent.data.model.LoginRequest
 import com.example.qgent.data.model.RegisterRequest
+import com.example.qgent.data.model.SendVerificationCodeRequest
+import com.example.qgent.data.model.SendVerificationCodeResponse
 import com.example.qgent.data.model.toDataOrThrow
 
 /**
  * 认证仓库：使用硬编码的固定 RSA 公钥加密密码后提交。
  * keyId 固定为 "rsa-2026-08"，不再调用 /auth/password-public-key。
+ * 注册为两步流程（v2.0.6 §11）：先 [sendRegisterVerificationCode] 发邮箱验证码，再 [register] 带码注册。
  */
 class AuthRepository(private val service: QgApiService) {
 
@@ -18,11 +21,17 @@ class AuthRepository(private val service: QgApiService) {
         service.login(LoginRequest(email, PasswordEncryptor.KEY_ID, encrypted)).toDataOrThrow()
     }
 
-    suspend fun register(email: String, displayName: String, password: String): Result<AuthSessionDto> =
+    /** 发送注册邮箱验证码（v2.0.6 §11.1）：6 位数字、10 分钟有效、一次性使用 */
+    suspend fun sendRegisterVerificationCode(email: String): Result<SendVerificationCodeResponse> = apiCall {
+        service.sendRegisterVerificationCode(SendVerificationCodeRequest(email.trim())).toDataOrThrow()
+    }
+
+    /** 带邮箱验证码注册（v2.0.6 §11.2）：verificationCode 为必填 6 位码，注册失败重试需重新获取验证码 */
+    suspend fun register(email: String, displayName: String, password: String, verificationCode: String): Result<AuthSessionDto> =
         apiCall {
             val encrypted = PasswordEncryptor.encrypt(password)
             service.register(
-                RegisterRequest(email, PasswordEncryptor.KEY_ID, encrypted, displayName)
+                RegisterRequest(email, verificationCode, PasswordEncryptor.KEY_ID, encrypted, displayName)
             ).toDataOrThrow()
         }
 }

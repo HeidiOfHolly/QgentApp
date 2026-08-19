@@ -168,7 +168,7 @@ class MainViewModel(
     fun canCreateProject(teamName: String): Boolean =
         _teamDtos.value.firstOrNull { it.name == teamName }?.role?.let { it == "TEAM_OWNER" } ?: true
 
-    fun setCurrentTeam(team: String, onProjectsLoaded: ((Boolean) -> Unit)? = null, force: Boolean = false) {
+    fun setCurrentTeam(team: String, onProjectsLoaded: ((Boolean) -> Unit)? = null, force: Boolean = false, autoSelectProject: Boolean = true) {
         // 同团队重复选择默认跳过（避免冗余请求）；force=true 用于项目列表已被清空的场景（如 GitHub 页）强制重载
         if (!force && _currentTeam.value == team) return
         _currentTeam.value = team
@@ -177,13 +177,18 @@ class MainViewModel(
         loadAgents(team)
         loadProjects(team) {
             val firstProject = projectsOf(team).firstOrNull() ?: ""
-            _currentProject.value = firstProject
-            if (firstProject.isNotEmpty()) {
-                loadGroups(firstProject)
-            } else if (routingInitPending) {
-                // 首个团队无项目 → 无需等群聊，直接完成冷启动路由
-                resolveRoutingReady()
+            if (autoSelectProject) {
+                // 冷启动 / 默认行为：自动选中该团队第一个项目并加载群聊
+                _currentProject.value = firstProject
+                if (firstProject.isNotEmpty()) {
+                    loadGroups(firstProject)
+                } else if (routingInitPending) {
+                    // 首个团队无项目 → 无需等群聊，直接完成冷启动路由
+                    resolveRoutingReady()
+                }
             }
+            // 用户手动点击团队（autoSelectProject=false）时不改动 currentProject，
+            // 主界面保持现状、不切换；是否高亮由抽屉按 currentProject 是否在当前团队项目列表中判断
             onProjectsLoaded?.invoke(firstProject.isNotEmpty())
             // 项目上下文已定，同步刷新任务红点（限定当前项目），避免沿用上一项目的未读状态
             refreshUnreadTaskNotifications()

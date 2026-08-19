@@ -9,11 +9,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.GridLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
+import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -30,6 +32,7 @@ import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.UserRepository
+import com.example.qgent.model.GroupType
 import com.example.qgent.databinding.BottomSheetCreateGroupBinding
 import com.example.qgent.databinding.DialogSearchMessagesBinding
 import com.example.qgent.databinding.FragmentChatSettingsBinding
@@ -66,6 +69,14 @@ class ChatSettingsFragment : Fragment() {
 
         binding.btnBack.setOnClickListener { findNavController().popBackStack() }
 
+        // 「更多 ▶」：跳转成员列表页（头像/名称/身份，管理员与团长可见删除键）
+        binding.btnMore.setOnClickListener {
+            findNavController().navigate(
+                R.id.action_chatSettings_to_memberList,
+                bundleOf("groupId" to (arguments?.getString("groupId") ?: ""))
+            )
+        }
+
         loadGroupData()
         loadAdminPermission()
 
@@ -74,12 +85,33 @@ class ChatSettingsFragment : Fragment() {
 
         // 退出群聊：先弹确认，确认后调接口
         binding.btnExitGroup.setOnClickListener { confirmExitGroup() }
+
+        // Agent 名单异步加载完成后重新合并渲染成员（Agent 加载慢于群成员时避免漏显示 Agent）
+        mainViewModel.agents.observe(viewLifecycleOwner) {
+            remergeMembers()
+        }
     }
 
-    /** 当前用户是否项目管理员（团长由后端兜底 PROJECT_ADMIN）：控制成员网格的 添加/删除 控件显隐 */
+    /** 用缓存的原始群成员重新合并 Agent 并渲染（不重新拉接口） */
+    private fun remergeMembers() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val groupId = arguments?.getString("groupId").orEmpty()
+        Log.d("ChatSettings", "remergeMembers: agents=${mainViewModel.agents.value.orEmpty().size} lastRaw=${lastRawMembers.size}")
+        if (groupId.isEmpty() || lastRawMembers.isEmpty()) return
+        renderMembers(mergeAgents(projectId, groupId, lastRawMembers))
+    }
+
+    /** 当前用户是否项目管理员（团长由后端兜底 PROJECT_ADMIN） */
     private var isAdmin = false
 
-    /** 判定当前用户是否为项目管理员：仅团长/管理员显示成员网格的 添加/删除 控件 */
+    /** 当前需求群创建者 userId（PROJECT_MAIN 总群为 null）：群创建者也可管理成员 */
+    private var groupCreatorId: String? = null
+
+    /** 当前用户是否可管理成员（团长/管理员/分群创建者）：控制成员网格的 添加/删除 控件显隐 */
+    private fun canManageMembers(): Boolean =
+        isAdmin || (groupCreatorId?.let { it == SessionStore.user()?.id } == true)
+
+    /** 判定当前用户是否为项目管理员：仅团长/管理员/分群创建者显示成员网格的 添加/删除 控件 */
     private fun loadAdminPermission() {
         val projectId = mainViewModel.currentProjectId() ?: return
         viewLifecycleOwner.lifecycleScope.launch {
@@ -89,11 +121,20 @@ class ChatSettingsFragment : Fragment() {
         }
     }
 
-    /**
-     * 添加成员：列出团队中尚未加入当前项目的成员，勾选后可设置身份（项目成员/项目管理员），
-     * POST 加入后选管理员的再 PATCH 升级（§5.2）。与群列表页「添加成员」共用交互。
-     */
+    /** 添加成员入口：总群=拉团队进项目（可设身份）；分群=把项目成员拉入该群（无身份） */
     private fun showAddMemberDialog() {
+        val groupId = arguments?.getString("groupId").orEmpty()
+        val isMainGroup = mainViewModel.groups.value.orEmpty()
+            .firstOrNull { it.id == groupId }
+            ?.type == GroupType.PROJECT_MAIN
+        if (isMainGroup) showAddProjectMemberDialog() else showAddGroupMemberDialog()
+    }
+
+    /**
+     * 总群添加成员：列出团队中尚未加入当前项目的成员，勾选后可设置身份（项目成员/项目管理员），
+     * POST 加入后选管理员的再 PATCH 升级（§5.2）。与项目详情页「添加成员」共用交互。
+     */
+    private fun showAddProjectMemberDialog() {
         val projectId = mainViewModel.currentProjectId() ?: run {
             Toast.makeText(requireContext(), R.string.add_member_missing_project, Toast.LENGTH_SHORT).show()
             return
@@ -109,7 +150,7 @@ class ChatSettingsFragment : Fragment() {
         sheetBinding.tvSheetSubtitle.text = getString(R.string.add_member_subtitle)
         sheetBinding.etGroupDescription.visibility = View.GONE
         sheetBinding.btnSelectAll.visibility = View.GONE
-        sheetBinding.etGroupName.hint = getString(R.string.add_member_select_hint)
+        sheetBinding.etGroupName.hint = getString(R.string.search_member_hint)
 
         lateinit var pickAdapter: GroupMemberPickAdapter
         pickAdapter = GroupMemberPickAdapter(
@@ -118,6 +159,8 @@ class ChatSettingsFragment : Fragment() {
         )
         sheetBinding.rvGroupMembers.layoutManager = LinearLayoutManager(requireContext())
         sheetBinding.rvGroupMembers.adapter = pickAdapter
+        // 输入框作搜索：按关键字过滤候选成员
+        sheetBinding.etGroupName.doAfterTextChanged { pickAdapter.filter(it?.toString()) }
 
         viewLifecycleOwner.lifecycleScope.launch {
             val teamMembers = userRepository.getTeamMembers(teamId).getOrElse {
@@ -154,6 +197,88 @@ class ChatSettingsFragment : Fragment() {
         dialog.show()
     }
 
+    /**
+     * 分群添加成员（v2.0.6 §9）：把项目成员拉入该需求群。
+     * 候选 = 项目成员 − 当前群成员（不涉及团队，也不可设身份）。
+     */
+    private fun showAddGroupMemberDialog() {
+        val projectId = mainViewModel.currentProjectId() ?: run {
+            Toast.makeText(requireContext(), R.string.add_member_missing_project, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (groupId.isEmpty()) return
+        val dialog = BottomSheetDialog(requireContext())
+        val sheetBinding = BottomSheetCreateGroupBinding.inflate(layoutInflater)
+        dialog.setContentView(sheetBinding.root)
+        sheetBinding.tvSheetTitle.text = getString(R.string.action_add_member)
+        sheetBinding.tvSheetSubtitle.text = getString(R.string.add_group_member_subtitle)
+        sheetBinding.etGroupDescription.visibility = View.GONE
+        sheetBinding.btnSelectAll.visibility = View.GONE
+        sheetBinding.etGroupName.hint = getString(R.string.search_member_hint)
+
+        lateinit var pickAdapter: GroupMemberPickAdapter
+        pickAdapter = GroupMemberPickAdapter(
+            onItemClick = { pickAdapter.toggle(it) }
+        )
+        sheetBinding.rvGroupMembers.layoutManager = LinearLayoutManager(requireContext())
+        sheetBinding.rvGroupMembers.adapter = pickAdapter
+        // 输入框作搜索：按关键字过滤候选成员
+        sheetBinding.etGroupName.doAfterTextChanged { pickAdapter.filter(it?.toString()) }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val projectMembers = userRepository.getProjectMembers(projectId).getOrElse {
+                Toast.makeText(requireContext(), R.string.add_member_failed, Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+                return@launch
+            }
+            val existingIds = chatRepo.getMembers(projectId, groupId).getOrNull().orEmpty()
+                .map { it.id }.toSet()
+            val candidates = projectMembers.filter { it.userId !in existingIds }
+            if (candidates.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.add_group_member_empty, Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+                return@launch
+            }
+            // 显示名从团队成员表反查（ProjectMemberDto 无 displayName），查不到用「成员」占位
+            val nameById = userRepository.getTeamMembers(mainViewModel.currentTeamId().orEmpty())
+                .getOrNull().orEmpty().associate { it.userId to it.displayName }
+            pickAdapter.submitList(
+                candidates.map { GroupMemberPick(it.userId, nameById[it.userId] ?: getString(R.string.member_unknown), "PROJECT_MEMBER") }
+            )
+        }
+
+        sheetBinding.btnSend.setOnClickListener {
+            val selected = pickAdapter.checkedIds()
+            if (selected.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.add_group_member_empty, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            dialog.dismiss()
+            addGroupMembers(projectId, groupId, selected)
+        }
+        sheetBinding.btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
+    }
+
+    /** 逐个将选中的项目成员拉入当前需求群（v2.0.6 §9：POST .../groups/{groupId}/members），汇总成功数量提示 */
+    private fun addGroupMembers(projectId: String, groupId: String, userIds: List<String>) {
+        if (userIds.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            var added = 0
+            userIds.forEach { userId ->
+                chatRepo.addGroupMember(projectId, groupId, userId, UUID.randomUUID().toString())
+                    .onSuccess { added++ }
+            }
+            if (added == 0) {
+                Toast.makeText(requireContext(), R.string.add_member_failed, Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(requireContext(), getString(R.string.add_group_member_success, added), Toast.LENGTH_SHORT).show()
+                loadGroupData()
+            }
+        }
+    }
+
     /** 逐个将选中成员加入项目：POST 加入后按所选身份决定是否 PATCH 升级，汇总成功数量提示 */
     private fun addMembers(projectId: String, userIds: List<String>, roles: Map<String, String>) {
         if (userIds.isEmpty()) return
@@ -180,9 +305,6 @@ class ChatSettingsFragment : Fragment() {
         val projectId = mainViewModel.currentProjectId()
         val groupId = arguments?.getString("groupId").orEmpty()
 
-        // 刷新时重置删除模式，避免重渲染残留
-        deleteMode = false
-
         if (projectId == null || groupId.isEmpty()) {
             renderMembers(emptyList())
             return
@@ -191,62 +313,69 @@ class ChatSettingsFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             chatRepo.getGroup(projectId, groupId).onSuccess { dto ->
                 binding.tvGroupName.text = dto.title
+                groupCreatorId = dto.createdBy
             }
             chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
                 Log.d("ChatSettings", "getMembers raw: $dtos")
-                renderMembers(dtos)
+                lastRawMembers = dtos
+                renderMembers(mergeAgents(projectId, groupId, dtos))
             }
         }
+    }
+
+    /**
+     * 合并团队 Agent 到群成员（与群聊详情页一致）：
+     * 仅需求群合并；Agent 以团队 Agent 名单为准，按 id 去重（群成员里同 id 的 Agent 条目丢弃）。
+     */
+    private fun mergeAgents(projectId: String, groupId: String, dtos: List<GroupMemberDto>): List<GroupMemberDto> {
+        val isMainGroup = mainViewModel.groups.value.orEmpty()
+            .firstOrNull { it.id == groupId }
+            ?.type == GroupType.PROJECT_MAIN
+        if (isMainGroup) return dtos
+        val allAgents = mainViewModel.agents.value.orEmpty()
+        Log.d("ChatSettings", "mergeAgents: raw=${dtos.size} agents=${allAgents.size} groups=${mainViewModel.groups.value.orEmpty().size}")
+        val teamAgents = allAgents
+            .filter { it.status.name != "ARCHIVED" }
+            .map { GroupMemberDto(id = it.id, nickname = it.name, displayName = it.name, avatar = it.avatar, memberType = "AGENT") }
+        val agentIds = teamAgents.map { it.id }.toSet()
+        // 群成员中与 Agent 名单同 id 的条目以名单为准；其余（真人 + 名单缺失的 Agent）保留
+        return dtos.filter { it.id !in agentIds } + teamAgents
     }
 
     private fun renderMembers(members: List<GroupMemberDto>) {
         binding.containerMembers.removeAllViews()
         binding.tvMemberCount.text = getString(R.string.group_member_count, members.size)
-        // 网格 4 列 × 3 行：成员占前 N 格，末尾两个空位放 添加/删除 控件，其余空格位占位，
-        // 一排不足 4 个时剩余格子留空（子项靠左）
+        // 网格 4 列 × 3 行：
+        // - 普通成员：第 1-3 行各 4 个，共 12 个成员（最多看到 4*3 个成员）
+        // - 团长/管理员/分群创建者：第 1-2 行 8 个成员 + 第 3 行 3 个成员 + 添加按钮（最后一行 = 3 成员 + 添加）
+        val canManage = canManageMembers()
+        val cellCount = if (canManage) 11 else 12
         val cells = mutableListOf<View>()
-        for (member in members.take(10)) {
+        for (member in members.take(cellCount)) {
             val cell = layoutInflater.inflate(R.layout.item_chat_member_grid, binding.containerMembers, false)
             bindMemberCell(cell, member)
             cells.add(cell)
         }
-        // 非删除模式下，管理员/团长在末尾显示 添加/删除 控件格
-        if (isAdmin && !deleteMode) {
+        // 团长/管理员/分群创建者：第 3 行末尾格子放 添加 按钮
+        if (canManage) {
             cells.add(buildControlCell(R.drawable.ic_add, "添加") { showAddMemberDialog() })
-            cells.add(buildControlCell(R.drawable.ic_close, "删除") { enterDeleteMode() })
         }
         renderMemberGrid(cells)
     }
 
-    /** 按 4 列固定 3 行填充：每行一个横向 LinearLayout（子项等宽、靠左），不足补空格位 */
+    /** 成员网格：GridLayout 固定 4 列，按实际 cells 自动分行（最多 3 行），每格 columnWeight 均分等宽 */
     private fun renderMemberGrid(cells: List<View>) {
         binding.containerMembers.removeAllViews()
-        // 每格宽 = 屏宽 / 4
-        val cellWidth = resources.displayMetrics.widthPixels / 4
-        for (row in 0 until 3) {
-            val rowLayout = LinearLayout(requireContext()).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            }
-            for (col in 0 until 4) {
-                val index = row * 4 + col
-                val cell = cells.getOrNull(index)
-                if (cell != null) {
-                    cell.layoutParams = LinearLayout.LayoutParams(cellWidth, ViewGroup.LayoutParams.WRAP_CONTENT)
-                    rowLayout.addView(cell)
-                } else {
-                    // 空格位占位：保持 4 列布局与靠左
-                    rowLayout.addView(View(requireContext()), LinearLayout.LayoutParams(cellWidth, 1))
-                }
-            }
-            binding.containerMembers.addView(rowLayout)
+        cells.forEach { cell ->
+            val lp = GridLayout.LayoutParams()
+            lp.width = 0
+            lp.height = GridLayout.LayoutParams.WRAP_CONTENT
+            lp.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+            binding.containerMembers.addView(cell, lp)
         }
     }
 
-    /** 成员网格子项：头像 / 名称 / 身份（Agent 显示标签）；删除模式显示删除角标 */
+    /** 成员网格子项：头像 / 名称 / 身份（Agent 显示标签） */
     private fun bindMemberCell(cell: View, member: GroupMemberDto) {
         val name = member.resolvedName
         cell.findViewById<TextView>(R.id.tvMemberName)?.text = name
@@ -259,13 +388,10 @@ class ChatSettingsFragment : Fragment() {
         } else {
             ivAvatar?.let { Glide.with(it).load(authedGlideUrl(member.avatar)).into(it) }
         }
-        // 删除角标：仅删除模式显示
-        val ivDelete = cell.findViewById<ImageView>(R.id.ivDeleteMember)
-        ivDelete?.isVisible = deleteMode
-        ivDelete?.setOnClickListener { confirmRemoveMember(member) }
     }
 
-    private var deleteMode = false
+    /** 最近一次拉取的原始群成员（未合并 Agent），供 Agent 名单加载完成后重新合并渲染 */
+    private var lastRawMembers = emptyList<GroupMemberDto>()
 
     /** 构建一个控件格：圆形图标 + 底部文字，点击回调（layoutParams 由 renderMemberGrid 统一设置） */
     private fun buildControlCell(iconRes: Int, label: String, onClick: () -> Unit): View {
@@ -281,48 +407,6 @@ class ChatSettingsFragment : Fragment() {
         cell.findViewById<TextView>(R.id.tvMemberRole)?.isVisible = false
         cell.setOnClickListener { onClick() }
         return cell
-    }
-
-    /** 进入删除模式：成员子项显示删除角标（重新渲染网格，去掉控件格、成员格显示角标） */
-    private fun enterDeleteMode() {
-        deleteMode = true
-        val projectId = mainViewModel.currentProjectId() ?: run {
-            deleteMode = false
-            return
-        }
-        val groupId = arguments?.getString("groupId").orEmpty()
-        if (projectId == null || groupId.isEmpty()) {
-            deleteMode = false
-            return
-        }
-        viewLifecycleOwner.lifecycleScope.launch {
-            chatRepo.getMembers(projectId, groupId).getOrNull()?.let { renderMembers(it) }
-        }
-    }
-
-    /** 确认删除群成员（v2.0.6 §9）：弹确认后调接口，成功后刷新 */
-    private fun confirmRemoveMember(member: GroupMemberDto) {
-        val projectId = mainViewModel.currentProjectId() ?: return
-        val groupId = arguments?.getString("groupId").orEmpty()
-        if (groupId.isEmpty()) return
-        MaterialAlertDialogBuilder(requireContext())
-            .setTitle("移出群聊")
-            .setMessage("确定将 ${member.resolvedName} 移出该群？")
-            .setNegativeButton("取消", null)
-            .setPositiveButton("移出") { _, _ ->
-                viewLifecycleOwner.lifecycleScope.launch {
-                    chatRepo.removeGroupMember(projectId, groupId, member.id, UUID.randomUUID().toString())
-                        .onSuccess {
-                            deleteMode = false
-                            Toast.makeText(requireContext(), "已移出 ${member.resolvedName}", Toast.LENGTH_SHORT).show()
-                            loadGroupData()
-                        }
-                        .onFailure { e ->
-                            Toast.makeText(requireContext(), "移出失败：${e.message}", Toast.LENGTH_LONG).show()
-                        }
-                }
-            }
-            .show()
     }
 
     /** 聊天记录搜索弹窗：加载当前群消息后按关键词本地过滤（后端暂无消息搜索接口） */

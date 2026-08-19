@@ -181,6 +181,19 @@
         <argument
             android:name="groupId"
             android:defaultValue="" />
+        <action
+            android:id="@+id/action_chatSettings_to_memberList"
+            app:destination="@id/chatMemberListFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/chatMemberListFragment"
+        android:name="com.example.qgent.ui.chat.ChatMemberListFragment"
+        android:label="@string/member_list_title"
+        tools:layout="@layout/fragment_member_list">
+        <argument
+            android:name="groupId"
+            android:defaultValue="" />
     </fragment>
 
     <fragment

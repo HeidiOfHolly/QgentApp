@@ -149,12 +149,13 @@ class PersonalCenterFragment : Fragment() {
         navController.navigate(R.id.messageListFragment)
     }
 
-    /** 点击团队切换：若该团队未创建任何项目，则收起抽屉并进入 GitHub 页，并弹提示 */
+    /** 点击团队切换：只切团队不自动选中项目，若该团队未创建任何项目，则收起抽屉并进入 GitHub 页，并弹提示 */
     private fun onTeamClick(teamName: String) {
         // 在 GitHub 页时项目列表已被清空，重复点选同一团队也强制重载
         mainViewModel.setCurrentTeam(
             teamName,
             force = onGithubPage,
+            autoSelectProject = false,
             onProjectsLoaded = { hasProjects ->
                 if (!hasProjects) {
                     // 每次切换到无项目团队都提示：已在 GitHub 页则只弹不重复导航
@@ -165,16 +166,22 @@ class PersonalCenterFragment : Fragment() {
         )
     }
 
-    /** 刷新抽屉团队/项目高光：始终恢复当前团队/项目选中 */
+    /** 刷新抽屉团队/项目高光：团队恒选中；项目仅当当前项目属于当前团队项目列表时高亮，否则清除（未选中项目不高亮） */
     private fun refreshHighlight() {
         if (!::teamAdapter.isInitialized) return
         val teams = mainViewModel.teams.value ?: emptyList()
         val curTeam = mainViewModel.currentTeam.value
         if (curTeam in teams) teamAdapter.selectedPosition = teams.indexOf(curTeam)
-        val curProject = mainViewModel.currentProject.value
-        if (!curProject.isNullOrEmpty()) {
-            projectAdapter.selectedPosition = projectAdapter.indexOf(curProject)
+        // GitHub 页：不显示任何项目高光（listener 清空后，此守卫阻止后续 observer 重新高亮）
+        if (onGithubPage) {
+            projectAdapter.selectedPosition = NO_SELECTION
+            return
         }
+        val projects = mainViewModel.projects.value.orEmpty()
+        val curProject = mainViewModel.currentProject.value
+        val index = if (!curProject.isNullOrEmpty()) projects.indexOf(curProject) else -1
+        // 未选中项目或当前项目不属于该团队项目列表时，清除高亮，避免残留上一个团队/首项高光
+        projectAdapter.selectedPosition = index
     }
 
     /** 收起个人中心抽屉，并在主内容区打开 GitHub 页 */

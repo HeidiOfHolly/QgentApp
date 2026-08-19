@@ -66,6 +66,11 @@ class MockChatRepository : ChatRepository {
 
     override suspend fun leaveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<Unit> = Result.success(Unit)
 
+    override suspend fun addGroupMember(projectId: String, groupId: String, userId: String, idempotencyKey: String): Result<GroupMemberDto> =
+        Result.success(
+            GroupMemberDto(id = userId, nickname = "新成员", avatar = null, memberType = "USER")
+        )
+
     override suspend fun removeGroupMember(projectId: String, groupId: String, memberUserId: String, idempotencyKey: String): Result<Unit> =
         Result.success(Unit)
 

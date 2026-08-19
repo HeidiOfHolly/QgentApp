@@ -8,6 +8,7 @@ import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
+import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -230,7 +231,7 @@ class ChatListFragment : Fragment() {
         sheetBinding.tvSheetSubtitle.text = getString(R.string.add_member_subtitle)
         sheetBinding.etGroupDescription.visibility = View.GONE
         sheetBinding.btnSelectAll.visibility = View.GONE
-        sheetBinding.etGroupName.hint = getString(R.string.add_member_select_hint)
+        sheetBinding.etGroupName.hint = getString(R.string.search_member_hint)
 
         lateinit var pickAdapter: GroupMemberPickAdapter
         pickAdapter = GroupMemberPickAdapter(
@@ -239,6 +240,8 @@ class ChatListFragment : Fragment() {
         )
         sheetBinding.rvGroupMembers.layoutManager = LinearLayoutManager(requireContext())
         sheetBinding.rvGroupMembers.adapter = pickAdapter
+        // 输入框作搜索：按关键字过滤候选成员
+        sheetBinding.etGroupName.doAfterTextChanged { pickAdapter.filter(it?.toString()) }
 
         viewLifecycleOwner.lifecycleScope.launch {
             val teamMembers = userRepository.getTeamMembers(teamId).getOrElse {

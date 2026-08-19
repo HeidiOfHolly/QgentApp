@@ -70,6 +70,46 @@
                 android:maxLines="1" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <!-- 验证码：输入框 + 发送/重发按钮（v2.0.6 §11 注册两步流程） -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/code_layout"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:hint="@string/register_verification_code"
+            app:boxStrokeWidthFocused="2dp"
+            app:errorEnabled="true"
+            app:layout_constraintEnd_toStartOf="@id/btn_send_code"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/email_layout">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_code"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginRight="10dp"
+                android:imeOptions="actionNext"
+                android:inputType="number"
+                android:maxLength="6"
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_send_code"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:layout_marginStart="8dp"
+            android:text="@string/register_send_code"
+            android:textSize="15sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginTop="5dp"
+            app:layout_constraintTop_toTopOf="@id/code_layout"
+            app:cornerRadius="12dp"
+            app:strokeColor="@color/navy"
+            app:strokeWidth="1dp"/>
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/display_name_layout"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
@@ -81,7 +121,7 @@
             app:errorEnabled="true"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/email_layout">
+            app:layout_constraintTop_toBottomOf="@id/code_layout">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/et_display_name"
