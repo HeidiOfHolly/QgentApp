@@ -210,6 +210,34 @@
                 android:textSize="15sp"
                 tools:text="前后端都要支持，并完成测试。" />
 
+            <!-- 任务失败原因（Agent 任务执行失败时展示，位于需求与任务步骤之间） -->
+            <LinearLayout
+                android:id="@+id/layoutFailureReason"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="⚠️ 失败原因"
+                    android:textColor="@color/exit_red"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvFailureReason"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:lineSpacingExtra="4dp"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp"
+                    tools:text="Agent 执行登录接口开发失败：依赖服务启动超时" />
+            </LinearLayout>
+
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"

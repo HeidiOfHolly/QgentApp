@@ -69,6 +69,9 @@ class TaskDetailFragment : Fragment() {
     /** 最近一次加载的 Task 详情（Diff 审核弹窗复用，避免重复传参） */
     private var lastDetail: TaskDetailDto? = null
 
+    /** 最近一次加载的任务运行列表（失败原因展示复用；detail 与 runs 并发加载，需两者齐备再判断） */
+    private var lastRuns = emptyList<TaskRunDetailListItemDto>()
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -273,6 +276,8 @@ class TaskDetailFragment : Fragment() {
                         // 查看执行日志：失败/完成的运行可看具体执行过程（§12.2）
                         item.tvViewLogs.setOnClickListener { showRunLogs(run) }
                     }
+                    lastRuns = runs
+                    updateFailureReason()
                 }
                 .onFailure { e ->
                     if (showIndicator) hideLoading()
@@ -352,6 +357,23 @@ class TaskDetailFragment : Fragment() {
         binding.btnCancelTask.isVisible = cancellable
         binding.btnCancelTask.isEnabled = true
         bindDelivery(detail)
+        updateFailureReason()
+    }
+
+    /**
+     * 任务失败原因（需求与任务步骤之间）：任务状态为 FAILED 时展示；
+     * 原因优先取失败运行 statusReason.summary/title（§16.4），其次 statusSummary，兜底通用文案。
+     */
+    private fun updateFailureReason() {
+        val taskFailed = lastDetail?.status == "FAILED"
+        binding.layoutFailureReason.isVisible = taskFailed
+        if (!taskFailed) return
+        val failedRun = lastRuns.firstOrNull { it.status == "FAILED" }
+        val reason = failedRun?.statusReason?.summary
+            ?: failedRun?.statusReason?.title
+            ?: failedRun?.statusSummary
+            ?: "Agent 任务执行失败，详见任务运行执行日志"
+        binding.tvFailureReason.text = reason
     }
 
     /**

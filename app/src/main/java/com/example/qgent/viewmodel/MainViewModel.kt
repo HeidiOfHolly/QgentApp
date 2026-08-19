@@ -71,6 +71,11 @@ class MainViewModel(
     private val _groups = MutableStateFlow<List<ChatGroup>>(emptyList())
     val groups: LiveData<List<ChatGroup>> = _groups.asLiveData()
 
+    // ── 群聊列表加载中标记：切换项目/团队加载群聊期间为 true，供群聊列表页显示 ProgressBar ──
+
+    private val _groupsLoading = MutableStateFlow(false)
+    val groupsLoading: LiveData<Boolean> = _groupsLoading.asLiveData()
+
     // ── 当前团队下的 Agent 列表 ──
 
     private val _agents = MutableStateFlow<List<Agent>>(emptyList())
@@ -181,7 +186,7 @@ class MainViewModel(
                 // 冷启动 / 默认行为：自动选中该团队第一个项目并加载群聊
                 _currentProject.value = firstProject
                 if (firstProject.isNotEmpty()) {
-                    loadGroups(firstProject)
+                    loadGroups(firstProject, showLoading = true)
                 } else if (routingInitPending) {
                     // 首个团队无项目 → 无需等群聊，直接完成冷启动路由
                     resolveRoutingReady()
@@ -198,7 +203,7 @@ class MainViewModel(
     fun setCurrentProject(project: String) {
         if (_currentProject.value != project) {
             _currentProject.value = project
-            loadGroups(project)
+            loadGroups(project, showLoading = true)
             refreshUnreadTaskNotifications()
         }
     }
@@ -322,15 +327,18 @@ class MainViewModel(
 
     /** 拉取当前团队 / 项目下的群聊。只用真实 projectId，失败由数据层 mock 回退兜底。
      *  只保留当前用户所在的群：PROJECT_MAIN 总群恒保留（项目成员都在），
-     *  需求群按群成员列表校验自己是否在群内（不在的群后端允许看到但发不了消息，直接隐藏）。 */
-    private fun loadGroups(projectName: String) {
+     *  需求群按群成员列表校验自己是否在群内（不在的群后端允许看到但发不了消息，直接隐藏）。
+     *  [showLoading] 切换项目/团队时传 true 显示加载指示；轮询/SSE 后台刷新传默认 false，避免列表页频繁闪转圈。 */
+    private fun loadGroups(projectName: String, showLoading: Boolean = false) {
         val projectId = currentProjectId() ?: run {
             _groups.value = emptyList()
+            if (showLoading) _groupsLoading.value = false
             resolveRoutingReady()
             return
         }
         // 切换项目 / 团队时取消上一次未完成的群聊加载，防止旧项目群聊覆盖新结果
         loadGroupsJob?.cancel()
+        if (showLoading) _groupsLoading.value = true
         loadGroupsJob = viewModelScope.launch {
             val dtos = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
             val myId = SessionStore.user()?.id
@@ -343,6 +351,7 @@ class MainViewModel(
             }
             // v2.0.6 §1.1：未读/@我 直接用后端权威值（unreadCount / mentionedUnread）
             _groups.value = toChatGroups(visible)
+            if (showLoading) _groupsLoading.value = false
             resolveRoutingReady()
         }
     }

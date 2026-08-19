@@ -186,6 +186,11 @@ class ChatListFragment : Fragment() {
             adapter.submitList(groups)
             binding.tvChatListEmpty.isVisible = groups.isEmpty()
         }
+
+        // 切换项目加载群聊列表期间显示 ProgressBar
+        mainViewModel.groupsLoading.observe(viewLifecycleOwner) { loading ->
+            binding.loading.isVisible = loading
+        }
     }
 
     private fun showMoreMenu() {

@@ -990,6 +990,15 @@ data class TaskRunAgentDto(
     @SerializedName("avatarUrl") val avatarUrl: String?
 )
 
+/** 任务运行失败/等待原因（TaskRun.statusReason，§16.4）：code/title/summary，无等待或失败时为 null */
+data class TaskRunStatusReasonDto(
+    @SerializedName("code") val code: String?,
+    @SerializedName("title") val title: String?,
+    @SerializedName("summary") val summary: String?,
+    @SerializedName("retryable") val retryable: Boolean = false,
+    @SerializedName("occurredAt") val occurredAt: String?
+)
+
 /** 任务运行列表项（GET tasks/{taskId}/task-runs，§16.4） */
 data class TaskRunDetailListItemDto(
     val id: String,
@@ -1002,6 +1011,7 @@ data class TaskRunDetailListItemDto(
     val agent: TaskRunAgentDto?,
     val status: String,                 // QUEUED/RUNNING/SUCCEEDED/FAILED/WAITING_INPUT/...
     @SerializedName("statusSummary") val statusSummary: String?,
+    @SerializedName("statusReason") val statusReason: TaskRunStatusReasonDto?,
     @SerializedName("startedAt") val startedAt: String?,
     @SerializedName("finishedAt") val finishedAt: String?,
     @SerializedName("durationMs") val durationMs: Long?,
