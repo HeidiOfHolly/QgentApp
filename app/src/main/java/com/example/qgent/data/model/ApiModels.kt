@@ -942,7 +942,7 @@ data class WorkspaceDiffPreviewFileDto(
     @SerializedName("changeType") val changeType: String?,
     val additions: Int = 0,
     val deletions: Int = 0,
-    val binary: Boolean = false
+    val binary: Boolean = false)
 /** Task 启动失败原因（§34.1）：failureCode 为稳定错误码（SANDBOX_WORKER_ERROR / GIT_BASE_REF_NOT_FOUND 等），summary 为脱敏文案 */
 data class TaskStatusReasonDto(
     @SerializedName("code") val code: String?,
