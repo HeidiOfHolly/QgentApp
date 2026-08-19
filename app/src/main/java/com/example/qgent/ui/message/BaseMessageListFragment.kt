@@ -105,6 +105,7 @@ abstract class BaseMessageListFragment : Fragment() {
         // 同步刷新未读红点（可能标记的正是最后一条未读通知）
         mainViewModel.refreshUnreadInvitations()
         mainViewModel.refreshUnreadTaskNotifications()
+        mainViewModel.refreshDrawerUnread()
     }
 
     private fun markAllRead() {
@@ -116,6 +117,7 @@ abstract class BaseMessageListFragment : Fragment() {
         }
         mainViewModel.refreshUnreadInvitations()
         mainViewModel.refreshUnreadTaskNotifications()
+        mainViewModel.refreshDrawerUnread()
     }
 
     /** 通知点击：团队邀请 → 待处理则弹窗选择是否接受；TASK_FAILED → 跳任务详情；

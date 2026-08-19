@@ -103,7 +103,11 @@ class ChatListFragment : Fragment() {
                         SseEventType.GROUP_CREATED,
                         SseEventType.GROUP_UPDATED,
                         SseEventType.GROUP_ARCHIVED,
-                        SseEventType.PROJECT_MEMBER_ADDED -> mainViewModel.refreshGroups()
+                        SseEventType.PROJECT_MEMBER_ADDED -> {
+                            mainViewModel.refreshGroups()
+                            // 新消息/群变更 → 刷新抽屉项目/团队未读红点
+                            mainViewModel.refreshDrawerUnread()
+                        }
                         // 成员变动 → 先清成员缓存再刷新（isGroupMember 缓存可能过期）
                         SseEventType.GROUP_MEMBER_UPDATED -> {
                             mainViewModel.clearGroupMemberCache()
@@ -119,7 +123,11 @@ class ChatListFragment : Fragment() {
                 realtimeClient.events.collect { frame ->
                     when (frame.type) {
                         "message.created", "group.created", "group.updated", "group.archived",
-                        "project.member.added" -> mainViewModel.refreshGroups()
+                        "project.member.added" -> {
+                            mainViewModel.refreshGroups()
+                            // 新消息/群变更 → 刷新抽屉项目/团队未读红点
+                            mainViewModel.refreshDrawerUnread()
+                        }
                         "group.member.updated" -> {
                             mainViewModel.clearGroupMemberCache()
                             mainViewModel.refreshGroups()
@@ -186,9 +194,12 @@ class ChatListFragment : Fragment() {
             binding.tvTeamName.text = team
         }
 
-        // 未读团队邀请 → 头像右上角红点
+        // 头像右上角红点：未读团队邀请 或 抽屉团队/项目有未读（群聊/任务消息）任一存在即亮
         mainViewModel.unreadInvitations.observe(viewLifecycleOwner) { hasUnread ->
-            binding.ivInviteBadge.isVisible = hasUnread
+            binding.ivInviteBadge.isVisible = hasUnread || mainViewModel.hasUnreadBadge.value == true
+        }
+        mainViewModel.hasUnreadBadge.observe(viewLifecycleOwner) { hasUnread ->
+            binding.ivInviteBadge.isVisible = hasUnread || mainViewModel.unreadInvitations.value == true
         }
 
         binding.rvChatList.layoutManager = LinearLayoutManager(requireContext())
@@ -211,15 +222,22 @@ class ChatListFragment : Fragment() {
         )
         binding.rvChatList.adapter = adapter
 
+        // 下拉刷新：重新拉取当前项目群聊列表（摘要/未读）
+        binding.swipeRefresh.setOnRefreshListener {
+            mainViewModel.refreshGroups()
+        }
+
         // 群聊列表随项目切换而变化（API → mock fallback）
         mainViewModel.groups.observe(viewLifecycleOwner) { groups ->
             adapter.submitList(groups)
             binding.tvChatListEmpty.isVisible = groups.isEmpty()
+            // 下拉刷新完成后收起刷新动画（groups 更新即视为刷新结束）
+            binding.swipeRefresh.isRefreshing = false
         }
 
-        // 切换项目加载群聊列表期间显示 ProgressBar
+        // 切换项目加载群聊列表期间显示 ProgressBar；下拉刷新时隐藏中央转圈避免与刷新动画重叠
         mainViewModel.groupsLoading.observe(viewLifecycleOwner) { loading ->
-            binding.loading.isVisible = loading
+            binding.loading.isVisible = loading && !binding.swipeRefresh.isRefreshing
         }
     }
 

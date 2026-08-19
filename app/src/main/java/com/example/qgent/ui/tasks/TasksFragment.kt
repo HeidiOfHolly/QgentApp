@@ -88,6 +88,9 @@ class TasksFragment : Fragment() {
         binding.rvMRList.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMRList.adapter = mrAdapter
 
+        // 下拉刷新：重新拉取任务 / MR / 最近动态
+        binding.swipeRefresh.setOnRefreshListener { refreshAllData() }
+
         // 未读任务类通知 → 铃铛右上角红点
         mainViewModel.unreadTaskNotifications.observe(viewLifecycleOwner) { hasUnread ->
             binding.ivInviteBadge.isVisible = hasUnread
@@ -120,7 +123,18 @@ class TasksFragment : Fragment() {
             state.error?.let {
                 taskListViewModel.consumeError()
             }
+            // 三列表刷新完成 → 收起下拉刷新动画（uiState 更新即视为刷新结束）
+            binding.swipeRefresh.isRefreshing = false
         }
+    }
+
+    /** 下拉刷新：重新拉取任务 / MR / 最近动态 */
+    private fun refreshAllData() {
+        val projectId = mainViewModel.currentProjectId()
+        taskListViewModel.loadTasks(projectId)
+        taskListViewModel.loadMergeRequestsForList(projectId)
+        taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
+        loadRepoNameMap(projectId)
     }
 
     override fun onResume() {

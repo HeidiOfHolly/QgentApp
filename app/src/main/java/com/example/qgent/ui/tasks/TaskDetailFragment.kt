@@ -60,9 +60,6 @@ class TaskDetailFragment : Fragment() {
     private var eventStreamJob: Job? = null
     private var pollingJob: Job? = null
 
-    /** 收到 diff-review.skipped（reason=FINAL_DIFF_EMPTY）的任务：展示"已完成，无代码变更"空态（文档 §15.6.4/§20.3） */
-    private val noCodeChangeTaskIds = mutableSetOf<String>()
-
     /** 加载中指示器引用计数：detail/steps/runs 三个请求全部结束后隐藏 */
     private var loadingCount = 0
 
@@ -137,13 +134,11 @@ class TaskDetailFragment : Fragment() {
                         com.example.qgent.data.sse.SseEventType.DELIVERY_FAILED,
                         com.example.qgent.data.sse.SseEventType.DELIVERY_COMPLETED,
                         com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SKIPPED -> {
-                            // 无代码变更（FINAL_DIFF_EMPTY）：记录当前任务，详情页展示空态
-                            if (event.type == com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SKIPPED) {
-                                val taskIdFromEvent = runCatching {
-                                    org.json.JSONObject(event.data).optString("taskId")
-                                }.getOrNull()
-                                if (taskIdFromEvent == taskId) noCodeChangeTaskIds.add(taskId)
-                            }
+                            // 无代码变更（FINAL_DIFF_EMPTY）：记录当前任务，详情页展示空态（MainViewModel 跨页共享，重进不丢失）
+                            val taskIdFromEvent = runCatching {
+                                org.json.JSONObject(event.data).optString("taskId")
+                            }.getOrNull()
+                            if (taskIdFromEvent == taskId) mainViewModel.recordNoCodeChangeTask(taskId)
                             loadDetail()
                         }
                         else -> Unit
@@ -398,8 +393,10 @@ class TaskDetailFragment : Fragment() {
         if (mrFirst && !detail.deliveryReason.isNullOrBlank()) {
             binding.tvDeliveryMode.text = "${binding.tvDeliveryMode.text}（${detail.deliveryReason}）"
         }
-        // 无代码变更空态：仅当收到 diff-review.skipped（FINAL_DIFF_EMPTY）且任务已完成时展示（§20.3）
-        binding.tvNoCodeChange.isVisible = detail.status == "SUCCEEDED" && taskId in noCodeChangeTaskIds
+        // 无代码变更任务（FINAL_DIFF_EMPTY）：无 Diff Review 可确认（§15.6.4/§20.3），
+        // 抑制确认/拒绝/重试/审核入口；仅任务已完成时展示"无代码变更"空态
+        val noCode = mainViewModel.isNoCodeChangeTask(taskId)
+        binding.tvNoCodeChange.isVisible = noCode && detail.status == "SUCCEEDED"
 
         // 批次级交付状态总览（稳定文案；失败状态交给 tvDeliveryError 行展示）
         val overview = when (deliveryStatus) {
@@ -424,16 +421,17 @@ class TaskDetailFragment : Fragment() {
             binding.tvDeliveryError.isVisible = false
         }
 
-        // 重试交付：部分失败/失败（能力位 canRetryDelivery 优先）
-        val canRetry = DiffReviewRules.canRetryDelivery(
+        // 重试交付：部分失败/失败（能力位 canRetryDelivery 优先）；无代码任务不提供重试（无批次可重试）
+        val canRetry = !noCode && DiffReviewRules.canRetryDelivery(
             deliveryStatus, detail.status, detail.capabilities?.canRetryDelivery
         )
         binding.btnRetryDelivery.isVisible = canRetry
         binding.btnRetryDelivery.isEnabled = true
         binding.btnRetryDelivery.setOnClickListener { retryDiffDelivery() }
 
-        // D3：diffReviewSummary.available=true → 渲染总 Diff 审核入口（available=false 不展示）
-        val available = diffSummary?.isJsonObject == true &&
+        // D3：diffReviewSummary.available=true → 渲染总 Diff 审核入口（available=false 不展示）；
+        // 无代码任务即使后端残留 available=true 也不展示确认入口（§20.3）
+        val available = !noCode && diffSummary?.isJsonObject == true &&
             diffSummary.asJsonObject.get("available")?.takeIf { it.isJsonPrimitive }?.asBoolean == true
         binding.tvDiffReviewEntry.isVisible = available
         if (available) {

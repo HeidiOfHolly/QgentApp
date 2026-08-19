@@ -35,8 +35,11 @@ class TaskMessageListFragment : BaseMessageListFragment() {
     /** 按当前项目更新过滤条件，并重新加载列表 */
     private fun refreshForCurrentContext() {
         val projectId = mainViewModel.currentProjectId()
-        // 项目未就绪时仅保留「非邀请」过滤，避免列表意外清空
-        notificationsFilter = { it.kind != "INVITED" && projectId != null && it.projectId == projectId }
+        // 任务消息列表不接收「有人@我」通知（MESSAGE_MENTION）：仅保留当前项目的任务类通知（非邀请、非@我）
+        notificationsFilter = {
+            it.kind != "INVITED" && it.kind != "MESSAGE_MENTION" &&
+                projectId != null && it.projectId == projectId
+        }
         reloadNotifications()
     }
 }

@@ -3,6 +3,7 @@ package com.example.qgent.ui.personal
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.R
 import com.example.qgent.databinding.ItemProjectBinding
@@ -22,6 +23,15 @@ class ProjectAdapter(
             if (old in items.indices) notifyItemChanged(old)
             if (field in items.indices) notifyItemChanged(field)
         }
+
+    /** 有未读的项目名集合（抽屉项目栏红点） */
+    private var unreadProjectNames = emptySet<String>()
+
+    fun setUnreadProjectNames(names: Set<String>) {
+        if (unreadProjectNames == names) return
+        unreadProjectNames = names
+        notifyDataSetChanged()
+    }
 
     fun submitList(newItems: List<String>) {
         items.clear()
@@ -48,6 +58,7 @@ class ProjectAdapter(
                 if (selected) R.color.on_primary_container else R.color.text_primary
             )
         )
+        holder.binding.ivUnread.isVisible = items[position] in unreadProjectNames
         holder.itemView.setOnClickListener {
             if (onProjectClick(items[position], position)) {
                 selectedPosition = position

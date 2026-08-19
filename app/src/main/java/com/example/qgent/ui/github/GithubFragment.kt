@@ -116,9 +116,12 @@ class GithubFragment : Fragment() {
             }
         }
 
-        // 未读团队邀请 → 头像右上角红点
+        // 头像右上角红点：未读团队邀请 或 抽屉团队/项目有未读（群聊/任务消息）任一存在即亮
         mainViewModel.unreadInvitations.observe(viewLifecycleOwner) { hasUnread ->
-            binding.ivInviteBadge.isVisible = hasUnread
+            binding.ivInviteBadge.isVisible = hasUnread || mainViewModel.hasUnreadBadge.value == true
+        }
+        mainViewModel.hasUnreadBadge.observe(viewLifecycleOwner) { hasUnread ->
+            binding.ivInviteBadge.isVisible = hasUnread || mainViewModel.unreadInvitations.value == true
         }
     }
 

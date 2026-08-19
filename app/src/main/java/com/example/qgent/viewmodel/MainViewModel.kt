@@ -125,6 +125,21 @@ class MainViewModel(
     /** 群 id → 当前用户是否在群内（isGroupMember 缓存，避免每次 loadGroups 对每个群重复调 getMembers） */
     private val groupMemberCache = mutableMapOf<String, Boolean>()
 
+    /** 无代码变更（diff-review.skipped FINAL_DIFF_EMPTY）任务 id 集合（Activity 级，跨详情页/聊天页共享）：
+     *  文档 §15.6.4/§20.3 无代码任务无 DiffReviewBatch，不能走确认/拒绝/重试；
+     *  此标记为唯一机器依据，两个 Fragment 的 SSE 流共同写入，重进页面不丢失。 */
+    private val _noCodeChangeTaskIds = MutableStateFlow<Set<String>>(emptySet())
+    val noCodeChangeTaskIds: LiveData<Set<String>> = _noCodeChangeTaskIds.asLiveData()
+
+    /** 记录收到 diff-review.skipped（FINAL_DIFF_EMPTY）的任务 id */
+    fun recordNoCodeChangeTask(taskId: String) {
+        if (taskId.isBlank()) return
+        _noCodeChangeTaskIds.value = _noCodeChangeTaskIds.value + taskId
+    }
+
+    /** 该任务是否为无代码变更任务（无 Diff Review 可确认） */
+    fun isNoCodeChangeTask(taskId: String): Boolean = taskId in _noCodeChangeTaskIds.value
+
     // ── 用户权限（当前为演示阶段默认 Project Admin，接入真实权限后替换） ──
 
     val isProjectAdmin: Boolean = true
@@ -143,6 +158,18 @@ class MainViewModel(
 
     private val _unreadTaskNotifications = MutableStateFlow(false)
     val unreadTaskNotifications: LiveData<Boolean> = _unreadTaskNotifications.asLiveData()
+
+    // ── 抽屉未读红点：有未读的团队名集合（左栏团队红点）+ 有未读的当前团队项目名集合（右栏项目红点） ──
+
+    private val _unreadTeamNames = MutableStateFlow<Set<String>>(emptySet())
+    val unreadTeamNames: LiveData<Set<String>> = _unreadTeamNames.asLiveData()
+
+    private val _unreadProjectNames = MutableStateFlow<Set<String>>(emptySet())
+    val unreadProjectNames: LiveData<Set<String>> = _unreadProjectNames.asLiveData()
+
+    /** 抽屉任一团队/项目有未读（群聊或任务消息）：群聊列表/GitHub 页头像红点 */
+    private val _hasUnreadBadge = MutableStateFlow(false)
+    val hasUnreadBadge: LiveData<Boolean> = _hasUnreadBadge.asLiveData()
 
     init {
         loadTeams()
@@ -175,8 +202,100 @@ class MainViewModel(
         }
     }
 
+    /**
+     * 刷新抽屉未读红点：输出「有未读的团队名集合」与「有未读的当前团队项目名集合」。
+     * 数据源：
+     * - 群聊未读：各项目群列表的 unreadCount（逐项目拉群列表，按 projectId 关联）；
+     * - 任务消息未读：通知列表（非 INVITED 且未读，按通知 projectId 关联）。
+     * 团队未读 = 任一下属项目有未读。遍历所有团队（teamNameToId），失败的项目/团队静默跳过不打断其余。
+     * 头像红点（hasUnreadBadge）：仅统计「当前项目之外」的未读——用户已切换到该有未读的项目时
+     * 不再用头像红点打扰（抽屉内项目红点仍全量保留）。
+     *
+     * 性能：团队/项目/群拉取并行（async），避免串行 N+1 拖慢红点刷新；
+     * 当前项目用本地 _groups 缓存判断未读（markGroupRead 已本地清零），红点消除即时生效，不依赖已读接口在途返回。
+     */
+    fun refreshDrawerUnread() {
+        viewModelScope.launch {
+            val notificationUnreadByProject = userRepo.getNotifications().getOrNull().orEmpty()
+                .filter { it.kind != "INVITED" && !it.isRead && it.projectId != null }
+                .mapNotNull { it.projectId }
+                .toSet()
+            val currentTeamId = teamNameToId[_currentTeam.value]
+            val currentProjectId = currentProjectId()
+            // 当前项目群聊未读：直接用本地 _groups 缓存（markGroupRead 已本地清零，避免等已读接口在途返回）
+            val localGroupUnread = if (currentProjectId != null) {
+                _groups.value.any { it.unread > 0 }
+            } else {
+                false
+            }
+            val results = coroutineScope {
+                // 每个团队并行拉项目；同团队项目并行拉群列表
+                teamNameToId.entries.map { (teamName, teamId) ->
+                    async {
+                        val projects = userRepo.getProjects(teamId).getOrNull().orEmpty()
+                        val projectUnread = projects.map { project ->
+                            async {
+                                val groupUnread = if (project.id == currentProjectId) {
+                                    localGroupUnread
+                                } else {
+                                    chatRepo.getGroups(project.id).getOrNull().orEmpty()
+                                        .any { (it.unreadCount ?: 0) > 0 }
+                                }
+                                val unread = groupUnread || project.id in notificationUnreadByProject
+                                ProjectUnread(project, unread, teamId == currentTeamId, project.id == currentProjectId)
+                            }
+                        }.awaitAll()
+                        TeamUnreadResult(teamName, projectUnread.any { it.unread }, projectUnread)
+                    }
+                }.awaitAll()
+            }
+            val unreadTeamNames = mutableSetOf<String>()
+            val unreadProjectNames = mutableSetOf<String>()
+            var hasUnreadElsewhere = false
+            results.forEach { teamResult ->
+                if (teamResult.teamHasUnread) unreadTeamNames.add(teamResult.teamName)
+                teamResult.projects.forEach { pu ->
+                    if (pu.unread) {
+                        if (pu.isCurrentTeamProject) unreadProjectNames.add(pu.project.name)
+                        if (!pu.isCurrentProject) hasUnreadElsewhere = true
+                    }
+                }
+            }
+            _unreadTeamNames.value = unreadTeamNames
+            _unreadProjectNames.value = unreadProjectNames
+            _hasUnreadBadge.value = hasUnreadElsewhere
+        }
+    }
+
+    private data class ProjectUnread(
+        val project: ProjectDto,
+        val unread: Boolean,
+        val isCurrentTeamProject: Boolean,
+        val isCurrentProject: Boolean
+    )
+
+    private data class TeamUnreadResult(
+        val teamName: String,
+        val teamHasUnread: Boolean,
+        val projects: List<ProjectUnread>
+    )
+
     /** 加入团队后刷新团队列表（复用 init 的加载逻辑） */
     fun refreshTeams() = loadTeams()
+
+    /**
+     * 打开抽屉时全量刷新：团队列表 + 当前团队项目（force 重载）+ 未读红点。
+     * refreshTeams 仅在冷启动会重选当前团队，故对当前团队显式 force 重载项目，
+     * 保证抽屉右侧项目列表是最新；autoSelectProject=false 不改动主界面当前项目。
+     */
+    fun refreshDrawer() {
+        refreshTeams()
+        val team = _currentTeam.value
+        if (team.isNotEmpty()) {
+            setCurrentTeam(team, force = true, autoSelectProject = false)
+        }
+        refreshDrawerUnread()
+    }
 
     /** 当前团队是否可新建项目：仅 TEAM_OWNER（文档 §5.2）；角色未知时放行交给后端判定 */
     fun canCreateProject(teamName: String): Boolean =
@@ -206,6 +325,8 @@ class MainViewModel(
             onProjectsLoaded?.invoke(firstProject.isNotEmpty())
             // 项目上下文已定，同步刷新任务红点（限定当前项目），避免沿用上一项目的未读状态
             refreshUnreadTaskNotifications()
+            // 切团队后重算抽屉未读红点（右栏项目集合按新团队重算）
+            refreshDrawerUnread()
         }
     }
 
@@ -214,6 +335,8 @@ class MainViewModel(
             _currentProject.value = project
             loadGroups(project, showLoading = true)
             refreshUnreadTaskNotifications()
+            // 已切换到该有未读的项目 → 重算头像红点（当前项目未读不再点亮）
+            refreshDrawerUnread()
         }
     }
 
@@ -249,6 +372,7 @@ class MainViewModel(
         _groups.value = _groups.value.map {
             if (it.id == groupId) it.copy(unread = 0, mentionedMe = false) else it
         }
+        refreshDrawerUnread()
         viewModelScope.launch {
             chatRepo.markGroupRead(projectId, groupId, UUID.randomUUID().toString())
                 .onSuccess { resp ->
@@ -292,6 +416,8 @@ class MainViewModel(
             dtos.forEach { teamNameToId[it.name] = it.id }
             _teams.value = dtos.map { it.name }
             _teamDtos.value = dtos
+            // 团队就绪后刷新抽屉未读红点（团队名/项目名集合）
+            refreshDrawerUnread()
             // 无团队 → 初始就绪（启动页引导创建）；有团队 → 等首个团队项目及群聊加载完成再就绪
             if (dtos.isEmpty()) {
                 _initialDataLoaded.value = true

@@ -184,6 +184,8 @@ class MainActivity : AppCompatActivity() {
 
     /** 群聊列表页左上角头像点击时调用，打开个人中心抽屉 */
     fun openDrawer() {
+        // 打开抽屉时全量刷新：团队列表 + 当前团队项目 + 未读红点
+        mainViewModel.refreshDrawer()
         binding.drawerLayout.openDrawer(GravityCompat.START)
     }
 

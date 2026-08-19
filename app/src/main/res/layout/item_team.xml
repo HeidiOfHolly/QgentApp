@@ -1,14 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 抽屉团队项：名称弹性占宽 + 未读红点固定末尾（名字过长省略，红点不被挤出） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/tvTeamName"
     android:layout_width="match_parent"
     android:layout_height="56dp"
-    android:ellipsize="end"
     android:gravity="center_vertical"
-    android:maxLines="1"
-    android:paddingStart="12dp"
-    android:paddingEnd="8dp"
-    android:textColor="@color/team_item_normal"
-    android:textSize="20sp"
-    tools:text="团队A" />
+    android:orientation="horizontal">
+
+    <TextView
+        android:id="@+id/tvTeamName"
+        android:layout_width="0dp"
+        android:layout_height="56dp"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:gravity="center_vertical"
+        android:maxLines="1"
+        android:paddingStart="12dp"
+        android:paddingEnd="8dp"
+        android:textColor="@color/team_item_normal"
+        android:textSize="20sp"
+        tools:text="团队A" />
+
+    <!-- 未读红点：固定在行末，名字过长时文字省略为它让位 -->
+    <View
+        android:id="@+id/ivUnread"
+        android:layout_width="10dp"
+        android:layout_height="10dp"
+        android:layout_gravity="center_vertical"
+        android:layout_marginEnd="10dp"
+        android:background="@drawable/bg_unread_badge"
+        android:visibility="gone"
+        tools:visibility="visible" />
+</LinearLayout>

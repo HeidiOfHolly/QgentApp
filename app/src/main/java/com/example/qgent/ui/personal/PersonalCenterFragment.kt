@@ -86,6 +86,14 @@ class PersonalCenterFragment : Fragment() {
             refreshHighlight()
         }
 
+        // 抽屉未读红点：有未读的团队名 / 当前团队项目名集合
+        mainViewModel.unreadTeamNames.observe(viewLifecycleOwner) { names ->
+            teamAdapter.setUnreadTeamNames(names)
+        }
+        mainViewModel.unreadProjectNames.observe(viewLifecycleOwner) { names ->
+            projectAdapter.setUnreadProjectNames(names)
+        }
+
         // 当前团队变化：右上团队名同步 + 高亮刷新
         mainViewModel.currentTeam.observe(viewLifecycleOwner) { team ->
             binding.tvTeamName.text = team

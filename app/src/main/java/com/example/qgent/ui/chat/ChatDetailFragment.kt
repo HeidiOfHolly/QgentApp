@@ -1253,6 +1253,11 @@ class ChatDetailFragment : Fragment() {
      */
     private fun showTaskDiffReviewDialog(projectId: String, taskId: String, detail: TaskDetailDto) {
         val diffSummary = detail.diffReviewSummary
+        // 无代码变更任务（FINAL_DIFF_EMPTY）：无 Diff Review 可确认，仅提示空态，不弹确认对话框（§15.6.4/§20.3）
+        if (mainViewModel.isNoCodeChangeTask(taskId)) {
+            Toast.makeText(requireContext(), R.string.task_no_code_change, Toast.LENGTH_SHORT).show()
+            return
+        }
         // 从 JsonElement 解析 diffId：仅用于展示首个 Diff 内容；解析不到仍可确认整个批次
         val diffId = extractDiffId(diffSummary) ?: taskDiffIdMap[taskId]
         val reviewStatus = extractStringField(diffSummary, "reviewStatus")
@@ -2055,6 +2060,13 @@ class ChatDetailFragment : Fragment() {
                         SseEventType.DIFF_CREATED,
                         SseEventType.DIFF_REVIEW_CREATED,
                         SseEventType.TASK_AWAITING_DIFF_CONFIRMATION -> cacheTaskDiffId(event.data)
+                        // 无代码变更（FINAL_DIFF_EMPTY）：记录任务，卡片点击不弹 Diff 确认（§15.6.4/§20.3）
+                        SseEventType.DIFF_REVIEW_SKIPPED -> {
+                            val taskIdFromEvent = runCatching {
+                                org.json.JSONObject(event.data).optString("taskId")
+                            }.getOrNull()
+                            if (!taskIdFromEvent.isNullOrBlank()) mainViewModel.recordNoCodeChangeTask(taskIdFromEvent)
+                        }
                         // delivery.started（MR_FIRST）：以 taskId+operationId 去重，重复/乱序/晚到只刷一次消息，
                         // 让 TASK_STATUS 卡片状态同步；真实状态以查询接口为准
                         SseEventType.DELIVERY_STARTED -> {

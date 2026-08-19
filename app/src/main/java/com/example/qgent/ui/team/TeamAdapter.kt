@@ -3,6 +3,7 @@ package com.example.qgent.ui.team
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.R
 import com.example.qgent.databinding.ItemTeamBinding
@@ -21,6 +22,15 @@ class TeamAdapter(
             if (field >= 0 && field < itemCount) notifyItemChanged(field)
         }
 
+    /** 有未读的团队名集合（抽屉团队栏红点） */
+    private var unreadTeamNames = emptySet<String>()
+
+    fun setUnreadTeamNames(names: Set<String>) {
+        if (unreadTeamNames == names) return
+        unreadTeamNames = names
+        notifyDataSetChanged()
+    }
+
     fun submitList(newItems: List<String>) {
         items = newItems
         notifyDataSetChanged()
@@ -32,7 +42,7 @@ class TeamAdapter(
     }
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        holder.bind(items[position], position == selectedPosition)
+        holder.bind(items[position], position == selectedPosition, unreadTeamNames)
         holder.itemView.setOnClickListener {
             val selected = selectedPosition
             selectedPosition = position
@@ -44,9 +54,10 @@ class TeamAdapter(
 
     class VH(private val binding: ItemTeamBinding) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(name: String, selected: Boolean) {
+        fun bind(name: String, selected: Boolean, unreadNames: Set<String>) {
             binding.tvTeamName.text = name
-            binding.tvTeamName.setBackgroundResource(
+            // 高光包裹整个团队子项（根布局整行），而非仅文字
+            binding.root.setBackgroundResource(
                 if (selected) R.drawable.bg_team_selected_navy else 0
             )
             binding.tvTeamName.setTextColor(
@@ -55,6 +66,7 @@ class TeamAdapter(
                     if (selected) R.color.white else R.color.team_item_normal
                 )
             )
+            binding.ivUnread.isVisible = name in unreadNames
         }
     }
 }
