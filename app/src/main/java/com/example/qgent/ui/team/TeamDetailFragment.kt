@@ -43,7 +43,8 @@ import java.util.UUID
 
 /**
  * 团队详情页：管理成员 / 管理项目 / 管理仓库三个下拉分组（默认收起，展开时顶部有增加按钮），底部解散团队。
- * 成员与仓库列表暂无 API 数据源，等待接口接入；项目列表观察 ViewModel 数据流。
+ * 项目列表观察 ViewModel 数据流；成员来自团队成员接口；仓库按权限分路：
+ * 团长/项目管理员看团队授权仓库，普通成员看自己加入项目的绑定仓库。
  */
 class TeamDetailFragment : Fragment() {
 
@@ -142,53 +143,106 @@ class TeamDetailFragment : Fragment() {
     }
 
     /**
-     * 加载团队授权仓库并渲染列表，两套能力合并：
-     * - 展示 AUTHORIZED 仓库 + 「已被项目绑定但授权已撤销」的死绑定仓库（REVOKED），后者标红并点击提示；
-     * - 每个仓库标注「已绑定项目 / 未绑定项目」，未绑定且仍授权的提供撤销授权删除入口。
+     * 加载团队仓库列表，按当前用户权限选择数据源：
+     * - 团长：团队授权仓库接口可调（§6，GET /teams/{teamId}/integrations/github/repositories，
+     *   权限 Team Owner 或 Project Admin），展示 AUTHORIZED 仓库 + REVOKED 死绑定，带撤销入口；
+     * - 普通成员：无该接口权限（后端 403，且 mock 回退会返回静态数据误导展示），
+     *   改为聚合「我加入的项目」的绑定仓库（GET /projects/{projectId}/repositories 项目成员可调；
+     *   §26.2 项目列表仅返回我有权限的项目）。
+     * 用 isOwner 明确分流而非尝试调用接口：Fallback 机制下普通成员调用会回退到 mock 静态仓库，
+     * 无法仅凭返回值区分真实授权仓库与 mock 数据。
      */
     private fun loadAuthorizedRepositories(teamId: String, isOwner: Boolean) {
         viewLifecycleOwner.lifecycleScope.launch {
-            val repos = githubRepository.getGithubRepositories(teamId).getOrNull().orEmpty()
-            // 授权仓库 → 项目绑定列表：文档 §6 对 ProjectRepository.repositoryId 的语义与示例冲突
-            //（§6.612 示例为 github_repositories.id，§6.440 通用规则又要求下游 repositoryId 表示绑定 id），
-            // 改用两边都含的 providerRepositoryId（GitHub 仓库全局唯一数字 ID）关联，规避语义歧义导致的绑定状态错乱
-            val bindingsByRepository = userRepository.getProjects(teamId).getOrNull().orEmpty()
-                .flatMap { project ->
-                    githubRepository.getProjectRepositories(project.id).getOrNull().orEmpty()
-                        .map { it.providerRepositoryId to (project.id to it.id) }
-                }
-                .groupBy({ it.first }, { it.second })
-            // 展示集：AUTHORIZED 全部展示；REVOKED 仅展示仍被项目绑定的死绑定（未绑定的已无意义，不展示）
-            val displayRepos = repos.filter {
-                it.authorizationStatus == "AUTHORIZED" ||
-                    (it.authorizationStatus == "REVOKED" && bindingsByRepository[it.providerRepositoryId].orEmpty().isNotEmpty())
+            if (isOwner) {
+                val repos = githubRepository.getGithubRepositories(teamId).getOrNull().orEmpty()
+                renderTeamAuthorizedRepositories(teamId, repos, isOwner)
+            } else {
+                renderMyProjectRepositories(teamId)
             }
-            fillLinearLayout(binding.rvRepository, displayRepos, R.layout.item_repository) { view, repo ->
-                val item = ItemRepositoryBinding.bind(view)
-                item.tvRepositoryName.text = repo.fullName
-                val bindings = bindingsByRepository[repo.providerRepositoryId].orEmpty()
-                val bound = bindings.isNotEmpty()
-                val revoked = repo.authorizationStatus == "REVOKED"
-                item.tvBoundStatus.text = getString(
-                    if (bound) R.string.github_repo_bound else R.string.github_repo_unbound
+        }
+    }
+
+    /**
+     * 团长 / 项目管理员数据源：展示团队授权仓库。
+     * - 展示 AUTHORIZED 仓库 + 「已被项目绑定但授权已撤销」的死绑定仓库（REVOKED），后者标红并点击提示；
+     * - 每个仓库标注「已绑定项目 / 未绑定项目」，未绑定且仍授权的提供撤销授权删除入口。
+     */
+    private suspend fun renderTeamAuthorizedRepositories(
+        teamId: String,
+        repos: List<GitHubRepositoryDto>,
+        isOwner: Boolean
+    ) {
+        // 授权仓库 → 项目绑定列表：文档 §6 对 ProjectRepository.repositoryId 的语义与示例冲突
+        //（§6.612 示例为 github_repositories.id，§6.440 通用规则又要求下游 repositoryId 表示绑定 id），
+        // 改用两边都含的 providerRepositoryId（GitHub 仓库全局唯一数字 ID）关联，规避语义歧义导致的绑定状态错乱
+        val bindingsByRepository = userRepository.getProjects(teamId).getOrNull().orEmpty()
+            .flatMap { project ->
+                githubRepository.getProjectRepositories(project.id).getOrNull().orEmpty()
+                    .map { it.providerRepositoryId to (project.id to it.id) }
+            }
+            .groupBy({ it.first }, { it.second })
+        // 展示集：AUTHORIZED 全部展示；REVOKED 仅展示仍被项目绑定的死绑定（未绑定的已无意义，不展示）
+        val displayRepos = repos.filter {
+            it.authorizationStatus == "AUTHORIZED" ||
+                (it.authorizationStatus == "REVOKED" && bindingsByRepository[it.providerRepositoryId].orEmpty().isNotEmpty())
+        }
+        fillLinearLayout(binding.rvRepository, displayRepos, R.layout.item_repository) { view, repo ->
+            val item = ItemRepositoryBinding.bind(view)
+            item.tvRepositoryName.text = repo.fullName
+            val bindings = bindingsByRepository[repo.providerRepositoryId].orEmpty()
+            val bound = bindings.isNotEmpty()
+            val revoked = repo.authorizationStatus == "REVOKED"
+            item.tvBoundStatus.text = getString(
+                if (bound) R.string.github_repo_bound else R.string.github_repo_unbound
+            )
+            item.tvRepositoryStatus.isVisible = revoked
+            if (revoked) {
+                // 死绑定标红，点击提示原因
+                item.tvRepositoryName.setTextColor(
+                    androidx.core.content.ContextCompat.getColor(requireContext(), R.color.exit_red)
                 )
-                item.tvRepositoryStatus.isVisible = revoked
-                if (revoked) {
-                    // 死绑定标红，点击提示原因
-                    item.tvRepositoryName.setTextColor(
-                        androidx.core.content.ContextCompat.getColor(requireContext(), R.color.exit_red)
-                    )
-                    item.root.setOnClickListener {
-                        Toast.makeText(requireContext(), R.string.repo_revoked_hint, Toast.LENGTH_LONG).show()
-                    }
-                } else {
-                    // 仅团长可撤销授权；未绑定项目且仍授权 → 显示删除入口，已绑定保护项目引用，不显示
-                    item.ivDeleteRepository.isVisible = isOwner && !bound
-                    item.ivDeleteRepository.setOnClickListener {
-                        confirmDeleteRepository(teamId, repo)
-                    }
+                item.root.setOnClickListener {
+                    Toast.makeText(requireContext(), R.string.repo_revoked_hint, Toast.LENGTH_LONG).show()
+                }
+            } else {
+                // 仅团长可撤销授权；未绑定项目且仍授权 → 显示删除入口，已绑定保护项目引用，不显示
+                item.ivDeleteRepository.isVisible = isOwner && !bound
+                item.ivDeleteRepository.setOnClickListener {
+                    confirmDeleteRepository(teamId, repo)
                 }
             }
+        }
+    }
+
+    /**
+     * 普通成员数据源：聚合「我加入的项目」的绑定仓库。
+     * 团队授权仓库接口仅 Team Owner / Project Admin 可调，普通成员改走项目仓库接口；
+     * 项目列表（§26.2）只返回当前用户有权限的项目，天然限定为「自己加入的项目」。
+     * 同一仓库被多个项目绑定按 fullName 去重展示；REVOKED 死绑定标红；无撤销入口。
+     */
+    private suspend fun renderMyProjectRepositories(teamId: String) {
+        val repos = userRepository.getProjects(teamId).getOrNull().orEmpty()
+            .flatMap { project ->
+                githubRepository.getProjectRepositories(project.id).getOrNull().orEmpty()
+            }
+            .distinctBy { it.fullName }
+        fillLinearLayout(binding.rvRepository, repos, R.layout.item_repository) { view, repo ->
+            val item = ItemRepositoryBinding.bind(view)
+            item.tvRepositoryName.text = repo.fullName
+            item.tvBoundStatus.text = getString(R.string.github_repo_bound)
+            val revoked = repo.authorizationStatus == "REVOKED"
+            item.tvRepositoryStatus.isVisible = revoked
+            if (revoked) {
+                item.tvRepositoryName.setTextColor(
+                    androidx.core.content.ContextCompat.getColor(requireContext(), R.color.exit_red)
+                )
+                item.root.setOnClickListener {
+                    Toast.makeText(requireContext(), R.string.repo_revoked_hint, Toast.LENGTH_LONG).show()
+                }
+            }
+            // 普通成员无撤销授权入口
+            item.ivDeleteRepository.isVisible = false
         }
     }
 

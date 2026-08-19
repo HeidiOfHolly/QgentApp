@@ -37,6 +37,14 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
     private val _codeState = MutableStateFlow(CodeState())
     val codeState: LiveData<CodeState> = _codeState.asLiveData()
 
+    /** 忘记密码页发送验证码状态（§11.3）：与注册验证码独立，避免跨页倒计时/发送态串扰 */
+    private val _resetCodeState = MutableStateFlow(CodeState())
+    val resetCodeState: LiveData<CodeState> = _resetCodeState.asLiveData()
+
+    /** 忘记密码页提交重置状态：success 一次性事件，成功后回到登录页 */
+    private val _resetUiState = MutableStateFlow(AuthUiState())
+    val resetUiState: LiveData<AuthUiState> = _resetUiState.asLiveData()
+
     fun login(email: String, password: String) {
         if (_uiState.value.loading) return
         _uiState.value = AuthUiState(loading = true)
@@ -78,6 +86,63 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
                 _codeState.value = _codeState.value.copy(retryInSeconds = seconds)
             }
         }
+    }
+
+    /** 发送密码重置邮箱验证码（§11.3）：成功后进入 60s 重发倒计时 */
+    fun sendResetCode(email: String) {
+        if (_resetCodeState.value.sending || _resetCodeState.value.retryInSeconds > 0) return
+        _resetCodeState.value = CodeState(sending = true)
+        viewModelScope.launch {
+            repo.sendPasswordResetCode(email.trim())
+                .onSuccess {
+                    _resetCodeState.value = CodeState(sent = true, retryInSeconds = 60)
+                    startResetCountdown()
+                }
+                .onFailure { e ->
+                    _resetCodeState.value = CodeState(error = e.message ?: "验证码发送失败，请稍后重试")
+                }
+        }
+    }
+
+    /** 发送成功后 60s 倒计时递减；归零后允许再次发送 */
+    private fun startResetCountdown() {
+        viewModelScope.launch {
+            var seconds = _resetCodeState.value.retryInSeconds
+            while (seconds > 0) {
+                delay(1000)
+                seconds--
+                _resetCodeState.value = _resetCodeState.value.copy(retryInSeconds = seconds)
+            }
+        }
+    }
+
+    /** 清除密码重置发送验证码的错误提示 */
+    fun consumeResetCodeError() {
+        _resetCodeState.value = _resetCodeState.value.copy(error = null)
+    }
+
+    /** 用邮箱验证码设置新密码（§11.3）：成功后置 success，界面跳回登录 */
+    fun resetPassword(token: String, newPassword: String) {
+        if (_resetUiState.value.loading) return
+        _resetUiState.value = AuthUiState(loading = true)
+        viewModelScope.launch {
+            repo.resetPassword(token.trim(), newPassword)
+                .onSuccess {
+                    _resetUiState.value = AuthUiState(success = true)
+                }
+                .onFailure { e ->
+                    _resetUiState.value = AuthUiState(error = e.message ?: "密码重置失败，请稍后重试")
+                }
+        }
+    }
+
+    /** 重置成功后清除一次性 success 事件 */
+    fun consumeResetSuccess() {
+        _resetUiState.value = _resetUiState.value.copy(success = false)
+    }
+
+    fun consumeResetError() {
+        _resetUiState.value = _resetUiState.value.copy(error = null)
     }
 
     /** 清除发送验证码的错误提示 */

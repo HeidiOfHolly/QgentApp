@@ -4,10 +4,12 @@ import com.example.qgent.data.api.QgApiService
 import com.example.qgent.data.crypto.PasswordEncryptor
 import com.example.qgent.data.model.AuthSessionDto
 import com.example.qgent.data.model.LoginRequest
+import com.example.qgent.data.model.PasswordResetSubmitRequest
 import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.SendVerificationCodeRequest
 import com.example.qgent.data.model.SendVerificationCodeResponse
 import com.example.qgent.data.model.toDataOrThrow
+import com.example.qgent.data.model.toUnitOrThrow
 
 /**
  * 认证仓库：使用硬编码的固定 RSA 公钥加密密码后提交。
@@ -34,4 +36,15 @@ class AuthRepository(private val service: QgApiService) {
                 RegisterRequest(email, verificationCode, PasswordEncryptor.KEY_ID, encrypted, displayName)
             ).toDataOrThrow()
         }
+
+    /** 发起密码重置：向邮箱发送 6 位验证码（§11.3：匿名，未注册邮箱同样返回 202，规避枚举） */
+    suspend fun sendPasswordResetCode(email: String): Result<SendVerificationCodeResponse> = apiCall {
+        service.sendPasswordResetCode(SendVerificationCodeRequest(email.trim())).toDataOrThrow()
+    }
+
+    /** 用邮箱验证码设置新密码（§11.3：token 即验证码，30 分钟有效、一次性；校验失败 422 INVALID_RESET_TOKEN） */
+    suspend fun resetPassword(token: String, newPassword: String): Result<Unit> = apiCall {
+        val encrypted = PasswordEncryptor.encrypt(newPassword)
+        service.resetPassword(PasswordResetSubmitRequest(token, encrypted, PasswordEncryptor.KEY_ID)).toUnitOrThrow()
+    }
 }

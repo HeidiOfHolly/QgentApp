@@ -37,6 +37,7 @@ import com.example.qgent.data.model.GroupReadResponse
 import com.example.qgent.data.model.LoginRequest
 import com.example.qgent.data.model.MemoryDto
 import com.example.qgent.data.model.NotificationDto
+import com.example.qgent.data.model.PasswordResetSubmitRequest
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.ProjectMemberDto
 import com.example.qgent.data.model.ProjectRepositoryDto
@@ -108,6 +109,14 @@ interface QgApiService {
 
     @POST("auth/refresh")
     suspend fun refresh(@Body body: RefreshRequest): Response<ApiResponse<AuthSessionDto>>
+
+    /** 发起密码重置：向邮箱发送 6 位验证码（§11.3：匿名，30 分钟有效、一次性；未注册邮箱同样返回 202） */
+    @POST("auth/password-reset-requests")
+    suspend fun sendPasswordResetCode(@Body body: SendVerificationCodeRequest): Response<ApiResponse<SendVerificationCodeResponse>>
+
+    /** 用邮箱验证码设置新密码（§11.3：token 即验证码，校验失败返回 422 INVALID_RESET_TOKEN） */
+    @POST("auth/password-resets")
+    suspend fun resetPassword(@Body body: PasswordResetSubmitRequest): Response<ApiResponse<Unit>>
 
     // ── 用户 ──
 

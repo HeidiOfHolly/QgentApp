@@ -112,6 +112,13 @@ data class SendVerificationCodeResponse(
     val message: String? = null
 )
 
+/** 密码重置提交（§11.3：token 即 6 位邮箱验证码，30 分钟有效、一次性；校验失败返回 422 INVALID_RESET_TOKEN） */
+data class PasswordResetSubmitRequest(
+    val token: String,
+    @SerializedName("newPassword") val newPassword: String,
+    @SerializedName("passwordKeyId") val passwordKeyId: String
+)
+
 /** 登录请求：密码需用平台 RSA 公钥加密后 Base64 */
 data class LoginRequest(
     val email: String,

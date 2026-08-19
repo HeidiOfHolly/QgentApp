@@ -52,7 +52,10 @@ class LoginActivity : AppCompatActivity() {
         }
 
         binding.tvForgotPassword.setOnClickListener {
-            Toast.makeText(this, R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
+            supportFragmentManager.beginTransaction()
+                .add(R.id.register_container, ForgotPasswordFragment())
+                .addToBackStack("forgot_password")
+                .commit()
         }
 
         observeViewModel()

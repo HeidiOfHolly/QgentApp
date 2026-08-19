@@ -37,6 +37,22 @@
     <string name="error_code_required">请输入验证码</string>
     <string name="error_code_invalid">验证码需为 6 位数字</string>
 
+    <!-- 忘记密码（§11.3：邮箱 → 6 位验证码 → 新密码，验证码 30 分钟有效、一次性） -->
+    <string name="forgot_password_title">重置密码</string>
+    <string name="forgot_password_subtitle">输入注册邮箱，我们将发送验证码用于重置密码</string>
+    <string name="forgot_password_email">注册邮箱</string>
+    <string name="forgot_password_code">验证码</string>
+    <string name="forgot_password_new_password">新密码</string>
+    <string name="forgot_password_confirm_password">确认新密码</string>
+    <string name="forgot_password_send_code">发送验证码</string>
+    <string name="forgot_password_sending_code">发送中…</string>
+    <string name="forgot_password_resend_code">重新发送 (%1$ds)</string>
+    <string name="forgot_password_code_sent">验证码已发送到邮箱，30 分钟内有效</string>
+    <string name="forgot_password_button">重置密码</string>
+    <string name="forgot_password_resetting">重置中…</string>
+    <string name="forgot_password_success">密码重置成功，请使用新密码登录</string>
+    <string name="forgot_password_login_link">想起密码了？返回登录</string>
+
     <!-- 注册校验 -->
     <string name="error_display_name_required">请输入昵称</string>
     <string name="error_password_short">密码至少 6 位</string>
