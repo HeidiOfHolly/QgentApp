@@ -9,6 +9,10 @@
         android:icon="@drawable/ic_nav_task"
         android:title="@string/nav_tasks" />
     <item
+        android:id="@+id/deliveryCenterFragment"
+        android:icon="@drawable/ic_nav_delivery"
+        android:title="@string/nav_delivery" />
+    <item
         android:id="@+id/agentFragment"
         android:icon="@drawable/ic_nav_agent"
         android:title="@string/nav_agent" />

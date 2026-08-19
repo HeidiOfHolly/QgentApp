@@ -2,9 +2,14 @@ package com.example.qgent.data.repository
 
 import com.example.qgent.data.api.QgApiService
 import com.example.qgent.data.model.ActivityDto
+import com.example.qgent.data.model.CqActionRequest
+import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.DiffFileResponseDto
+import com.example.qgent.data.model.EmptyBody
+import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
+import com.example.qgent.data.model.MergeRequestReviewDto
 import com.example.qgent.data.model.ReplaceAgentRequest
 import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
@@ -14,6 +19,8 @@ import com.example.qgent.data.model.TaskRunListItemDto
 import com.example.qgent.data.model.TaskRunLogEntryDto
 import com.example.qgent.data.model.TaskStepListItemDto
 import com.example.qgent.data.model.TaskTriggerRequest
+import com.example.qgent.data.model.WorkspaceDiffPreviewDto
+import com.example.qgent.data.model.WorkspaceDiffPreviewFileDto
 import com.example.qgent.data.model.toDataOrThrow
 import com.example.qgent.data.model.toUnitOrThrow
 
@@ -71,6 +78,12 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
     override suspend fun getTaskDetail(projectId: String, taskId: String): Result<TaskDetailDto> =
         apiCall { service.getTaskDetail(projectId, taskId).toDataOrThrow() }
 
+    override suspend fun getWorkspaceDiffPreview(projectId: String, taskId: String, revision: Int?): Result<WorkspaceDiffPreviewDto> =
+        apiCall { service.getWorkspaceDiffPreview(projectId, taskId, revision).toDataOrThrow() }
+
+    override suspend fun getWorkspaceDiffPreviewFiles(projectId: String, taskId: String, revision: Int?): Result<List<WorkspaceDiffPreviewFileDto>> =
+        apiCall { service.getWorkspaceDiffPreviewFiles(projectId, taskId, revision).toDataOrThrow() }
+
     override suspend fun getTaskSteps(projectId: String, taskId: String): Result<List<TaskStepListItemDto>> =
         apiCall { service.getTaskSteps(projectId, taskId).toDataOrThrow() }
 
@@ -82,6 +95,27 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
 
     override suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String): Result<MergeRequestDetailDto> =
         apiCall { service.getMergeRequestDetail(projectId, mergeRequestId).toDataOrThrow() }
+
+    override suspend fun getDeliveryItems(projectId: String, type: String?, cursor: String?, limit: Int): Result<List<DeliveryItemDto>> =
+        apiCall { service.getDeliveryItems(projectId, type, cursor, limit).toDataOrThrow() }
+
+    override suspend fun getMergeRequestChecks(projectId: String, mergeRequestId: String): Result<List<MergeRequestCheckDto>> =
+        apiCall { service.getMergeRequestChecks(projectId, mergeRequestId).toDataOrThrow() }
+
+    override suspend fun getMergeRequestReviews(projectId: String, mergeRequestId: String): Result<List<MergeRequestReviewDto>> =
+        apiCall { service.getMergeRequestReviews(projectId, mergeRequestId).toDataOrThrow() }
+
+    override suspend fun cqApprove(projectId: String, mergeRequestId: String, reason: String?, idempotencyKey: String): Result<Unit> =
+        apiCall { service.cqApprove(projectId, mergeRequestId, idempotencyKey, CqActionRequest(reason)).toUnitOrThrow() }
+
+    override suspend fun cqReject(projectId: String, mergeRequestId: String, reason: String, idempotencyKey: String): Result<Unit> =
+        apiCall { service.cqReject(projectId, mergeRequestId, idempotencyKey, CqActionRequest(reason)).toUnitOrThrow() }
+
+    override suspend fun mergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit> =
+        apiCall { service.mergeRequest(projectId, mergeRequestId, idempotencyKey, EmptyBody()).toUnitOrThrow() }
+
+    override suspend fun syncMergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit> =
+        apiCall { service.syncMergeRequest(projectId, mergeRequestId, idempotencyKey, EmptyBody()).toUnitOrThrow() }
 
     override suspend fun getDiffFiles(projectId: String, diffId: String): Result<List<DiffFileResponseDto>> =
         apiCall { service.getDiffFiles(projectId, diffId).toDataOrThrow() }

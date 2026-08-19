@@ -140,9 +140,11 @@ class MainViewModel(
     /** 该任务是否为无代码变更任务（无 Diff Review 可确认） */
     fun isNoCodeChangeTask(taskId: String): Boolean = taskId in _noCodeChangeTaskIds.value
 
-    // ── 用户权限（当前为演示阶段默认 Project Admin，接入真实权限后替换） ──
+    // ── 用户权限 ──
 
-    val isProjectAdmin: Boolean = true
+    /** 当前用户是否项目管理员（后端 role 权威：GET /projects/{id} 返回，Team Owner 兜底 PROJECT_ADMIN） */
+    suspend fun isProjectAdmin(projectId: String): Boolean =
+        userRepo.getProject(projectId).getOrNull()?.role == "PROJECT_ADMIN"
 
     // ── 创建项目结果（表单页观察） ──
 

@@ -52,6 +52,8 @@ enum class SseEventType(val wire: String) {
     TASK_DIFF_REVIEW_FAILED("task.diff-review.failed"),
     DIFF_REVIEW_SKIPPED("diff-review.skipped"),
     MERGE_REQUEST_UPDATED("merge-request.updated"),
+    /** Workspace 实时 Diff Preview 更新（Coding 写入后累计工作树变化；payload 只含元数据，patch 走 REST） */
+    WORKSPACE_DIFF_PREVIEW_UPDATED("workspace.diff-preview.updated"),
 
     // ── 项目级：消息 / 群 / Memory（前端 SSE 需求清单 ①） ──
 

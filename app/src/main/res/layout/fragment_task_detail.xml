@@ -126,22 +126,49 @@
 
                 android:orientation="vertical" />
 
-            <!-- Diff 审核入口（diffReviewSummary.available=true 时展示，点击弹审核面板） -->
-            <TextView
-                android:id="@+id/tvDiffReviewEntry"
-                android:layout_width="wrap_content"
+            <!-- Diff 入口行：左「实时预览」+ 右「查看 Diff 审核」（正式 Diff 语义分离，并排展示） -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
-                android:background="@drawable/bg_status_tag"
-                android:gravity="center"
-                android:paddingStart="12dp"
-                android:paddingTop="6dp"
-                android:paddingEnd="12dp"
-                android:paddingBottom="6dp"
-                android:text="📋 查看 Diff 审核"
-                android:textColor="@color/white"
-                android:textSize="14sp"
-                android:visibility="gone" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <!-- 实时预览入口（Workspace Diff Preview，执行中累计工作树变化；无数据隐藏） -->
+                <TextView
+                    android:id="@+id/tvPreviewEntry"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_status_tag"
+                    android:gravity="center"
+                    android:paddingStart="8dp"
+                    android:paddingTop="6dp"
+                    android:paddingEnd="8dp"
+                    android:paddingBottom="6dp"
+                    android:text="🛠 实时预览"
+                    android:textColor="@color/white"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+
+                <!-- 正式 Diff 审核入口（diffReviewSummary.available=true 时展示，点击弹审核面板） -->
+                <TextView
+                    android:id="@+id/tvDiffReviewEntry"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_status_tag"
+                    android:gravity="center"
+                    android:paddingStart="8dp"
+                    android:paddingTop="6dp"
+                    android:paddingEnd="8dp"
+                    android:paddingBottom="6dp"
+                    android:text="📋 查看 Diff 审核"
+                    android:textColor="@color/white"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+            </LinearLayout>
 
             <!-- 交付失败原因（DELIVERY_FAILED 时展示，便于定位交付失败） -->
             <TextView

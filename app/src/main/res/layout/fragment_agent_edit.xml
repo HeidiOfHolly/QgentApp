@@ -151,12 +151,12 @@
                         android:text="通用（GENERAL）" />
                 </RadioGroup>
 
-                <!-- 用途描述 -->
+                <!-- 用途描述（必填） -->
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="14dp"
-                    android:hint="用途描述（可选）">
+                    android:hint="用途描述（必填）">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etDescription"
@@ -168,12 +168,12 @@
                         android:textSize="14sp" />
                 </com.google.android.material.textfield.TextInputLayout>
 
-                <!-- 系统提示词 -->
+                <!-- 系统提示词（必填） -->
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:hint="系统提示词 prompt（可选，仅自己可见）">
+                    android:hint="系统提示词 prompt（必填，仅自己可见）">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etPrompt"

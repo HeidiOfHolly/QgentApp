@@ -62,6 +62,13 @@ import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskRunListItemDto
 import com.example.qgent.data.model.TaskRunLogEntryDto
 import com.example.qgent.data.model.TaskStepListItemDto
+import com.example.qgent.data.model.CqActionRequest
+import com.example.qgent.data.model.DeliveryItemDto
+import com.example.qgent.data.model.EmptyBody
+import com.example.qgent.data.model.MergeRequestCheckDto
+import com.example.qgent.data.model.MergeRequestReviewDto
+import com.example.qgent.data.model.WorkspaceDiffPreviewDto
+import com.example.qgent.data.model.WorkspaceDiffPreviewFileDto
 import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.model.UpdateAgentRequest
@@ -710,6 +717,66 @@ interface QgApiService {
         @Path("mergeRequestId") mergeRequestId: String
     ): Response<ApiResponse<MergeRequestDetailDto>>
 
+    // ── 交付中心：delivery-items + MR 交付流程（DryRun/CQ/merge） ──
+
+    @GET("projects/{projectId}/delivery-items")
+    suspend fun getDeliveryItems(
+        @Path("projectId") projectId: String,
+        @Query("type") type: String? = null,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 20
+    ): Response<ApiResponse<List<DeliveryItemDto>>>
+
+    /** MR 门禁检查（§21.2 Q1；type=TESTSET/AI_REVIEW/DRY_RUN/CQ_PLUS_ONE） */
+    @GET("projects/{projectId}/merge-requests/{mergeRequestId}/checks")
+    suspend fun getMergeRequestChecks(
+        @Path("projectId") projectId: String,
+        @Path("mergeRequestId") mergeRequestId: String
+    ): Response<ApiResponse<List<MergeRequestCheckDto>>>
+
+    /** MR 人工/AI 审查摘要（CQ+1 审批人/决定） */
+    @GET("projects/{projectId}/merge-requests/{mergeRequestId}/reviews")
+    suspend fun getMergeRequestReviews(
+        @Path("projectId") projectId: String,
+        @Path("mergeRequestId") mergeRequestId: String
+    ): Response<ApiResponse<List<MergeRequestReviewDto>>>
+
+    /** 提交 CQ+1（Project Member 非作者；body 可带 reason） */
+    @POST("projects/{projectId}/merge-requests/{mergeRequestId}/cq-approvals")
+    suspend fun cqApprove(
+        @Path("projectId") projectId: String,
+        @Path("mergeRequestId") mergeRequestId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CqActionRequest
+    ): Response<ApiResponse<Unit>>
+
+    /** 拒绝 CQ（body 必带 reason） */
+    @POST("projects/{projectId}/merge-requests/{mergeRequestId}/cq-rejections")
+    suspend fun cqReject(
+        @Path("projectId") projectId: String,
+        @Path("mergeRequestId") mergeRequestId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CqActionRequest
+    ): Response<ApiResponse<Unit>>
+
+    /** 通过门禁后执行合并（Project Admin） */
+    @POST("projects/{projectId}/merge-requests/{mergeRequestId}/merge")
+    suspend fun mergeRequest(
+        @Path("projectId") projectId: String,
+        @Path("mergeRequestId") mergeRequestId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: EmptyBody
+    ): Response<ApiResponse<Unit>>
+
+    /** 触发从 GitHub 同步 MR 最新状态 */
+    @POST("projects/{projectId}/merge-requests/{mergeRequestId}/sync")
+    suspend fun syncMergeRequest(
+        @Path("projectId") projectId: String,
+        @Path("mergeRequestId") mergeRequestId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: EmptyBody
+    ): Response<ApiResponse<Unit>>
+
     @GET("projects/{projectId}/diffs/{diffId}/files")
     suspend fun getDiffFiles(
         @Path("projectId") projectId: String,
@@ -784,6 +851,22 @@ interface QgApiService {
         @Path("projectId") projectId: String,
         @Path("taskId") taskId: String
     ): Response<ApiResponse<TaskDetailDto>>
+
+    // ── Workspace 实时 Diff Preview（执行中累计工作树变化；与正式 Diff 语义分离） ──
+
+    @GET("projects/{projectId}/tasks/{taskId}/workspace-diff-preview")
+    suspend fun getWorkspaceDiffPreview(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String,
+        @Query("revision") revision: Int? = null
+    ): Response<ApiResponse<WorkspaceDiffPreviewDto>>
+
+    @GET("projects/{projectId}/tasks/{taskId}/workspace-diff-preview/files")
+    suspend fun getWorkspaceDiffPreviewFiles(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String,
+        @Query("revision") revision: Int? = null
+    ): Response<ApiResponse<List<WorkspaceDiffPreviewFileDto>>>
 
     // ── 任务步骤 / 任务运行（§16.3 / §16.4） ──
 

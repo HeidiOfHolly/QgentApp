@@ -1,9 +1,14 @@
 package com.example.qgent.data.repository
 
 import com.example.qgent.data.model.ActivityDto
+import com.example.qgent.data.model.CqActionRequest
+import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.DiffFileResponseDto
+import com.example.qgent.data.model.EmptyBody
+import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
+import com.example.qgent.data.model.MergeRequestReviewDto
 import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.TaskListItemDto
@@ -12,6 +17,8 @@ import com.example.qgent.data.model.TaskRunListItemDto
 import com.example.qgent.data.model.TaskRunLogEntryDto
 import com.example.qgent.data.model.TaskStepListItemDto
 import com.example.qgent.data.model.TaskTriggerRequest
+import com.example.qgent.data.model.WorkspaceDiffPreviewDto
+import com.example.qgent.data.model.WorkspaceDiffPreviewFileDto
 
 /** 任务/动态/MR 仓库：任务页三列表查询（§16 任务 / §19.4 动态 / §13 MR） */
 interface TaskRepository {
@@ -67,6 +74,12 @@ interface TaskRepository {
     /** 任务详情（§16.2） */
     suspend fun getTaskDetail(projectId: String, taskId: String): Result<TaskDetailDto>
 
+    /** Workspace 实时 Diff Preview 详情（执行中累计工作树变化；无则 404/空） */
+    suspend fun getWorkspaceDiffPreview(projectId: String, taskId: String, revision: Int? = null): Result<WorkspaceDiffPreviewDto>
+
+    /** Workspace 实时 Diff Preview 文件列表（按仓库分组） */
+    suspend fun getWorkspaceDiffPreviewFiles(projectId: String, taskId: String, revision: Int? = null): Result<List<WorkspaceDiffPreviewFileDto>>
+
     /** 任务步骤列表（§16.3） */
     suspend fun getTaskSteps(projectId: String, taskId: String): Result<List<TaskStepListItemDto>>
 
@@ -78,6 +91,27 @@ interface TaskRepository {
 
     /** MR 详情（§13，含 diffId） */
     suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String): Result<MergeRequestDetailDto>
+
+    /** 交付中心：CODE 交付物列表（GET /delivery-items） */
+    suspend fun getDeliveryItems(projectId: String, type: String? = null, cursor: String? = null, limit: Int = 20): Result<List<DeliveryItemDto>>
+
+    /** MR 门禁检查（TESTSET/AI_REVIEW/DRY_RUN/CQ_PLUS_ONE） */
+    suspend fun getMergeRequestChecks(projectId: String, mergeRequestId: String): Result<List<MergeRequestCheckDto>>
+
+    /** MR 人工/AI 审查摘要（CQ+1 审批人/决定） */
+    suspend fun getMergeRequestReviews(projectId: String, mergeRequestId: String): Result<List<MergeRequestReviewDto>>
+
+    /** 提交 CQ+1（Project Member 非作者） */
+    suspend fun cqApprove(projectId: String, mergeRequestId: String, reason: String?, idempotencyKey: String): Result<Unit>
+
+    /** 拒绝 CQ（必填 reason） */
+    suspend fun cqReject(projectId: String, mergeRequestId: String, reason: String, idempotencyKey: String): Result<Unit>
+
+    /** 通过门禁后合并（Project Admin） */
+    suspend fun mergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit>
+
+    /** 触发从 GitHub 同步 MR 状态 */
+    suspend fun syncMergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit>
 
     /** 读取 Diff 文件与代码行（§12.3） */
     suspend fun getDiffFiles(projectId: String, diffId: String): Result<List<DiffFileResponseDto>>

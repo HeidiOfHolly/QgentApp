@@ -141,6 +141,15 @@ class TaskDetailFragment : Fragment() {
                             if (taskIdFromEvent == taskId) mainViewModel.recordNoCodeChangeTask(taskId)
                             loadDetail()
                         }
+                        // 实时 Diff Preview 更新（Coding 写入后）：只刷新 Preview，不刷新正式 Diff
+                        com.example.qgent.data.sse.SseEventType.WORKSPACE_DIFF_PREVIEW_UPDATED -> {
+                            val taskIdFromEvent = runCatching {
+                                org.json.JSONObject(event.data).optString("taskId")
+                            }.getOrNull()
+                            if (taskIdFromEvent == taskId || taskIdFromEvent.isNullOrEmpty()) {
+                                loadWorkspaceDiffPreview()
+                            }
+                        }
                         else -> Unit
                     }
                 }
@@ -227,6 +236,68 @@ class TaskDetailFragment : Fragment() {
         }
         loadSteps(showIndicator)
         loadRuns(showIndicator)
+        loadWorkspaceDiffPreview()
+    }
+
+    /**
+     * 加载 Workspace 实时 Diff Preview（执行中累计工作树变化；无数据/失败时隐藏入口，不标记任务失败）。
+     * 事件 workspace.diff-preview.updated 与任务详情刷新都会走到这里。
+     */
+    private fun loadWorkspaceDiffPreview() {
+        if (projectId.isEmpty() || taskId.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepository.getWorkspaceDiffPreview(projectId, taskId)
+                .onSuccess { preview ->
+                    binding.tvPreviewEntry.isVisible = true
+                    binding.tvPreviewEntry.text =
+                        "🛠 实时预览：${preview.filesChanged} 个文件 · +${preview.additions} / -${preview.deletions} · rev ${preview.revision}"
+                    binding.tvPreviewEntry.setOnClickListener { showPreviewFilesDialog() }
+                }
+                .onFailure {
+                    // 无 Preview（404）或接口暂不可用：隐藏入口，不打扰
+                    binding.tvPreviewEntry.isVisible = false
+                }
+        }
+    }
+
+    /** 实时 Preview 文件列表弹窗：按仓库分组展示（repositoryPath/路径/变更类型/增删行） */
+    private fun showPreviewFilesDialog() {
+        if (projectId.isEmpty() || taskId.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val files = taskRepository.getWorkspaceDiffPreviewFiles(projectId, taskId).getOrNull().orEmpty()
+            val sb = StringBuilder("实时预览文件（累计工作树变化，非正式 Diff）\n\n")
+            if (files.isEmpty()) {
+                sb.append("暂无文件内容")
+            } else {
+                files.groupBy { it.repositoryPath ?: it.repositoryId ?: "仓库" }.forEach { (repo, list) ->
+                    sb.append("📦 ").append(repo).append("\n")
+                    list.forEach { f ->
+                        val type = when (f.changeType) {
+                            "ADDED", "A" -> "A"
+                            "DELETED", "D" -> "D"
+                            "RENAMED", "R" -> "R"
+                            else -> "M"
+                        }
+                        sb.append("  ").append(f.path).append("   ").append(type)
+                            .append("  +").append(f.additions).append(" -").append(f.deletions).append("\n")
+                    }
+                    sb.append("\n")
+                }
+            }
+            val scroll = ScrollView(requireContext())
+            val tv = TextView(requireContext()).apply {
+                text = sb.toString()
+                textSize = 13f
+                setTextIsSelectable(true)
+                setPadding(48, 40, 48, 40)
+            }
+            scroll.addView(tv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                .setTitle("实时 Diff 预览")
+                .setView(scroll)
+                .setPositiveButton("关闭", null)
+                .show()
+        }
     }
 
     /** 加载任务步骤列表（§16.3）并填充 */

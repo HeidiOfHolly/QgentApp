@@ -114,6 +114,7 @@
     <string name="task_status_title">任务状态</string>
     <string name="task_status_node">执行节点：%1$s</string>
     <string name="nav_tasks">任务</string>
+    <string name="nav_delivery">交付</string>
     <string name="nav_agent">Agent</string>
 
     <string name="search_hint">搜索</string>

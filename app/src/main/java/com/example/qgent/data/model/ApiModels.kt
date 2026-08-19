@@ -807,7 +807,6 @@ data class DiffChangeStatsDto(
 
 /** 确认整个最终 Diff 批次（POST .../tasks/{taskId}/diff-review/confirm，§12.3；body 传空对象 {}） */
 class DiffReviewConfirmRequest
-
 /** 拒绝整个最终 Diff 批次（POST .../tasks/{taskId}/diff-review/reject，§12.3；body {"reason":"..."}） */
 data class DiffReviewRejectRequest(
     val reason: String? = null
@@ -915,6 +914,33 @@ data class TaskDetailDto(
     val capabilities: TaskCapabilitiesDto?,
     @SerializedName("createdAt") val createdAt: String,
     @SerializedName("updatedAt") val updatedAt: String
+)
+
+/** Workspace 实时 Diff Preview（执行中累计工作树变化；与正式 Diff 语义分离，不触发交付） */
+data class WorkspaceDiffPreviewDto(
+    @SerializedName("projectId") val projectId: String,
+    @SerializedName("taskId") val taskId: String,
+    @SerializedName("taskRunId") val taskRunId: String?,
+    @SerializedName("workspaceId") val workspaceId: String?,
+    val revision: Int,
+    @SerializedName("baseCommit") val baseCommit: String?,
+    @SerializedName("workingTreeHash") val workingTreeHash: String?,
+    @SerializedName("filesChanged") val filesChanged: Int,
+    val additions: Int,
+    val deletions: Int,
+    val patch: String?,
+    @SerializedName("createdAt") val createdAt: String?
+)
+
+/** Preview 文件条目（/files 响应；按 repositoryId/repositoryPath 分组，路径为 Workspace 相对路径） */
+data class WorkspaceDiffPreviewFileDto(
+    @SerializedName("repositoryId") val repositoryId: String?,
+    @SerializedName("repositoryPath") val repositoryPath: String?,
+    val path: String,
+    @SerializedName("changeType") val changeType: String?,
+    val additions: Int = 0,
+    val deletions: Int = 0,
+    val binary: Boolean = false
 )
 
 /** Diff 审查摘要（任务详情 §16.2 / §20.4）：待确认 Diff 时 available=true。
@@ -1135,6 +1161,91 @@ data class DiffFileResponseDto(
     val lines: List<DiffLineResponseDto>? = null,
     @SerializedName("fileName") val fileName: String? = null
 )
+
+// ── 交付中心（delivery-items：CODE 交付物 + MR 流程，参考 web DeliveryCenter） ──
+
+/** 交付物（CODE；GET /projects/{projectId}/delivery-items） */
+data class DeliveryItemDto(
+    val id: String,
+    @SerializedName("resourceType") val resourceType: String,      // CODE / MEMORY / SKILL
+    val title: String,
+    @SerializedName("displayStatus") val displayStatus: String,
+    @SerializedName("reviewStatus") val reviewStatus: String?,
+    @SerializedName("deliveryStatus") val deliveryStatus: String?,
+    @SerializedName("filesChanged") val filesChanged: Int = 0,
+    val additions: Int = 0,
+    val deletions: Int = 0,
+    @SerializedName("diffId") val diffId: String?,
+    @SerializedName("requirementGroup") val requirementGroup: DeliveryGroupDto?,
+    val source: DeliverySourceDto?,
+    val repositories: List<DeliveryRepositoryDto>?,
+    @SerializedName("repositoryDeliveries") val repositoryDeliveries: List<DeliveryRepositoryDeliveryDto>?,
+    @SerializedName("mergeRequest") val mergeRequest: DeliveryMergeRequestSummaryDto?,
+    val capabilities: DeliveryCapabilitiesDto?
+)
+
+data class DeliveryGroupDto(val id: String?, val name: String?)
+
+data class DeliverySourceDto(
+    @SerializedName("taskId") val taskId: String?,
+    @SerializedName("taskDisplayCode") val taskDisplayCode: String?,
+    @SerializedName("taskTitle") val taskTitle: String?
+)
+
+data class DeliveryRepositoryDto(val name: String?, val branch: String?)
+
+data class DeliveryRepositoryDeliveryDto(
+    @SerializedName("repositoryId") val repositoryId: String?,
+    @SerializedName("repositoryName") val repositoryName: String?,
+    @SerializedName("deliveryStatus") val deliveryStatus: String?,
+    @SerializedName("failureReason") val failureReason: String?,
+    @SerializedName("mergeRequest") val mergeRequest: DeliveryMergeRequestSummaryDto?
+)
+
+data class DeliveryMergeRequestSummaryDto(
+    val number: Int?,
+    val title: String?,
+    @SerializedName("webUrl") val webUrl: String?
+)
+
+/** 交付物操作能力位（web DeliveryCapabilities；Android 据此显示按钮） */
+data class DeliveryCapabilitiesDto(
+    @SerializedName("canOpenResource") val canOpenResource: Boolean = false,
+    @SerializedName("canApprove") val canApprove: Boolean = false,
+    @SerializedName("canReject") val canReject: Boolean = false,
+    @SerializedName("canRetryDelivery") val canRetryDelivery: Boolean = false
+)
+
+/** MR 门禁检查项（GET /merge-requests/{id}/checks）：type=TESTSET/AI_REVIEW/DRY_RUN/CQ_PLUS_ONE，status=PENDING/PASSED/FAILED */
+data class MergeRequestCheckDto(
+    val id: String,
+    val type: String,
+    val status: String,
+    @SerializedName("attemptNo") val attemptNo: Int?,
+    @SerializedName("testsetId") val testsetId: String?,
+    @SerializedName("commitSha") val commitSha: String?,
+    val source: String?,
+    @SerializedName("startedAt") val startedAt: String?,
+    @SerializedName("completedAt") val completedAt: String?
+)
+
+/** MR 审查摘要（GET /merge-requests/{id}/reviews；CQ+1 审批人/决定） */
+data class MergeRequestReviewDto(
+    val id: String,
+    val reviewer: DeliveryUserDto?,
+    val decision: String?,
+    @SerializedName("cqPlusOne") val cqPlusOne: Boolean?,
+    val comment: String?,
+    @SerializedName("createdAt") val createdAt: String?
+)
+
+data class DeliveryUserDto(val id: String?, @SerializedName("displayName") val displayName: String?)
+
+/** CQ+1 / CQ 拒绝请求体（reason 可选） */
+data class CqActionRequest(val reason: String? = null)
+
+/** 空请求体（merge / sync 等无 body 的 POST） */
+class EmptyBody
 
 // ── 项目级 TaskRun（§20.6） ──
 

@@ -229,66 +229,6 @@
                 android:paddingStart="16dp"
                 android:paddingEnd="10dp" />
 
-
-            <!-- ── MR查看区块 ── -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingStart="16dp"
-                android:paddingEnd="20dp"
-                android:paddingTop="10dp">
-
-                <ImageView
-                    android:id="@+id/ivMR"
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:src="@drawable/ic_mr"
-                    app:tint="@color/navy_light" />
-
-                <TextView
-                    android:id="@+id/tvMR"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:paddingStart="5dp"
-                    android:text="合并请求"
-                    android:textColor="@color/text_primary"
-                    android:textSize="28sp"
-                    android:textStyle="bold" />
-
-                <Space
-                    android:layout_width="0dp"
-                    android:layout_height="1dp"
-                    android:layout_weight="1" />
-
-                <TextView
-                    android:id="@+id/tvMRMore"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="更多合并请求 ▶ "
-                    android:textColor="@color/teal"
-                    android:textSize="15sp" />
-            </LinearLayout>
-            <TextView
-                android:id="@+id/tvMREmpty"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginVertical="20dp"
-                android:layout_marginStart="16dp"
-                android:text="📒 暂无合并请求"
-                android:textSize="18sp"
-                android:textColor="@color/text_secondary" />
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvMRList"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:clipToPadding="false"
-                android:nestedScrollingEnabled="false"
-                android:paddingTop="4dp"
-                android:paddingStart="16dp"
-                android:paddingEnd="10dp" />
-
         </LinearLayout>
     </ScrollView>
 

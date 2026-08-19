@@ -46,14 +46,25 @@
             android:id="@+id/action_tasks_to_taskCardList"
             app:destination="@id/taskCardListFragment" />
         <action
-            android:id="@+id/action_tasks_to_mrList"
-            app:destination="@id/mergeRequestListFragment" />
-        <action
             android:id="@+id/action_tasks_to_taskDetail"
             app:destination="@id/taskDetailFragment" />
+    </fragment>
+
+    <!-- 交付中心（CODE 交付物 + MR，diff 审核之后的交付流程） -->
+    <fragment
+        android:id="@+id/deliveryCenterFragment"
+        android:name="com.example.qgent.ui.delivery.DeliveryCenterFragment"
+        android:label="@string/nav_delivery"
+        tools:layout="@layout/fragment_delivery_center">
         <action
-            android:id="@+id/action_tasks_to_mrDetail"
+            android:id="@+id/action_deliveryCenter_to_mrList"
+            app:destination="@id/mergeRequestListFragment" />
+        <action
+            android:id="@+id/action_deliveryCenter_to_mrDetail"
             app:destination="@id/mergeRequestDetailFragment" />
+        <action
+            android:id="@+id/action_deliveryCenter_to_taskDetail"
+            app:destination="@id/taskDetailFragment" />
     </fragment>
 
     <fragment

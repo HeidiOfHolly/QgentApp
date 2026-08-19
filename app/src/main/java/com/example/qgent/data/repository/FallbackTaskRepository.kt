@@ -40,6 +40,12 @@ class FallbackTaskRepository(
     override suspend fun getTaskDetail(projectId: String, taskId: String) =
         fb.call { getTaskDetail(projectId, taskId) }
 
+    override suspend fun getWorkspaceDiffPreview(projectId: String, taskId: String, revision: Int?) =
+        fb.call { getWorkspaceDiffPreview(projectId, taskId, revision) }
+
+    override suspend fun getWorkspaceDiffPreviewFiles(projectId: String, taskId: String, revision: Int?) =
+        fb.call { getWorkspaceDiffPreviewFiles(projectId, taskId, revision) }
+
     override suspend fun getTaskSteps(projectId: String, taskId: String) =
         fb.call { getTaskSteps(projectId, taskId) }
 
@@ -51,6 +57,27 @@ class FallbackTaskRepository(
 
     override suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String) =
         fb.call { getMergeRequestDetail(projectId, mergeRequestId) }
+
+    override suspend fun getDeliveryItems(projectId: String, type: String?, cursor: String?, limit: Int) =
+        fb.call { getDeliveryItems(projectId, type, cursor, limit) }
+
+    override suspend fun getMergeRequestChecks(projectId: String, mergeRequestId: String) =
+        fb.call { getMergeRequestChecks(projectId, mergeRequestId) }
+
+    override suspend fun getMergeRequestReviews(projectId: String, mergeRequestId: String) =
+        fb.call { getMergeRequestReviews(projectId, mergeRequestId) }
+
+    override suspend fun cqApprove(projectId: String, mergeRequestId: String, reason: String?, idempotencyKey: String) =
+        fb.call { cqApprove(projectId, mergeRequestId, reason, idempotencyKey) }
+
+    override suspend fun cqReject(projectId: String, mergeRequestId: String, reason: String, idempotencyKey: String) =
+        fb.call { cqReject(projectId, mergeRequestId, reason, idempotencyKey) }
+
+    override suspend fun mergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String) =
+        fb.call { mergeRequest(projectId, mergeRequestId, idempotencyKey) }
+
+    override suspend fun syncMergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String) =
+        fb.call { syncMergeRequest(projectId, mergeRequestId, idempotencyKey) }
 
     override suspend fun getDiffFiles(projectId: String, diffId: String) =
         fb.call { getDiffFiles(projectId, diffId) }

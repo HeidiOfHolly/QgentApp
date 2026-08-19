@@ -2,10 +2,15 @@ package com.example.qgent.data.repository
 
 import com.example.qgent.data.model.ActivityDto
 import com.example.qgent.data.model.DiffFileResponseDto
+import com.example.qgent.data.model.DeliveryItemDto
+import com.example.qgent.data.model.MergeRequestCheckDto
+import com.example.qgent.data.model.MergeRequestReviewDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
 import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
+import com.example.qgent.data.model.WorkspaceDiffPreviewDto
+import com.example.qgent.data.model.WorkspaceDiffPreviewFileDto
 import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskRunListItemDto
@@ -70,6 +75,12 @@ class MockTaskRepository : TaskRepository {
     override suspend fun getTaskDetail(projectId: String, taskId: String): Result<TaskDetailDto> =
         Result.failure(UnsupportedOperationException("mock 不支持任务详情"))
 
+    override suspend fun getWorkspaceDiffPreview(projectId: String, taskId: String, revision: Int?): Result<WorkspaceDiffPreviewDto> =
+        Result.failure(UnsupportedOperationException("mock 不支持实时 Preview"))
+
+    override suspend fun getWorkspaceDiffPreviewFiles(projectId: String, taskId: String, revision: Int?): Result<List<WorkspaceDiffPreviewFileDto>> =
+        Result.failure(UnsupportedOperationException("mock 不支持实时 Preview 文件"))
+
     override suspend fun getTaskSteps(projectId: String, taskId: String): Result<List<TaskStepListItemDto>> =
         Result.success(emptyList())
 
@@ -81,6 +92,27 @@ class MockTaskRepository : TaskRepository {
 
     override suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String): Result<MergeRequestDetailDto> =
         Result.failure(UnsupportedOperationException("mock 不支持合并请求详情"))
+
+    override suspend fun getDeliveryItems(projectId: String, type: String?, cursor: String?, limit: Int): Result<List<DeliveryItemDto>> =
+        Result.success(emptyList())
+
+    override suspend fun getMergeRequestChecks(projectId: String, mergeRequestId: String): Result<List<MergeRequestCheckDto>> =
+        Result.success(emptyList())
+
+    override suspend fun getMergeRequestReviews(projectId: String, mergeRequestId: String): Result<List<MergeRequestReviewDto>> =
+        Result.success(emptyList())
+
+    override suspend fun cqApprove(projectId: String, mergeRequestId: String, reason: String?, idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
+
+    override suspend fun cqReject(projectId: String, mergeRequestId: String, reason: String, idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
+
+    override suspend fun mergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
+
+    override suspend fun syncMergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit> =
+        Result.success(Unit)
 
     override suspend fun getDiffFiles(projectId: String, diffId: String): Result<List<DiffFileResponseDto>> =
         Result.failure(UnsupportedOperationException("mock 不支持 diff"))

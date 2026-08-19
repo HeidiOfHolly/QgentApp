@@ -12,7 +12,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
-import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.databinding.FragmentTasksBinding
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.Job
@@ -30,8 +29,6 @@ class TasksFragment : Fragment() {
     private val taskListViewModel: TaskListViewModel by activityViewModels {
         (requireActivity().application as QgentApp).container.taskListViewModelFactory
     }
-    private val githubRepository: GitHubRepository
-        get() = (requireActivity().application as QgentApp).container.githubRepository
 
     private val taskAdapter = TaskCardAdapter { task ->
         findNavController().navigate(
@@ -43,15 +40,6 @@ class TasksFragment : Fragment() {
         )
     }
     private val activityAdapter = ActivityAdapter()
-    private val mrAdapter = MergeRequestAdapter { mr ->
-        findNavController().navigate(
-            R.id.action_tasks_to_mrDetail,
-            Bundle().apply {
-                putString(MergeRequestDetailFragment.ARG_MR_ID, mr.id)
-                putString(MergeRequestDetailFragment.ARG_PROJECT_ID, mainViewModel.currentProjectId().orEmpty())
-            }
-        )
-    }
 
     private var pollingJob: Job? = null
 
@@ -76,17 +64,10 @@ class TasksFragment : Fragment() {
             findNavController().navigate(R.id.action_tasks_to_taskCardList)
         }
 
-        // 更多 MR → MR 列表页
-        binding.tvMRMore.setOnClickListener {
-            findNavController().navigate(R.id.action_tasks_to_mrList)
-        }
-
         binding.rvTaskList.layoutManager = LinearLayoutManager(requireContext())
         binding.rvTaskList.adapter = taskAdapter
         binding.rvAgentTaskList.layoutManager = LinearLayoutManager(requireContext())
         binding.rvAgentTaskList.adapter = activityAdapter
-        binding.rvMRList.layoutManager = LinearLayoutManager(requireContext())
-        binding.rvMRList.adapter = mrAdapter
 
         // 下拉刷新：重新拉取任务 / MR / 最近动态
         binding.swipeRefresh.setOnRefreshListener { refreshAllData() }
@@ -108,33 +89,29 @@ class TasksFragment : Fragment() {
             taskListViewModel.loadActivities(mainViewModel.currentProjectId(), agents)
         }
 
-        // 三列表数据
+        // 两列表数据
         taskListViewModel.uiState.observe(viewLifecycleOwner) { state ->
             // 任务页仅展示最新 MAX_MY_TASKS 条（完整列表走「更多任务」）
             taskAdapter.submitList(state.tasks.take(TaskListViewModel.MAX_MY_TASKS))
             activityAdapter.submitList(state.agentRuns)
-            mrAdapter.submitList(state.mergeRequests.take(TaskListViewModel.MAX_MR))
             // 空状态：列表为空时展示提示，非空时隐藏
             binding.tvTaskEmpty.isVisible = state.tasks.isEmpty()
             // 最近动态：加载中显示 ProgressBar，空态隐藏；完成后据列表是否为空切换空态提示
             binding.pbActivitiesLoading.isVisible = state.activitiesLoading
             binding.tvAgentEmpty.isVisible = !state.activitiesLoading && state.agentRuns.isEmpty()
-            binding.tvMREmpty.isVisible = state.mergeRequests.isEmpty()
             state.error?.let {
                 taskListViewModel.consumeError()
             }
-            // 三列表刷新完成 → 收起下拉刷新动画（uiState 更新即视为刷新结束）
+            // 刷新完成 → 收起下拉刷新动画（uiState 更新即视为刷新结束）
             binding.swipeRefresh.isRefreshing = false
         }
     }
 
-    /** 下拉刷新：重新拉取任务 / MR / 最近动态 */
+    /** 下拉刷新：重新拉取任务 / 最近动态 */
     private fun refreshAllData() {
         val projectId = mainViewModel.currentProjectId()
         taskListViewModel.loadTasks(projectId)
-        taskListViewModel.loadMergeRequestsForList(projectId)
         taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
-        loadRepoNameMap(projectId)
     }
 
     override fun onResume() {
@@ -143,9 +120,7 @@ class TasksFragment : Fragment() {
         val projectId = mainViewModel.currentProjectId()
         // loadTasks 内部对同项目防重复跳过，这里先强制刷新一次再启动轮询
         taskListViewModel.loadTasks(projectId)
-        taskListViewModel.loadMergeRequestsForList(projectId)
         taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
-        loadRepoNameMap(projectId)
         startPolling()
     }
 
@@ -154,7 +129,7 @@ class TasksFragment : Fragment() {
         stopPolling()
     }
 
-    /** 轮询：任务页 Tab 停留时每 3 秒刷新任务/MR/最近动态（后端任务执行进度实时可见） */
+    /** 轮询：任务页 Tab 停留时每 3 秒刷新任务/最近动态（后端任务执行进度实时可见） */
     private fun startPolling() {
         if (pollingJob?.isActive == true) return
         val projectId = mainViewModel.currentProjectId() ?: return
@@ -162,7 +137,6 @@ class TasksFragment : Fragment() {
             while (true) {
                 delay(POLL_INTERVAL_MS)
                 taskListViewModel.loadTasks(projectId)
-                taskListViewModel.loadMergeRequestsForList(projectId)
                 taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
             }
         }
@@ -171,17 +145,6 @@ class TasksFragment : Fragment() {
     private fun stopPolling() {
         pollingJob?.cancel()
         pollingJob = null
-    }
-
-    /** 拉取项目绑定仓库，建立 repositoryId → 仓库名 映射供 MR 卡片展示 */
-    private fun loadRepoNameMap(projectId: String?) {
-        if (projectId == null) return
-        viewLifecycleOwner.lifecycleScope.launch {
-            githubRepository.getProjectRepositories(projectId)
-                .onSuccess { repos ->
-                    mrAdapter.updateRepoNames(repos.associate { it.id to it.displayName })
-                }
-        }
     }
 
     override fun onDestroyView() {

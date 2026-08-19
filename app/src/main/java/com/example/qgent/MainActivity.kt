@@ -86,10 +86,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // 非三 Tab 页面（如群聊详情）隐藏底部导航栏
+            // 非 Tab 页面（如群聊详情）隐藏底部导航栏
             navController.addOnDestinationChangedListener { _, destination, _ ->
                 val isTabPage = destination.id == R.id.chatListFragment ||
                     destination.id == R.id.tasksFragment ||
+                    destination.id == R.id.deliveryCenterFragment ||
                     destination.id == R.id.agentFragment
                 binding.bottomNav.visibility = if (isTabPage) View.VISIBLE else View.GONE
             }

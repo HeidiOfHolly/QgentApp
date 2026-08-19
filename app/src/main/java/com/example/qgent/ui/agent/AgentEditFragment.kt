@@ -160,11 +160,16 @@ class AgentEditFragment : Fragment() {
             Toast.makeText(requireContext(), "请输入系统提示词（prompt 必填）", Toast.LENGTH_SHORT).show()
             return
         }
+        // 用途描述必填（产品约定：创建自定义 Agent 时用途说明必须填写）
+        val description = binding.etDescription.text?.toString()?.trim()
+        if (description.isNullOrEmpty()) {
+            Toast.makeText(requireContext(), "请输入用途描述（必填）", Toast.LENGTH_SHORT).show()
+            return
+        }
         val teamId = mainViewModel.currentTeamId() ?: run {
             Toast.makeText(requireContext(), "请先选择团队", Toast.LENGTH_SHORT).show()
             return
         }
-        val description = binding.etDescription.text?.toString()?.trim().orEmpty().ifEmpty { null }
         val role = selectedRole()
         binding.btnSave.isEnabled = false
         viewLifecycleOwner.lifecycleScope.launch {
