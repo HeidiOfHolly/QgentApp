@@ -19,8 +19,7 @@ data class SseEvent(
  * 全部事件类型（按流分组）。
  *
  * 项目级流（GET /projects/{projectId}/events）：任务/Diff/交付 + 消息/群/Memory；
- * 团队级流（GET /teams/{teamId}/events）：成员/项目动态；
- * 通知级流（GET /notifications/events）：通知。
+ * 团队级流（GET /teams/{teamId}/events）：成员/项目动态。
  */
 enum class SseEventType(val wire: String) {
 
@@ -79,12 +78,7 @@ enum class SseEventType(val wire: String) {
     /** 成员加入（接受邀请）/移出团队；payload { teamId, userId } */
     TEAM_MEMBER_UPDATED("team.member.updated"),
     /** 团队动态产生（暂未单独发布，由项目事件聚合）；payload { teamId } */
-    ACTIVITY_CREATED("activity.created"),
-
-    // ── 通知级（GET /notifications/events，清单 ③） ──
-
-    /** 新通知产生（含 INVITED 邀请）；payload { notificationId, kind } */
-    NOTIFICATION_CREATED("notification.created");
+    ACTIVITY_CREATED("activity.created");
 
     companion object {
         /** 未知事件名 → null（不做匹配，避免枚举增长破坏解析） */

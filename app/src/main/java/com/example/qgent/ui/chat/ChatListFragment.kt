@@ -50,8 +50,13 @@ class ChatListFragment : Fragment() {
     private val eventStream: ProjectEventStream
         get() = (requireActivity().application as QgentApp).container.projectEventStream
 
+    /** WebSocket 实时通道（单连接用户级聚合，聊天实时主通道） */
+    private val realtimeClient: com.example.qgent.data.ws.RealtimeClient
+        get() = (requireActivity().application as QgentApp).container.realtimeClient
+
     private var pollingJob: Job? = null
     private var eventStreamJob: Job? = null
+    private var wsJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -78,14 +83,17 @@ class ChatListFragment : Fragment() {
     }
 
     /**
-     * 项目级 SSE 事件流（文档 §12.1 + message.created 补充）：
+     * 实时事件（SSE §12.1 + WebSocket 单连接聚合，后端 2026-08-17）：
      * 仅当事件影响群列表（新消息、群变更、成员变动）时刷新群列表摘要/未读，
      * 任务/Diff 类事件不触发全量刷新，避免事件风暴导致列表频繁重建。
+     * WS 为主实时通道（规避 SSE 长连接被 CDN/网关掐断），SSE 保留兜底；事件幂等，重复到达无害。
      * 轮询仍保留作为无事件时的兜底。
      */
     private fun startEventStream() {
         val projectId = mainViewModel.currentProjectId() ?: return
         eventStream.startProject(projectId)
+        realtimeClient.start()
+        realtimeClient.onReconnected = { mainViewModel.refreshGroups() }
         if (eventStreamJob == null) {
             eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
                 eventStream.events.collect { event ->
@@ -94,9 +102,28 @@ class ChatListFragment : Fragment() {
                         SseEventType.GROUP_CREATED,
                         SseEventType.GROUP_UPDATED,
                         SseEventType.GROUP_ARCHIVED,
-                        SseEventType.GROUP_MEMBER_UPDATED,
                         SseEventType.PROJECT_MEMBER_ADDED -> mainViewModel.refreshGroups()
+                        // 成员变动 → 先清成员缓存再刷新（isGroupMember 缓存可能过期）
+                        SseEventType.GROUP_MEMBER_UPDATED -> {
+                            mainViewModel.clearGroupMemberCache()
+                            mainViewModel.refreshGroups()
+                        }
                         else -> Unit // 任务/Diff/交付等事件不影响群列表，跳过
+                    }
+                }
+            }
+        }
+        if (wsJob == null) {
+            wsJob = viewLifecycleOwner.lifecycleScope.launch {
+                realtimeClient.events.collect { frame ->
+                    when (frame.type) {
+                        "message.created", "group.created", "group.updated", "group.archived",
+                        "project.member.added" -> mainViewModel.refreshGroups()
+                        "group.member.updated" -> {
+                            mainViewModel.clearGroupMemberCache()
+                            mainViewModel.refreshGroups()
+                        }
+                        else -> Unit
                     }
                 }
             }
@@ -106,7 +133,10 @@ class ChatListFragment : Fragment() {
     private fun stopEventStream() {
         eventStreamJob?.cancel()
         eventStreamJob = null
+        wsJob?.cancel()
+        wsJob = null
         eventStream.stop()
+        realtimeClient.stop()
     }
 
     /** 轮询群聊列表：后端暂无聊天推送，用定时 refreshGroups 兜底实现别人发消息红点实时显示 */

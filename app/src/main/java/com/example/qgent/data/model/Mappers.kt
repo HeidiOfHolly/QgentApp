@@ -43,7 +43,7 @@ fun GroupMemberDto.toGroupMember(): GroupMember = GroupMember(
  *  TASK_STATUS 消息 content 无 text，从 JSON 解析 taskId/status/node/message 拼可读摘要。 */
 fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String, String>): ChatMessage {
     val parsedType = runCatching { MessageType.valueOf(type) }.getOrDefault(MessageType.TEXT)
-    android.util.Log.d("MsgRaw", "type=$type senderType=$senderType content=${content?.let { com.google.gson.Gson().toJson(it) }}")
+    android.util.Log.d("MsgRaw", "type=$type senderType=$senderType senderId=$senderId seq=$sequence replyText=$replyText mentions=$mentions content=${content?.let { com.google.gson.Gson().toJson(it) }}")
     val displayContent = when {
         parsedType == MessageType.IMAGE || parsedType == MessageType.FILE -> content?.url ?: ""
         parsedType == MessageType.TASK_STATUS -> taskStatusSummary()
@@ -93,7 +93,9 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
         diffDeletions = if (parsedType == MessageType.DIFF) content?.deletions else null,
         reviewBatchId = if (parsedType == MessageType.DIFF) content?.reviewBatchId else null,
         reviewStatus = if (parsedType == MessageType.DIFF) content?.reviewStatus else null,
-        deliveryStatus = if (parsedType == MessageType.DIFF) content?.deliveryStatus else null
+        deliveryStatus = if (parsedType == MessageType.DIFF) content?.deliveryStatus else null,
+        // §7.1 MESSAGE_MENTION 通知直达：记录 @ 提及 id，resourceId 缺失时兜底定位「最上面一条被 @ 的消息」
+        mentionIds = mentions?.mapNotNull { it.id }
     )
 }
 

@@ -141,6 +141,25 @@ abstract class BaseMessageListFragment : Fragment() {
                 return
             }
         }
+        // §7.1 MESSAGE_MENTION：点击直达被 @ 的消息。
+        // resourceId = 被 @ 的消息 id，跳群后由群聊页滚动高亮到该消息；
+        // resourceId 缺失时传 fromMention=true，群聊页兜底滚到最上面一条被 @ 的消息。
+        if (notification.kind == "MESSAGE_MENTION") {
+            val groupId = notification.groupId.orEmpty()
+            val projectId = notification.projectId.orEmpty()
+            if (groupId.isNotEmpty() && projectId == mainViewModel.currentProjectId()) {
+                findNavController().navigate(
+                    R.id.chatDetailFragment,
+                    bundleOf(
+                        "groupName" to (mainViewModel.groups.value?.firstOrNull { it.id == groupId }?.name ?: notification.title),
+                        "groupId" to groupId,
+                        "targetMessageId" to notification.resourceId.orEmpty(),
+                        "fromMention" to true
+                    )
+                )
+                return
+            }
+        }
         val groupId = notification.groupId.orEmpty()
         val projectId = notification.projectId.orEmpty()
         if (groupId.isNotEmpty() && projectId == mainViewModel.currentProjectId()) {

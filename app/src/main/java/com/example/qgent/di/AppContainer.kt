@@ -100,6 +100,12 @@ class AppContainer(context: Context) {
      */
     val projectEventStream = ProjectEventStream(RetrofitClient.httpClient, RetrofitClient.BASE_URL)
 
+    /**
+     * WebSocket 实时通道（后端 2026-08-17 新增：单连接用户级聚合，SSE 保留兼容）。
+     * 握手 ?token= 鉴权；聊天页实时刷新优先走它（规避 SSE 长连接被 CDN/网关掐断）。
+     */
+    val realtimeClient = com.example.qgent.data.ws.RealtimeClient(RetrofitClient.httpClient, RetrofitClient.BASE_URL)
+
     val authViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer { AuthViewModel(authRepository) }
     }

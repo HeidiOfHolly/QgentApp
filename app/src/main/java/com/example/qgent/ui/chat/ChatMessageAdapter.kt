@@ -66,6 +66,15 @@ class ChatMessageAdapter(
     /** 群成员 id → 头像 URL（群成员接口返回，用于他人消息气泡旁展示） */
     private var memberAvatarById: Map<String, String> = emptyMap()
 
+    /** 直达定位的目标消息 id：命中行整行高亮（通知点击直达被 @ 消息；由 Fragment 定时清除） */
+    private var highlightMessageId: String? = null
+
+    /** 设置目标消息高亮（null 清除）；配合 notifyDataSetChanged 重绘 */
+    fun setHighlightMessageId(id: String?) {
+        highlightMessageId = id
+        notifyDataSetChanged()
+    }
+
     /** 更新成员头像映射（成员表加载/刷新后调用） */
     fun setMemberAvatars(avatars: Map<String, String>) {
         memberAvatarById = avatars
@@ -123,7 +132,8 @@ class ChatMessageAdapter(
 
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-        when (val row = rows[position]) {
+        val row = rows[position]
+        when (row) {
             is ChatRow.Time -> (holder as TimeVH).binding.tvTime.text = row.text
             is ChatRow.Message -> when (row.message.type) {
                 MessageType.SYSTEM -> (holder as SystemVH).bind(row.message)
@@ -136,6 +146,12 @@ class ChatMessageAdapter(
                 )
             }
         }
+        // 直达定位高亮：命中目标消息的行铺一层浅色底（两分支都设置，保证回收复用后状态正确）
+        val highlight = (row as? ChatRow.Message)?.message?.id?.let { it == highlightMessageId && it.isNotEmpty() } == true
+        holder.itemView.setBackgroundColor(
+            if (highlight) holder.itemView.context.getColor(R.color.message_highlight)
+            else android.graphics.Color.TRANSPARENT
+        )
     }
 
     override fun getItemCount(): Int = rows.size

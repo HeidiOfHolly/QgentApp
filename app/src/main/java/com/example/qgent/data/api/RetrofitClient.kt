@@ -8,7 +8,8 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
-    const val BASE_URL = "http://47.113.224.195:32500/api/v1/"
+    // Retrofit 要求 baseUrl 以 "/" 结尾（否则启动抛 IllegalArgumentException）
+    const val BASE_URL = "https://api.qgents.dpdns.org/api/v1/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY

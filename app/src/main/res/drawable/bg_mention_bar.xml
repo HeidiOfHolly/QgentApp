@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 群聊页「↑ 有人@你」提示条背景（对齐 web ChatPanel：琥珀半透明底 + 琥珀描边圆角胶囊） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#1FF5A623" />
+    <stroke
+        android:width="1dp"
+        android:color="#66F5A623" />
+    <corners android:radius="999dp" />
+</shape>

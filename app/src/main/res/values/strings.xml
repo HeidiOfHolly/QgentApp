@@ -317,6 +317,8 @@
     <string name="chat_input_hint">输入消息…</string>
     <string name="send">发送</string>
     <string name="mentioned_me">[有人@我]</string>
+    <!-- 群聊页「↑ 有人@你」提示条（对齐 web ChatPanel：点击滚动到被 @ 的消息并高亮） -->
+    <string name="mention_bar_text">↑ 有人@你</string>
     <string name="image">图片</string>
     <string name="file">文件</string>
     <string name="chat_settings_title">群聊设置</string>
