@@ -25,8 +25,12 @@ class LoginActivity : AppCompatActivity() {
         binding = ActivityLoginBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 记住的邮箱预填
-        SessionStore.rememberedEmail()?.let { binding.etEmail.setText(it) }
+        // 记住的邮箱 + 密码预填（密码来自 Keystore AES 解密；仅在勾选记住密码时保存过）
+        SessionStore.rememberedEmail()?.let {
+            binding.etEmail.setText(it)
+            binding.cbRemember.isChecked = true
+        }
+        SessionStore.rememberedPassword()?.let { binding.etPassword.setText(it) }
 
         binding.etEmail.doAfterTextChanged {
             if (binding.emailLayout.error != null) binding.emailLayout.error = null
@@ -71,9 +75,12 @@ class LoginActivity : AppCompatActivity() {
             if (state.success) {
                 viewModel.consumeSuccess()
                 if (binding.cbRemember.isChecked) {
+                    // 记住密码：邮箱 + 密码（密码 AES 加密落盘）
                     SessionStore.saveRememberedEmail(binding.etEmail.text.toString())
+                    SessionStore.saveRememberedPassword(binding.etPassword.text.toString())
                 } else {
                     SessionStore.saveRememberedEmail("")
+                    SessionStore.clearRememberedPassword()
                 }
                 val name = SessionStore.user()?.displayName ?: ""
                 Toast.makeText(this, getString(R.string.login_success, name), Toast.LENGTH_SHORT).show()
