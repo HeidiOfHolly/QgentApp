@@ -12,6 +12,7 @@ import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -435,23 +436,45 @@ class TaskDetailFragment : Fragment() {
     }
 
     /**
-     * 任务失败原因（需求与任务步骤之间）：任务状态为 FAILED 时展示。
-     * 原因优先级：Task 启动失败 statusReason（§34.1，Sandbox/Worker/基线初始化失败时返回，
-     * 此时尚未创建 TaskRun）→ 失败运行 statusReason（§16.4）→ statusSummary → 兜底通用文案。
+     * 任务失败原因（需求与任务步骤之间）：任务 FAILED / DELIVERY_FAILED 统一在此展示
+     * （对齐后端 45 节：任务详情接口与诊断接口统一组装 code+summary，summary 优先持久化脱敏 failureReason）。
+     * 原因优先级：任务 statusReason.summary（后端统一组装）→ title → 失败运行 statusReason → 兜底；
+     * DELIVERY_FAILED 且 statusReason 缺失（旧后端）时回退 diffReviewSummary 的交付失败字段。
+     * GIT_BRANCH_NOT_FOUND（基线分支不存在，§45.2 特例）：展示真实原因 + 「重新发起任务」跳需求群。
      */
     private fun updateFailureReason() {
-        val taskFailed = lastDetail?.status == "FAILED"
-        binding.layoutFailureReason.isVisible = taskFailed
-        if (!taskFailed) return
-        val taskReason = lastDetail?.statusReason
+        val detail = lastDetail
+        val failed = detail?.status == "FAILED" || detail?.status == "DELIVERY_FAILED"
+        binding.layoutFailureReason.isVisible = failed
+        if (!failed || detail == null) return
+        val taskReason = detail.statusReason
         val failedRun = lastRuns.firstOrNull { it.status == "FAILED" }
         val reason = taskReason?.summary
             ?: taskReason?.title
             ?: failedRun?.statusReason?.summary
             ?: failedRun?.statusReason?.title
             ?: failedRun?.statusSummary
-            ?: "Agent 任务执行失败，详见任务运行执行日志"
+            ?: extractDeliveryFailedReason(detail.diffReviewSummary)
+            ?: getString(R.string.task_failure_generic)
+        binding.tvFailureTitle.text = getString(
+            if (detail.status == "DELIVERY_FAILED") R.string.task_delivery_failed_title else R.string.task_failure_title
+        )
         binding.tvFailureReason.text = reason
+        // GIT_BRANCH_NOT_FOUND：基线分支不存在 → 「重新发起任务」跳需求群（§45.2 特例，跳群后重新发起）
+        val branchMissing = taskReason?.failureCode == "GIT_BRANCH_NOT_FOUND"
+        val requirementGroup = detail.requirementGroup
+        binding.btnRestartTask.isVisible = branchMissing && requirementGroup != null
+        if (branchMissing && requirementGroup != null) {
+            binding.btnRestartTask.setOnClickListener {
+                findNavController().navigate(
+                    R.id.chatDetailFragment,
+                    bundleOf(
+                        "groupName" to requirementGroup.name,
+                        "groupId" to requirementGroup.id
+                    )
+                )
+            }
+        }
     }
 
     /**
@@ -499,17 +522,9 @@ class TaskDetailFragment : Fragment() {
         binding.tvDeliveryStatus.isVisible = overview != null
         binding.tvDeliveryStatus.text = overview
 
-        // 失败原因行（仅真正失败/任务级 DELIVERY_FAILED）
-        val hardFailed = deliveryStatus == "FAILED" ||
-            deliveryStatus == "DELIVERY_FAILED" ||
-            detail.status == "DELIVERY_FAILED"
-        if (hardFailed) {
-            val reasonText = extractDeliveryFailedReason(diffSummary) ?: "交付过程中出错，详见任务运行执行日志"
-            binding.tvDeliveryError.text = "交付失败：$reasonText"
-            binding.tvDeliveryError.isVisible = true
-        } else {
-            binding.tvDeliveryError.isVisible = false
-        }
+        // 失败原因统一走 layoutFailureReason（updateFailureReason，后端 45 节统一 code+summary），
+        // 不再从 diffReviewSummary 猜字段单独渲染交付失败行（避免同一页面两条链路返回矛盾失败信息；
+        // tvDeliveryError 控件已随布局移除）
 
         // 重试交付：部分失败/失败（能力位 canRetryDelivery 优先）；无代码任务不提供重试（无批次可重试）
         val canRetry = !noCode && DiffReviewRules.canRetryDelivery(

@@ -11,6 +11,7 @@ import androidx.core.view.GravityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.navOptions
@@ -22,6 +23,7 @@ import com.example.qgent.ui.auth.LoginActivity
 import com.example.qgent.ui.auth.TeamEntryActivity
 import com.example.qgent.ui.personal.PersonalCenterFragment
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -51,13 +53,6 @@ class MainActivity : AppCompatActivity() {
         val drawerWidth = (resources.displayMetrics.widthPixels * 0.85f).toInt()
         binding.drawerPersonalCenter.layoutParams.width = drawerWidth
 
-        // 个人中心（抽屉内容）注入抽屉容器
-        if (savedInstanceState == null) {
-            supportFragmentManager.beginTransaction()
-                .replace(R.id.drawerPersonalCenter, PersonalCenterFragment())
-                .commit()
-        }
-
         // 状态栏 / 手势导航栏 insets：内容区顶部避让状态栏，底部导航避让手势条，抽屉同样避让
         ViewCompat.setOnApplyWindowInsetsListener(binding.drawerLayout) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -67,33 +62,46 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
-        // NavHostFragment 的视图在 onCreate 时可能尚未创建完成，
-        // 延迟到视图创建并挂载后再绑定导航，避免 "does not have a NavController set"。
-        binding.root.post {
-            navController = (supportFragmentManager
-                .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
-            binding.bottomNav.setupWithNavController(navController)
+        // 依赖 AppContainer 的初始化（抽屉注入 / 导航 / 路由）等后台装配完成后再执行：
+        // 等待期间 NavHostFragment 自动加载导航图并显示 SplashFragment（startDestination），
+        // 主线程不被 Room 建库/类校验占满 → 慢设备不再启动 ANR「已停止运行」
+        lifecycleScope.launch {
+            (application as QgentApp).containerReady()
 
-            // 未读任务类通知 → 底部任务 tab 图标右上角红点
-            mainViewModel.unreadTaskNotifications.observe(this) { hasUnread ->
-                if (hasUnread) {
-                    binding.bottomNav.getOrCreateBadge(R.id.tasksFragment).apply {
-                        isVisible = true
-                        badgeGravity = BadgeDrawable.TOP_END
+            // 个人中心（抽屉内容）注入抽屉容器
+            if (savedInstanceState == null) {
+                supportFragmentManager.beginTransaction()
+                    .replace(R.id.drawerPersonalCenter, PersonalCenterFragment())
+                    .commit()
+            }
+
+            // NavHostFragment 的视图在 onCreate 时可能尚未创建完成，
+            // 延迟到视图创建并挂载后再绑定导航，避免 "does not have a NavController set"。
+            binding.root.post {
+                navController = (supportFragmentManager
+                    .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
+                binding.bottomNav.setupWithNavController(navController)
+
+                // 未读任务类通知 → 底部任务 tab 图标右上角红点
+                mainViewModel.unreadTaskNotifications.observe(this@MainActivity) { hasUnread ->
+                    if (hasUnread) {
+                        binding.bottomNav.getOrCreateBadge(R.id.tasksFragment).apply {
+                            isVisible = true
+                            badgeGravity = BadgeDrawable.TOP_END
+                        }
+                    } else {
+                        binding.bottomNav.removeBadge(R.id.tasksFragment)
                     }
-                } else {
-                    binding.bottomNav.removeBadge(R.id.tasksFragment)
                 }
-            }
 
-            // 非 Tab 页面（如群聊详情）隐藏底部导航栏
-            navController.addOnDestinationChangedListener { _, destination, _ ->
-                val isTabPage = destination.id == R.id.chatListFragment ||
-                    destination.id == R.id.tasksFragment ||
-                    destination.id == R.id.deliveryCenterFragment ||
-                    destination.id == R.id.agentFragment
-                binding.bottomNav.visibility = if (isTabPage) View.VISIBLE else View.GONE
-            }
+                // 非 Tab 页面（如群聊详情）隐藏底部导航栏
+                navController.addOnDestinationChangedListener { _, destination, _ ->
+                    val isTabPage = destination.id == R.id.chatListFragment ||
+                        destination.id == R.id.tasksFragment ||
+                        destination.id == R.id.deliveryCenterFragment ||
+                        destination.id == R.id.agentFragment
+                    binding.bottomNav.visibility = if (isTabPage) View.VISIBLE else View.GONE
+                }
 
             // 仅冷启动路由一次；旋转等配置变更不重复跳转
             if (savedInstanceState == null) {
@@ -104,6 +112,7 @@ class MainActivity : AppCompatActivity() {
             // 通知权限引导（Android 13+ 未授权时提示去开启，否则后台广播收不到）
             maybePromptNotificationPermission()
             handleNotificationIntent(intent)
+            }
         }
     }
 

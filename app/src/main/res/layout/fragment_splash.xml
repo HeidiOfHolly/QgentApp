@@ -1,27 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 启动加载页（新布局）：正中间为品牌 Logo，下方加载圈圈，底部产品名 qgents 艺术字；
+     背景偏白色渐变。路由跳转（登录/主界面）由 MainActivity 负责，本页只展示。 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/navy">
+    android:background="@drawable/bg_splash_gradient"
+    tools:context=".ui.splash.SplashFragment">
 
+    <!-- 中部：Logo + 加载圈圈（整体上移一点，视觉重心略高于屏幕中心） -->
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:gravity="center"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:translationY="-24dp">
 
+        <ImageView
+            android:id="@+id/ivSplashLogo"
+            android:layout_width="221dp"
+            android:layout_height="221dp"
+            android:contentDescription="@string/app_logo"
+            android:src="@drawable/ic_launcher_foreground_img" />
+
+        <!-- 图标下方加载圈圈 -->
         <ProgressBar
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:indeterminateTint="@color/white" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/splash_loading"
-            android:textColor="@color/white"
-            android:textSize="14sp" />
+            android:id="@+id/pbSplashLoading"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginTop="22dp"
+            android:indeterminateTint="@color/charcoal" />
     </LinearLayout>
+
+    <!-- 底部：产品名艺术字 -->
+    <TextView
+        android:id="@+id/tvSplashProductName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="56dp"
+        android:fontFamily="sans-serif"
+        android:letterSpacing="0.28"
+        android:text="qgents"
+        android:textColor="@color/charcoal"
+        android:textSize="30sp"
+        android:textStyle="bold" />
 </FrameLayout>

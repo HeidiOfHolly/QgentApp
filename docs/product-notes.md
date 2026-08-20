@@ -485,3 +485,14 @@
 - **自动路径已闭环**：移动端创建任务 → 后端编排 → Diff 确认/MR_FIRST 自动交付 → **后端自动跑必选 Testset + DryRun** →
   结果回写 MR checks → 移动端看状态 → CQ+1 → Admin 合并。移动端不做任何执行操作。
 - **不做**：手动触发 test-runs/dry-runs 按钮（web 端职责）；A+ 增强（FAILED 时反查测试集名/命令）暂缓，需要时再加。
+
+## 任务失败原因展示统一（2026-08-20，后端 45 节适配）
+
+- 后端：任务详情接口与诊断接口统一 TaskStatusReasonFactory 组装（code=EXECUTION_FAILED / STARTUP_FAILED /
+  DELIVERY_FAILED；summary 优先持久化脱敏 failureReason → 稳定码受控文案 → 通用兜底）。
+- **移动端统一失败展示**：`TaskDetailFragment.updateFailureReason` 覆盖 FAILED + DELIVERY_FAILED，
+  优先读 `TaskDetailDto.statusReason.summary`（后端统一组装），旧后端缺失时回退 diffReviewSummary 猜字段（兼容）；
+  标题按状态动态（任务执行失败/交付失败）；**移除 bindDelivery 的 tvDeliveryError 行**（消除两链路矛盾）。
+- **GIT_BRANCH_NOT_FOUND 特例**：失败区显示「重新发起任务」按钮 → 跳需求群群聊（requirementGroup.id/name）。
+- 质量循环耗尽（TASK_QUALITY_LOOPS_EXHAUSTED 非白名单）：后端 code=EXECUTION_FAILED + summary 真实文案，移动端无特判直接展示。
+- 聊天页 Diff Review 对话框失败原因同样优先 statusReason.summary（与详情页同一来源）。
