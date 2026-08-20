@@ -38,13 +38,25 @@ class MergeRequestAdapter(
         b.tvMrRepo.text = repoNameById[mr.repositoryId] ?: "仓库"
         b.tvMrBranches.text = "${mr.sourceBranch} → ${mr.targetBranch}"
         b.tvMrStatus.text = statusText(mr.status)
-        b.root.setOnClickListener { onItemClick(mr) }
+        b.root.setOnClickListener {
+            // PENDING_CREATE 是列表投影占位（§43：number=0/webUrl=null，真实 MR 未创建），
+            // 不得用占位 id 调真实 MR 详情；点击仅提示，不跳转
+            if (mr.status == "PENDING_CREATE") {
+                android.widget.Toast.makeText(
+                    b.root.context, "MR 待创建，请先通过预检与 CQ+1", android.widget.Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                onItemClick(mr)
+            }
+        }
     }
 
     private fun statusText(status: String): String = when (status) {
         "OPEN" -> "进行中"
         "MERGED" -> "已合并"
         "CLOSED" -> "已关闭"
+        // §43：列表投影占位，真实 MR 未创建（number=0/webUrl=null），待预检/CQ+1 通过后创建
+        "PENDING_CREATE" -> "待创建"
         else -> status
     }
 

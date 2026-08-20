@@ -387,6 +387,19 @@
 契约：`id` = 流内 sequenceNo（Last-Event-ID 续传），15s 心跳，409 EVENT_CURSOR_EXPIRED 清游标重连。
 事件仅刷新界面，处理后必须重新拉查询接口。客户端 API：`startProject(id)` / `startTeam(id)` / `startNotifications()`。
 
+### 实时刷新覆盖补全（2026-08-20，设计要点核对）
+
+- **MR 列表页（MergeRequestListFragment）**：补 WS+SSE 双订阅（WebSocket 主通道 + SSE 兜底，事件名一致 via
+  `SseEventType.fromWire`）；收到 `merge-request.updated` / `dry-run.updated` / `preflight.updated` /
+  `delivery.*` / `task.updated` 一律**强制重新查询** MR 列表 + 仓库名映射（`loadMergeRequestsForList(projectId, force=true)`
+  跳过「同项目已加载」防重复）。生命周期 onResume 启动 / onPause 停止，避免不可见空转。
+- **`loadMergeRequestsForList` 新增 `force` 参数**：true 时跳过防重复（事件刷新用）；普通进入仍防重复。
+- **`SseEventType` 新增 `GITHUB_REPOSITORY_UPDATED("github-repository.updated")`**（§6.10：授权撤销/归档，
+  payload `{installationId, repositoryId, authorizationStatus, archived}`）。
+- **团队详情页（TeamDetailFragment）**：补团队级 SSE 订阅（`startTeam`）；收到 `github-repository.updated`
+  或 `project.member.added` → 重新查询授权仓库 + 成员，让网页端撤销授权后仓库区**自动标红「授权已撤销」**。
+- 设计要点确认：GitHub Review/Comment 映射 CQ+1 **不做**；所有事件只作刷新信号，不解析 payload 为完整数据。
+
 ## 群聊体系（2026-08-16 确认）
 
 - **创建项目**时后端自动创建项目总群（`PROJECT_MAIN`），包含项目全部成员，不可归档/删除。

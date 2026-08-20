@@ -56,6 +56,8 @@ enum class SseEventType(val wire: String) {
     MERGE_REQUEST_UPDATED("merge-request.updated"),
     /** Workspace 实时 Diff Preview 更新（Coding 写入后累计工作树变化；payload 只含元数据，patch 走 REST） */
     WORKSPACE_DIFF_PREVIEW_UPDATED("workspace.diff-preview.updated"),
+    /** GitHub 仓库元数据变化（§6.10：授权撤销/归档等；payload { installationId, repositoryId, authorizationStatus, archived }） */
+    GITHUB_REPOSITORY_UPDATED("github-repository.updated"),
 
     // ── 项目级：消息 / 群 / Memory（前端 SSE 需求清单 ①） ──
 

@@ -102,9 +102,8 @@ class TasksFragment : Fragment() {
             binding.tvProjectName.text = project.ifEmpty { getString(R.string.short_test) }
             // 切项目立即按新项目重新加载任务与最近动态（轮询每次也现取项目 id，双保险防串项目）
             if (project.isNotEmpty()) {
-                val projectId = mainViewModel.currentProjectId()
-                taskListViewModel.loadTasks(projectId)
-                taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
+                loadMyTasks()
+                taskListViewModel.loadActivities(mainViewModel.currentProjectId(), mainViewModel.agents.value.orEmpty())
             }
         }
         // Agent 名单变化时触发最近动态；agents 为空时也会清空旧动态，避免串项目
@@ -114,13 +113,11 @@ class TasksFragment : Fragment() {
 
         // 两列表数据
         taskListViewModel.uiState.observe(viewLifecycleOwner) { state ->
-            // 任务页仅展示最近 MAX_MY_TASKS 条（按 updatedAt 倒序取最新；完整列表走「更多任务」）
-            taskAdapter.submitList(
-                state.tasks.sortedByDescending { it.updatedAt }.take(TaskListViewModel.MAX_MY_TASKS)
-            )
+            // 任务页仅展示当前用户最近 MAX_MY_TASKS 条（myTasks 已按创建者过滤且不受列表页筛选影响）
+            taskAdapter.submitList(state.myTasks.take(TaskListViewModel.MAX_MY_TASKS))
             activityAdapter.submitList(state.agentRuns)
             // 空状态：列表为空时展示提示，非空时隐藏
-            binding.tvTaskEmpty.isVisible = state.tasks.isEmpty()
+            binding.tvTaskEmpty.isVisible = state.myTasks.isEmpty()
             // 最近动态：未加载出来前/无数据时统一显示空态提示
             binding.tvAgentEmpty.isVisible = state.agentRuns.isEmpty()
             state.error?.let {
@@ -167,20 +164,24 @@ class TasksFragment : Fragment() {
         }
     }
 
+    /** 加载任务首页数据：当前用户的任务（不读列表页筛选状态，返回后列表筛选不影响首页） */
+    private fun loadMyTasks() {
+        val projectId = mainViewModel.currentProjectId()
+        taskListViewModel.loadMyTasks(projectId, com.example.qgent.data.SessionStore.user()?.id)
+    }
+
     /** 下拉刷新：重新拉取任务 / 最近动态 */
     private fun refreshAllData() {
-        val projectId = mainViewModel.currentProjectId()
-        taskListViewModel.loadTasks(projectId)
-        taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
+        loadMyTasks()
+        taskListViewModel.loadActivities(mainViewModel.currentProjectId(), mainViewModel.agents.value.orEmpty())
     }
 
     override fun onResume() {
         super.onResume()
         mainViewModel.refreshUnreadTaskNotifications()
-        val projectId = mainViewModel.currentProjectId()
-        // loadTasks 内部对同项目防重复跳过，这里先强制刷新一次再启动轮询
-        taskListViewModel.loadTasks(projectId)
-        taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
+        // 首页只加载当前用户任务，返回主界面时不受列表页筛选影响
+        loadMyTasks()
+        taskListViewModel.loadActivities(mainViewModel.currentProjectId(), mainViewModel.agents.value.orEmpty())
         startPolling()
     }
 
@@ -198,7 +199,7 @@ class TasksFragment : Fragment() {
                 delay(POLL_INTERVAL_MS)
                 val projectId = mainViewModel.currentProjectId()
                 if (projectId == null) continue
-                taskListViewModel.loadTasks(projectId)
+                taskListViewModel.loadMyTasks(projectId, com.example.qgent.data.SessionStore.user()?.id)
                 taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
             }
         }

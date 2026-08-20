@@ -9,11 +9,12 @@
     android:orientation="vertical"
     android:padding="12dp">
 
-    <!-- 标题：任务展示码 + 标题 -->
+    <!-- 标题：任务展示码 + 标题（超长单行省略号） -->
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/text_primary"
         android:textSize="18sp"

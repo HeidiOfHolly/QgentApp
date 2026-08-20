@@ -170,13 +170,19 @@ class DeliveryCenterFragment : Fragment() {
                 setPadding(dp(12), dp(10), dp(12), dp(10))
                 setBackgroundResource(R.drawable.bg_card)
                 setOnClickListener {
-                    findNavController().navigate(
-                        R.id.action_deliveryCenter_to_mrDetail,
-                        bundleOf(
-                            com.example.qgent.ui.tasks.MergeRequestDetailFragment.ARG_MR_ID to mr.id,
-                            com.example.qgent.ui.tasks.MergeRequestDetailFragment.ARG_PROJECT_ID to (mainViewModel.currentProjectId().orEmpty())
+                    // PENDING_CREATE 是列表投影占位（§43：number=0/webUrl=null，真实 MR 未创建），
+                    // 不得用占位 id 调真实 MR 详情；点击仅提示，不跳转
+                    if (mr.status == "PENDING_CREATE") {
+                        android.widget.Toast.makeText(requireContext(), "MR 待创建，请先通过预检与 CQ+1", android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        findNavController().navigate(
+                            R.id.action_deliveryCenter_to_mrDetail,
+                            bundleOf(
+                                com.example.qgent.ui.tasks.MergeRequestDetailFragment.ARG_MR_ID to mr.id,
+                                com.example.qgent.ui.tasks.MergeRequestDetailFragment.ARG_PROJECT_ID to (mainViewModel.currentProjectId().orEmpty())
+                            )
                         )
-                    )
+                    }
                 }
             }
             val lp = LinearLayout.LayoutParams(
@@ -184,7 +190,8 @@ class DeliveryCenterFragment : Fragment() {
             ).apply { bottomMargin = dp(8) }
             row.layoutParams = lp
             row.addView(TextView(requireContext()).apply {
-                text = "#${mr.number}"
+                // PENDING_CREATE 占位 number=0（§43），不当作真实 PR 号展示
+                text = if (mr.status == "PENDING_CREATE") "待创建" else "#${mr.number}"
                 setTextColor(requireContext().getColor(R.color.primary))
                 textSize = 15f
                 setTypeface(null, android.graphics.Typeface.BOLD)
@@ -210,6 +217,8 @@ class DeliveryCenterFragment : Fragment() {
         "OPEN" -> "进行中"
         "MERGED" -> "已合并"
         "CLOSED" -> "已关闭"
+        // §43：列表投影占位，真实 MR 未创建（number=0/webUrl=null），待预检/CQ+1 通过后创建
+        "PENDING_CREATE" -> "待创建"
         else -> status
     }
 

@@ -28,6 +28,8 @@ import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.UserRepository
+import com.example.qgent.data.sse.ProjectEventStream
+import com.example.qgent.data.sse.SseEventType
 import com.example.qgent.databinding.DialogInviteHistoryBinding
 import com.example.qgent.databinding.DialogInviteMemberBinding
 import com.example.qgent.databinding.FragmentTeamDetailBinding
@@ -38,6 +40,7 @@ import com.example.qgent.databinding.ItemRepositoryBinding
 import com.example.qgent.ui.personal.bindCollapsibleSection
 import com.example.qgent.ui.personal.fillLinearLayout
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -61,6 +64,51 @@ class TeamDetailFragment : Fragment() {
 
     /** 当前用户是否团队创建者（仅团长可见撤销仓库授权入口等管理操作） */
     private var isOwner = false
+
+    /** 团队级 SSE 事件流（授权仓库变化等；事件只作刷新信号） */
+    private val eventStream: ProjectEventStream
+        get() = (requireActivity().application as QgentApp).container.projectEventStream
+    private var eventStreamJob: Job? = null
+
+    override fun onResume() {
+        super.onResume()
+        startEventStream()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopEventStream()
+    }
+
+    /**
+     * 团队级 SSE（GET /teams/{teamId}/events）：收到 github-repository.updated
+     * （网页端撤销授权/归档仓库）→ 重新查询授权仓库，让「授权已撤销」自动标红。
+     * 事件只作刷新信号，不解析 payload 为完整数据。
+     */
+    private fun startEventStream() {
+        val teamId = arguments?.getString(ARG_TEAM_ID).orEmpty()
+        if (teamId.isEmpty()) return
+        eventStream.startTeam(teamId)
+        if (eventStreamJob == null) {
+            eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
+                eventStream.events.collect { event ->
+                    if (event.type == SseEventType.GITHUB_REPOSITORY_UPDATED ||
+                        event.type == SseEventType.PROJECT_MEMBER_ADDED
+                    ) {
+                        // 授权仓库变化 / 成员拉入项目 → 刷新仓库区（含 REVOKED 标红）与成员区
+                        loadAuthorizedRepositories(teamId, isOwner)
+                        loadMembers(teamId, isOwner)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopEventStream() {
+        eventStreamJob?.cancel()
+        eventStreamJob = null
+        eventStream.stop()
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
