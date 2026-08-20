@@ -68,8 +68,11 @@ import com.example.qgent.data.model.CreateMergeRequestResponse
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.EmptyBody
 import com.example.qgent.data.model.MergeRequestCheckDto
+import com.example.qgent.data.model.MergeRequestPreflightDto
 import com.example.qgent.data.model.PreflightDto
 import com.example.qgent.data.model.MergeRequestReviewDto
+import com.example.qgent.data.model.RequestMergeRequestPreflightRequest
+import com.example.qgent.data.model.RequestMergeRequestPreflightResponse
 import com.example.qgent.data.model.WorkspaceDiffPreviewDto
 import com.example.qgent.data.model.WorkspaceDiffPreviewFileDto
 import com.example.qgent.data.model.TeamInvitationDto
@@ -799,6 +802,21 @@ interface QgApiService {
         @Path("repositoryId") repositoryId: String,
         @Query("targetBranch") targetBranch: String?
     ): Response<ApiResponse<PreflightDto>>
+
+    /** 申请 MR 预检（统一创建 MR 计划 C1：POST /merge-requests/preflight，启动 Dry Run，202） */
+    @POST("projects/{projectId}/merge-requests/preflight")
+    suspend fun requestMergeRequestPreflight(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: RequestMergeRequestPreflightRequest
+    ): Response<ApiResponse<RequestMergeRequestPreflightResponse>>
+
+    /** 按 Task 查询全部仓库 MR 预检状态（统一创建 MR 计划 C2） */
+    @GET("projects/{projectId}/tasks/{taskId}/merge-request-preflight")
+    suspend fun getTaskMergeRequestPreflight(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String
+    ): Response<ApiResponse<List<MergeRequestPreflightDto>>>
 
     /** Dry Run 预检 CQ+1（§27.10：通过后触发自动创建 MR） */
     @POST("projects/{projectId}/dry-runs/{dryRunId}/cq-approvals")

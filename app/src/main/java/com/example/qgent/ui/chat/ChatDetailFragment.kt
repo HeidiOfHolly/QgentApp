@@ -1258,15 +1258,19 @@ class ChatDetailFragment : Fragment() {
         val deliveryStatus = extractStringField(diffSummary, "deliveryStatus")
         val deliveryFailedReason = extractDeliveryFailedReason(diffSummary)
         // 按钮规则（MR_FIRST B 方案）：仅 PENDING_CONFIRMATION 且非 SYSTEM 显示确认/拒绝；
+        // Diff 审核仅任务发起人或 Project Admin 可确认/拒绝（后端能力位派生，§16.2；缺省按 true 兜底）。
         // PARTIALLY_DELIVERED / FAILED 或任务 DELIVERY_FAILED 才显示重试（能力位优先）
         val caps = detail.capabilities
         val canDecide = DiffReviewRules.canConfirmOrReject(reviewStatus, confirmationSource)
+        val canConfirm = canDecide && (caps?.canConfirmDiffReview ?: true)
+        val canReject = canDecide && (caps?.canRejectDiffReview ?: true)
         val canRetry = DiffReviewRules.canRetryDelivery(deliveryStatus, detail.status, caps?.canRetryDelivery)
         showDiffConfirmDialog(
             projectId, taskId, diffId, detail.title, detail.status,
             reviewStatus = reviewStatus,
             confirmationSource = confirmationSource,
-            canDecide = canDecide,
+            canConfirm = canConfirm,
+            canReject = canReject,
             canRetry = canRetry,
             deliveryStatus = deliveryStatus,
             deliveryFailedReason = deliveryFailedReason
@@ -1319,7 +1323,8 @@ class ChatDetailFragment : Fragment() {
      * Diff Review 确认对话框（§12.3 + MR_FIRST B 方案）：
      * - 内容区：任务状态 + 总体交付状态 + 批次摘要（仓库数/文件数/增删行）+ 逐仓库交付进度
      *   + 首个 Diff 的文件内容（有 diffId 时）
-     * - 按钮：仅 canDecide（PENDING_CONFIRMATION 且非 SYSTEM）显示确认/拒绝；
+     * - 按钮：PENDING_CONFIRMATION 且非 SYSTEM 前提下，仅任务发起人或 Project Admin
+     *   可确认/拒绝（后端能力位 canConfirmDiffReview/canRejectDiffReview，缺省兜底 true）；
      *   ACCEPTED+USER 显示「已由用户确认」、ACCEPTED+SYSTEM 显示「自动交付」，均只读；
      *   canRetry（部分失败/失败）时提供「重试交付」
      * - MR 链接仅在 mergeRequest.webUrl 非空时展示
@@ -1332,7 +1337,8 @@ class ChatDetailFragment : Fragment() {
         taskStatus: String,
         reviewStatus: String? = null,
         confirmationSource: String? = null,
-        canDecide: Boolean = true,
+        canConfirm: Boolean = true,
+        canReject: Boolean = true,
         canRetry: Boolean = false,
         deliveryStatus: String? = null,
         deliveryFailedReason: String? = null
@@ -1418,17 +1424,20 @@ class ChatDetailFragment : Fragment() {
         }
 
         val title = when {
-            canDecide -> "待确认 Diff · $taskTitle"
+            canConfirm || canReject -> "待确认 Diff · $taskTitle"
             reviewStatus == "ACCEPTED" -> "${DiffReviewRules.acceptedCaption(confirmationSource)} · $taskTitle"
             else -> "Diff · $taskTitle"
         }
         val dialogBuilder = MaterialAlertDialogBuilder(requireContext())
             .setTitle(title)
             .setView(container)
-        if (canDecide) {
-            dialogBuilder
-                .setNegativeButton(R.string.reject_diff) { _, _ -> rejectDiffReview(projectId, taskId) }
-                .setPositiveButton(R.string.confirm_diff) { _, _ -> confirmDiffReview(projectId, taskId) }
+        if (canConfirm || canReject) {
+            if (canReject) {
+                dialogBuilder.setNegativeButton(R.string.reject_diff) { _, _ -> rejectDiffReview(projectId, taskId) }
+            }
+            if (canConfirm) {
+                dialogBuilder.setPositiveButton(R.string.confirm_diff) { _, _ -> confirmDiffReview(projectId, taskId) }
+            }
         } else {
             dialogBuilder.setPositiveButton(R.string.close, null)
         }

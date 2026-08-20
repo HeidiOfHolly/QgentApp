@@ -49,6 +49,13 @@ object DeliveryItemCardBuilder {
         // 操作行（按 capabilities 显示）
         fillActions(binding, item, action)
 
+        // inflate(root=null) 不生成根视图 LayoutParams，layout_marginBottom 会丢失；
+        // 显式设置（与 item_delivery_card.xml 根 layout_marginBottom 一致），否则卡片间距不生效
+        binding.root.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(context, CARD_BOTTOM_MARGIN_DP) }
+
         return binding.root
     }
 
@@ -97,4 +104,7 @@ object DeliveryItemCardBuilder {
     }
 
     private fun dp(context: android.content.Context, value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
+
+    /** 卡片底部间距（dp），与 item_delivery_card.xml 根 layout_marginBottom 保持一致 */
+    private const val CARD_BOTTOM_MARGIN_DP = 16
 }

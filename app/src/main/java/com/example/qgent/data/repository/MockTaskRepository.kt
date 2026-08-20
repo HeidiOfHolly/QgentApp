@@ -8,7 +8,9 @@ import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestReviewDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
+import com.example.qgent.data.model.MergeRequestPreflightDto
 import com.example.qgent.data.model.PreflightDto
+import com.example.qgent.data.model.RequestMergeRequestPreflightResponse
 import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.WorkspaceDiffPreviewDto
@@ -136,6 +138,17 @@ class MockTaskRepository : TaskRepository {
 
     override suspend fun getPreflight(projectId: String, taskId: String, repositoryId: String, targetBranch: String?): Result<PreflightDto> =
         Result.failure(UnsupportedOperationException("mock 不支持 preflight"))
+
+    override suspend fun requestMergeRequestPreflight(
+        projectId: String,
+        taskId: String,
+        repositoryId: String,
+        idempotencyKey: String
+    ): Result<RequestMergeRequestPreflightResponse> =
+        Result.failure(UnsupportedOperationException("mock 不支持申请 MR 预检"))
+
+    override suspend fun getTaskMergeRequestPreflight(projectId: String, taskId: String): Result<List<MergeRequestPreflightDto>> =
+        Result.failure(UnsupportedOperationException("mock 不支持查询 MR 预检"))
 
     override suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit> =
         Result.failure(UnsupportedOperationException("mock 不支持 DryRun CQ+1"))

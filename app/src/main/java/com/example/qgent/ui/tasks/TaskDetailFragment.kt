@@ -597,11 +597,18 @@ class TaskDetailFragment : Fragment() {
                     "Diff 审核 · ${detail.title}"
                 })
                 .setView(container)
+            // Diff 审核：仅任务发起人或 Project Admin 可确认/拒绝（后端能力位派生，§16.2）。
+            // 能力位缺省按 true 兜底（DIFF_FIRST 旧后端回归），确认/拒绝分别判断。
             val canDecide = DiffReviewRules.canConfirmOrReject(reviewStatus, confirmationSource)
-            if (canDecide) {
-                builder
-                    .setNegativeButton(R.string.reject_diff) { _, _ -> rejectTaskDiffReview() }
-                    .setPositiveButton(R.string.confirm_diff) { _, _ -> confirmTaskDiffReview() }
+            val canConfirm = canDecide && (detail.capabilities?.canConfirmDiffReview ?: true)
+            val canReject = canDecide && (detail.capabilities?.canRejectDiffReview ?: true)
+            if (canConfirm || canReject) {
+                if (canReject) {
+                    builder.setNegativeButton(R.string.reject_diff) { _, _ -> rejectTaskDiffReview() }
+                }
+                if (canConfirm) {
+                    builder.setPositiveButton(R.string.confirm_diff) { _, _ -> confirmTaskDiffReview() }
+                }
             } else {
                 builder.setPositiveButton(R.string.close, null)
             }

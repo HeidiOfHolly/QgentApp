@@ -1317,6 +1317,56 @@ data class PreflightCqPlusOneDto(
     @SerializedName("reviewedAt") val reviewedAt: String?
 )
 
+// ── 统一创建 MR 自动预检（计划 §C1/C2；v2.0.19 之后） ──
+
+/** 申请 MR 预检请求（计划 C1：POST /merge-requests/preflight，body 只含 taskId/repositoryId） */
+data class RequestMergeRequestPreflightRequest(
+    @SerializedName("taskId") val taskId: String,
+    @SerializedName("repositoryId") val repositoryId: String
+)
+
+/** 单仓库 MR 预检状态（计划 C2：GET /tasks/{taskId}/merge-request-preflight 每仓库一项） */
+data class MergeRequestPreflightDto(
+    val id: String?,
+    @SerializedName("taskId") val taskId: String?,
+    @SerializedName("repositoryId") val repositoryId: String?,
+    @SerializedName("repositoryName") val repositoryName: String?,
+    @SerializedName("sourceBranch") val sourceBranch: String?,
+    @SerializedName("headCommit") val headCommit: String?,
+    @SerializedName("targetBranch") val targetBranch: String?,
+    @SerializedName("targetCommit") val targetCommit: String?,
+    /** 预检状态：REQUESTED / DRY_RUN_QUEUED / DRY_RUN_RUNNING / WAITING_CQ / CQ_REJECTED / CREATING_MR / MR_CREATED / FAILED / STALE */
+    val status: String?,
+    @SerializedName("dryRunId") val dryRunId: String?,
+    @SerializedName("dryRunStatus") val dryRunStatus: String?,
+    @SerializedName("cqPlusOneStatus") val cqPlusOneStatus: String?,
+    @SerializedName("cqReviewerUserId") val cqReviewerUserId: String?,
+    /** 当前用户是否可提交 CQ+1（服务端派生：Dry Run 通过 + 非发起人/作者/Agent） */
+    @SerializedName("canCqApprove") val canCqApprove: Boolean?,
+    val blockers: List<String>?,
+    @SerializedName("failureCode") val failureCode: String?,
+    @SerializedName("failureReason") val failureReason: String?,
+    @SerializedName("canRetry") val canRetry: Boolean?,
+    @SerializedName("mergeRequest") val mergeRequest: DeliveryMergeRequestSummaryDto?,
+    @SerializedName("branchLockStatus") val branchLockStatus: String?,
+    @SerializedName("isBranchLevel") val isBranchLevel: Boolean?
+)
+
+/** 申请 MR 预检响应（计划 C1：202；mergeRequest 未创建时为 null） */
+data class RequestMergeRequestPreflightResponse(
+    val id: String?,
+    @SerializedName("taskId") val taskId: String?,
+    @SerializedName("repositoryId") val repositoryId: String?,
+    @SerializedName("sourceBranch") val sourceBranch: String?,
+    @SerializedName("headCommit") val headCommit: String?,
+    @SerializedName("targetBranch") val targetBranch: String?,
+    @SerializedName("targetCommit") val targetCommit: String?,
+    val status: String?,
+    @SerializedName("dryRunId") val dryRunId: String?,
+    val blockers: List<String>?,
+    @SerializedName("mergeRequest") val mergeRequest: DeliveryMergeRequestSummaryDto?
+)
+
 // ── 项目级 TaskRun（§20.6） ──
 
 /**

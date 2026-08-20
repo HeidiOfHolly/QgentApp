@@ -19,7 +19,6 @@ import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.DeliveryRepositoryDeliveryDto
-import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.databinding.FragmentDeliveryItemDetailBinding
 import com.example.qgent.viewmodel.MainViewModel
@@ -38,12 +37,11 @@ class DeliveryItemDetailFragment : Fragment() {
     }
     private val taskRepository: TaskRepository
         get() = (requireActivity().application as QgentApp).container.taskRepository
-    private val githubRepository: GitHubRepository
-        get() = (requireActivity().application as QgentApp).container.githubRepository
 
     private val item: DeliveryItemDto? by lazy {
         arguments?.getString(ARG_ITEM_JSON)?.let { Gson().fromJson(it, DeliveryItemDto::class.java) }
     }
+    private var eventStreamJob: kotlinx.coroutines.Job? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentDeliveryItemDetailBinding.inflate(inflater, container, false)
@@ -63,61 +61,144 @@ class DeliveryItemDetailFragment : Fragment() {
         loadPreflight(it)
     }
 
-    /**
-     * MR_FIRST 预检流程：查 preflight（Dry Run + CQ+1 状态）。
-     * - dryRun PASSED 且 cqPlusOne PENDING → 显示「CQ+1」；通过后服务端自动创建 MR。
-     * - cqPlusOne APPROVED → 显示「申请合并请求」（DIFF_FIRST 手动创建 / MR_FIRST 补偿）。
-     */
-    private fun loadPreflight(itemDto: DeliveryItemDto) {
+    override fun onResume() {
+        super.onResume()
+        startEventStream()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopEventStream()
+    }
+
+    /** 项目级 SSE：预检/DryRun/MR 事件 → 刷新预检状态（计划 §4.4；事件只触发刷新，以查询接口为准） */
+    private fun startEventStream() {
         val projectId = mainViewModel.currentProjectId() ?: return
-        val taskId = itemDto.source?.taskId ?: return
-        val repoIds = itemDto.repositoryDeliveries?.mapNotNull { d -> d.repositoryId }.orEmpty()
-        if (repoIds.isEmpty()) return
-        viewLifecycleOwner.lifecycleScope.launch {
-            val repo = repoIds.firstOrNull()
-            val targetBranch = githubRepository.getProjectRepositories(projectId)
-                .getOrNull()?.firstOrNull { r -> r.id == repo }?.defaultBranch
-            if (repo == null) return@launch
-            val preflight = taskRepository.getPreflight(projectId, taskId, repo, targetBranch).getOrNull()
-            if (preflight == null) {
-                binding.tvPreflightStatus.isVisible = true
-                binding.tvPreflightStatus.text = "暂无预检信息"
-                return@launch
-            }
-            val dryRunStatus = preflight.dryRun?.status
-            val cqStatus = preflight.cqPlusOne?.status
-            when {
-                // Dry Run 通过、CQ+1 待审批 → CQ+1 按钮
-                dryRunStatus == "PASSED" && cqStatus == "PENDING" -> {
-                    binding.btnCqApprove.isVisible = true
-                    binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "DryRun 通过，等待 CQ+1"
-                    binding.btnCqApprove.setOnClickListener { doCqApprove(projectId, preflight.dryRun?.id) }
-                }
-                // CQ+1 已通过 → 申请合并请求（自动创建 MR 失败时人工补偿 / DIFF_FIRST 手动）
-                cqStatus == "APPROVED" -> {
-                    binding.btnCreateMr.isVisible = true
-                    binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "CQ+1 已通过，可申请合并请求"
-                    binding.btnCreateMr.setOnClickListener {
-                        doCreateMr(projectId, taskId, repo, targetBranch ?: "main", itemDto.title)
+        val stream = (requireActivity().application as QgentApp).container.projectEventStream
+        stream.startProject(projectId)
+        if (eventStreamJob == null) {
+            eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
+                stream.events.collect { event ->
+                    when (event.type) {
+                        com.example.qgent.data.sse.SseEventType.PREFLIGHT_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.DRY_RUN_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.MERGE_REQUEST_UPDATED -> {
+                            item?.let { loadPreflight(it) }
+                        }
+                        else -> Unit
                     }
-                }
-                else -> {
-                    val msg = when (dryRunStatus) {
-                        "RUNNING" -> "DryRun 运行中…"
-                        "FAILED" -> "DryRun 未通过"
-                        null -> "暂无 DryRun"
-                        else -> "预检状态：$dryRunStatus"
-                    }
-                    binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = msg
                 }
             }
         }
     }
 
-    /** CQ+1：对 Dry Run 提交审批，通过后服务端自动创建 MR（§27.10） */
+    private fun stopEventStream() {
+        eventStreamJob?.cancel()
+        eventStreamJob = null
+        (requireActivity().application as QgentApp).container.projectEventStream.stop()
+    }
+
+    /**
+     * 统一创建 MR 自动预检流程（计划 §4.2/§4.3）：
+     * 按 Task 查全部仓库预检状态，按状态展示操作按钮：
+     * - 无预检 / FAILED / CQ_REJECTED → 显示「创建 MR / 重新预检」（申请预检，启动 Dry Run）
+     * - REQUESTED/DRY_RUN_QUEUED/DRY_RUN_RUNNING → 「预检中」，禁用
+     * - WAITING_CQ → 显示「CQ+1」
+     * - CREATING_MR → 「正在创建 MR」，禁用
+     * - MR_CREATED → 显示真实 MR 链接，无按钮
+     */
+    private fun loadPreflight(itemDto: DeliveryItemDto) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val taskId = itemDto.source?.taskId ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            // 复位操作区
+            binding.btnCqApprove.isVisible = false
+            binding.btnCreateMr.isVisible = false
+            val status = taskRepository.getTaskMergeRequestPreflight(projectId, taskId)
+                .getOrNull()?.firstOrNull()   // 交付物详情按首个仓库展示
+            if (status == null) {
+                binding.tvPreflightStatus.isVisible = true
+                binding.tvPreflightStatus.text = "尚未创建 MR，可申请预检"
+                binding.btnCreateMr.isVisible = true
+                binding.btnCreateMr.text = "创建 MR"
+                binding.btnCreateMr.setOnClickListener {
+                    requestPreflight(projectId, taskId, itemDto)
+                }
+                return@launch
+            }
+            // 真实 MR 已创建 → 展示链接，无操作按钮
+            if (status.status == "MR_CREATED" || status.mergeRequest != null) {
+                binding.tvPreflightStatus.isVisible = true
+                val mr = status.mergeRequest
+                binding.tvPreflightStatus.text = "MR 已创建：MR #${mr?.number ?: "?"} ${mr?.title.orEmpty()}"
+                return@launch
+            }
+            when (status.status) {
+                // Dry Run 通过，等待 CQ+1
+                "WAITING_CQ" -> {
+                    binding.btnCqApprove.isVisible = true
+                    binding.tvPreflightStatus.isVisible = true
+                    binding.tvPreflightStatus.text = "DryRun 通过，等待独立成员 CQ+1"
+                    binding.btnCqApprove.setOnClickListener { doCqApprove(projectId, status.dryRunId) }
+                }
+                // 正在创建 MR（CQ+1 已通过，后端异步创建）
+                "CREATING_MR" -> {
+                    binding.tvPreflightStatus.isVisible = true
+                    binding.tvPreflightStatus.text = "CQ+1 已通过，正在创建 MR…"
+                }
+                // CQ 被拒绝
+                "CQ_REJECTED" -> {
+                    binding.tvPreflightStatus.isVisible = true
+                    binding.tvPreflightStatus.text = "CQ 被拒绝：${status.failureReason ?: "见审查意见"}"
+                    binding.btnCreateMr.isVisible = true
+                    binding.btnCreateMr.text = "重新预检"
+                    binding.btnCreateMr.setOnClickListener {
+                        requestPreflight(projectId, taskId, itemDto)
+                    }
+                }
+                // 预检失败
+                "FAILED", "STALE" -> {
+                    binding.tvPreflightStatus.isVisible = true
+                    binding.tvPreflightStatus.text = "预检失败：${status.failureReason ?: status.status}"
+                    binding.btnCreateMr.isVisible = true
+                    binding.btnCreateMr.text = "重试预检"
+                    binding.btnCreateMr.setOnClickListener {
+                        requestPreflight(projectId, taskId, itemDto)
+                    }
+                }
+                // 进行中
+                "REQUESTED", "DRY_RUN_QUEUED", "DRY_RUN_RUNNING" -> {
+                    binding.tvPreflightStatus.isVisible = true
+                    binding.tvPreflightStatus.text = "预检中（${status.status}）…"
+                }
+                else -> {
+                    binding.tvPreflightStatus.isVisible = true
+                    binding.tvPreflightStatus.text = "预检状态：${status.status}"
+                }
+            }
+        }
+    }
+
+    /** 申请 MR 预检：统一入口，启动 Dry Run（计划 §4.2：前端只调预检申请接口，不自行拼装 targetBranch/Testset） */
+    private fun requestPreflight(projectId: String, taskId: String, itemDto: DeliveryItemDto) {
+        val repositoryId = itemDto.repositoryDeliveries?.firstOrNull()?.repositoryId
+        if (repositoryId == null) {
+            Toast.makeText(requireContext(), "缺少仓库信息", Toast.LENGTH_SHORT).show()
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepository.requestMergeRequestPreflight(
+                projectId, taskId, repositoryId, UUID.randomUUID().toString()
+            ).onSuccess {
+                Toast.makeText(requireContext(), "已申请预检，正在运行 DryRun", Toast.LENGTH_SHORT).show()
+                item?.let { loadPreflight(it) }
+            }.onFailure { e ->
+                Toast.makeText(requireContext(), "申请预检失败：${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    /** CQ+1：对 Dry Run 提交审批，通过后服务端自动创建 MR（计划 §4.3） */
     private fun doCqApprove(projectId: String, dryRunId: String?) {
         if (dryRunId.isNullOrBlank()) {
             Toast.makeText(requireContext(), "暂无可审批的 DryRun", Toast.LENGTH_SHORT).show()
@@ -132,20 +213,6 @@ class DeliveryItemDetailFragment : Fragment() {
                 .onFailure { e ->
                     Toast.makeText(requireContext(), "CQ+1 失败：${e.message}", Toast.LENGTH_LONG).show()
                 }
-        }
-    }
-
-    /** 申请合并请求：创建 MR（DIFF_FIRST 手动 / MR_FIRST 自动创建失败补偿） */
-    private fun doCreateMr(projectId: String, taskId: String, repositoryId: String, targetBranch: String, title: String) {
-        viewLifecycleOwner.lifecycleScope.launch {
-            taskRepository.createMergeRequest(
-                projectId, taskId, repositoryId, targetBranch, title, UUID.randomUUID().toString()
-            ).onSuccess {
-                Toast.makeText(requireContext(), "已申请合并请求", Toast.LENGTH_SHORT).show()
-                item?.let { loadPreflight(it) }
-            }.onFailure { e ->
-                Toast.makeText(requireContext(), "申请失败：${e.message}", Toast.LENGTH_LONG).show()
-            }
         }
     }
 

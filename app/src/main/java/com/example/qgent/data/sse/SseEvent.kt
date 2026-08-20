@@ -33,6 +33,8 @@ enum class SseEventType(val wire: String) {
     APPROVAL_REQUIRED("approval-required"),
     TEST_RUN_UPDATED("test-run.updated"),
     DRY_RUN_UPDATED("dry-run.updated"),
+    /** 预检状态或 CQ+1 变化（统一创建 MR 自动预检；payload 含 taskId/repositoryId 等） */
+    PREFLIGHT_UPDATED("preflight.updated"),
     DIFF_CREATED("diff.created"),
     TASK_ARTIFACT_CREATED("task.artifact.created"),
     TASK_RUN_ARTIFACT_CREATED("task-run.artifact.created"),

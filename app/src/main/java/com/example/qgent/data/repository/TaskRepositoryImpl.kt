@@ -11,8 +11,11 @@ import com.example.qgent.data.model.EmptyBody
 import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
+import com.example.qgent.data.model.MergeRequestPreflightDto
 import com.example.qgent.data.model.MergeRequestReviewDto
 import com.example.qgent.data.model.PreflightDto
+import com.example.qgent.data.model.RequestMergeRequestPreflightRequest
+import com.example.qgent.data.model.RequestMergeRequestPreflightResponse
 import com.example.qgent.data.model.ReplaceAgentRequest
 import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
@@ -164,6 +167,22 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
 
     override suspend fun getPreflight(projectId: String, taskId: String, repositoryId: String, targetBranch: String?): Result<PreflightDto> =
         apiCall { service.getPreflight(projectId, taskId, repositoryId, targetBranch).toDataOrThrow() }
+
+    override suspend fun requestMergeRequestPreflight(
+        projectId: String,
+        taskId: String,
+        repositoryId: String,
+        idempotencyKey: String
+    ): Result<RequestMergeRequestPreflightResponse> =
+        apiCall {
+            service.requestMergeRequestPreflight(
+                projectId, idempotencyKey,
+                RequestMergeRequestPreflightRequest(taskId, repositoryId)
+            ).toDataOrThrow()
+        }
+
+    override suspend fun getTaskMergeRequestPreflight(projectId: String, taskId: String): Result<List<MergeRequestPreflightDto>> =
+        apiCall { service.getTaskMergeRequestPreflight(projectId, taskId).toDataOrThrow() }
 
     override suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit> =
         apiCall { service.dryRunCqApprove(projectId, dryRunId, idempotencyKey, CqActionRequest(reason)).toUnitOrThrow() }

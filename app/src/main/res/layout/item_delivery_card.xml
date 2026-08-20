@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="15dp"
+    android:layout_marginBottom="10dp"
     android:background="@drawable/bg_card"
     android:orientation="vertical"
     android:padding="12dp">
@@ -12,7 +12,6 @@
     <!-- 标题：任务展示码 + 标题 -->
     <TextView
         android:id="@+id/tvTitle"
-
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:maxLines="1"

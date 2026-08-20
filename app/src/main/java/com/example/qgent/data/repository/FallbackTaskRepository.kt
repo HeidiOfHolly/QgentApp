@@ -98,6 +98,16 @@ class FallbackTaskRepository(
     override suspend fun getPreflight(projectId: String, taskId: String, repositoryId: String, targetBranch: String?) =
         fb.call { getPreflight(projectId, taskId, repositoryId, targetBranch) }
 
+    override suspend fun requestMergeRequestPreflight(
+        projectId: String,
+        taskId: String,
+        repositoryId: String,
+        idempotencyKey: String
+    ) = fb.call { requestMergeRequestPreflight(projectId, taskId, repositoryId, idempotencyKey) }
+
+    override suspend fun getTaskMergeRequestPreflight(projectId: String, taskId: String) =
+        fb.call { getTaskMergeRequestPreflight(projectId, taskId) }
+
     override suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String) =
         fb.call { dryRunCqApprove(projectId, dryRunId, reason, idempotencyKey) }
 

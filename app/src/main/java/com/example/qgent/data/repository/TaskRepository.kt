@@ -10,7 +10,10 @@ import com.example.qgent.data.model.EmptyBody
 import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
+import com.example.qgent.data.model.MergeRequestPreflightDto
 import com.example.qgent.data.model.PreflightDto
+import com.example.qgent.data.model.RequestMergeRequestPreflightRequest
+import com.example.qgent.data.model.RequestMergeRequestPreflightResponse
 import com.example.qgent.data.model.MergeRequestReviewDto
 import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
@@ -136,6 +139,17 @@ interface TaskRepository {
 
     /** MR 创建前预检（v2.0.3 §2：查 Dry Run + CQ+1 状态，拿 dryRunId） */
     suspend fun getPreflight(projectId: String, taskId: String, repositoryId: String, targetBranch: String?): Result<PreflightDto>
+
+    /** 申请 MR 预检（统一创建 MR 计划 C1：启动 Dry Run，202） */
+    suspend fun requestMergeRequestPreflight(
+        projectId: String,
+        taskId: String,
+        repositoryId: String,
+        idempotencyKey: String
+    ): Result<RequestMergeRequestPreflightResponse>
+
+    /** 按 Task 查询全部仓库 MR 预检状态（统一创建 MR 计划 C2） */
+    suspend fun getTaskMergeRequestPreflight(projectId: String, taskId: String): Result<List<MergeRequestPreflightDto>>
 
     /** Dry Run 预检 CQ+1（§27.10：通过后触发自动创建 MR） */
     suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit>
