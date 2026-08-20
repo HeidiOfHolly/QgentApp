@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 交付物详情/卡片：单仓库交付进度行（状态 + 可选 MR 链接） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
+
+    <TextView
+        android:id="@+id/tvRepoStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_primary"
+        android:textSize="14sp"
+        tools:text="• backend-api：MR_CREATED" />
+
+    <TextView
+        android:id="@+id/tvMrLink"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:textColor="@color/primary"
+        android:textSize="13sp"
+        android:visibility="gone"
+        tools:text="   查看 MR #12 ↗"
+        tools:visibility="visible" />
+</LinearLayout>

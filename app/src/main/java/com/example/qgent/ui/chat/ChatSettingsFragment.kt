@@ -360,12 +360,8 @@ class ChatSettingsFragment : Fragment() {
             val names = repositoryIds.mapNotNull { nameById[it] }
             binding.tvRepositoriesEmpty.isVisible = names.isEmpty()
             names.forEach { name ->
-                val row = TextView(requireContext()).apply {
-                    text = "• $name"
-                    textSize = 14f
-                    setTextColor(requireContext().getColor(R.color.text_primary))
-                    setPadding(0, dp(4), 0, dp(4))
-                }
+                val row = layoutInflater.inflate(R.layout.item_bound_repo_row, binding.containerRepositories, false) as TextView
+                row.text = "• $name"
                 binding.containerRepositories.addView(row)
             }
         }

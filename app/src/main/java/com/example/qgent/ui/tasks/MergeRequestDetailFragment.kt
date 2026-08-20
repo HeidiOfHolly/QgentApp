@@ -147,7 +147,7 @@ class MergeRequestDetailFragment : Fragment() {
 
     /** 拒绝 CQ（必填原因） */
     private fun showCqRejectDialog() {
-        val input = android.widget.EditText(requireContext()).apply { hint = "修改意见（必填）" }
+        val input = layoutInflater.inflate(R.layout.dialog_cq_reject, null) as android.widget.EditText
         MaterialAlertDialogBuilder(requireContext())
             .setTitle("拒绝 CQ")
             .setView(input)
@@ -247,19 +247,14 @@ class MergeRequestDetailFragment : Fragment() {
 
     /** 弹窗展示单个文件 diff：ScrollView 内文件头（basename + 增删）+ 代码行（+ 绿底 / - 红底、monospace） */
     private fun showDiffFileDialog(file: DiffFile) {
-        val scroll = ScrollView(requireContext())
-        val container = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-        }
-        scroll.addView(container, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val binding = com.example.qgent.databinding.DialogDiffFileBinding.inflate(layoutInflater)
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(file.fileName.substringAfterLast('/'))
-            .setView(scroll)
+            .setView(binding.root)
             .setPositiveButton(R.string.close, null)
             .show()
         if (file.lines.isEmpty()) {
-            container.addView(TextView(requireContext()).apply {
+            binding.container.addView(TextView(requireContext()).apply {
                 text = "（该文件无行内容）"
                 textSize = 12f
                 setPadding(dp(10), dp(4), dp(10), dp(4))
@@ -267,24 +262,24 @@ class MergeRequestDetailFragment : Fragment() {
             return
         }
         file.lines.forEach { line ->
-            container.addView(TextView(requireContext()).apply {
-                val sign = when (line.type) {
-                    DiffLineType.ADD -> "+"
-                    DiffLineType.DELETE -> "-"
-                    else -> " "
-                }
-                text = "$sign ${line.text}"
-                setTypeface(android.graphics.Typeface.MONOSPACE)
-                setPadding(dp(10), dp(2), dp(10), dp(2))
-                textSize = 12f
-                setBackgroundColor(requireContext().getColor(
-                    when (line.type) {
-                        DiffLineType.ADD -> R.color.diff_add_bg
-                        DiffLineType.DELETE -> R.color.diff_del_bg
-                        else -> R.color.white
-                    }
-                ))
-            })
+            val row = com.example.qgent.databinding.ItemDiffLineBinding.inflate(layoutInflater, binding.container, false)
+            row.tvSign.text = when (line.type) {
+                DiffLineType.ADD -> "+"
+                DiffLineType.DELETE -> "-"
+                else -> " "
+            }
+            row.tvSign.setTextColor(requireContext().getColor(when (line.type) {
+                DiffLineType.ADD -> R.color.diff_add_fg
+                DiffLineType.DELETE -> R.color.diff_del_fg
+                else -> R.color.diff_line_no
+            }))
+            row.tvCode.text = line.text
+            row.root.setBackgroundColor(requireContext().getColor(when (line.type) {
+                DiffLineType.ADD -> R.color.diff_add_bg
+                DiffLineType.DELETE -> R.color.diff_del_bg
+                else -> R.color.white
+            }))
+            binding.container.addView(row.root)
         }
     }
 

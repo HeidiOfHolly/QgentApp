@@ -597,22 +597,13 @@ class ChatDetailFragment : Fragment() {
         val groupId = arguments?.getString("groupId").orEmpty()
         if (groupId.isEmpty()) return
         // 弹窗：仅输入沉淀说明（instruction，可选），AI 按群自动检索最近 50 条消息总结
-        val container = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 16, 48, 8)
-        }
-        val etInstruction = EditText(requireContext()).apply {
-            hint = getString(R.string.memory_draft_instruction_hint)
-            textSize = 14f
-        }
-        container.addView(etInstruction)
-
+        val dialogBinding = com.example.qgent.databinding.DialogMemoryInstructionBinding.inflate(layoutInflater)
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.memory_draft_title)
-            .setView(container)
+            .setView(dialogBinding.root)
             .setNegativeButton(R.string.cancel, null)
             .setPositiveButton(R.string.confirm) { _, _ ->
-                val instruction = etInstruction.text.toString().trim().ifEmpty { null }
+                val instruction = dialogBinding.etInstruction.text.toString().trim().ifEmpty { null }
                 submitAiMemoryDraft(projectId, groupId, instruction)
             }
             .show()
@@ -786,20 +777,11 @@ class ChatDetailFragment : Fragment() {
 
     /** 文本文件内置预览：ScrollView + 可选中 TextView */
     private fun showTextPreview(fileName: String, content: String) {
-        val scroll = ScrollView(requireContext())
-        val tv = TextView(requireContext()).apply {
-            text = content
-            setTextIsSelectable(true)
-            setPadding(48, 40, 48, 40)
-            textSize = 14f
-        }
-        scroll.addView(
-            tv,
-            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        )
+        val dialogBinding = com.example.qgent.databinding.DialogTextContentBinding.inflate(layoutInflater)
+        dialogBinding.tvContent.text = content
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(fileName)
-            .setView(scroll)
+            .setView(dialogBinding.root)
             .setPositiveButton(R.string.close, null)
             .show()
     }
@@ -1348,26 +1330,13 @@ class ChatDetailFragment : Fragment() {
         fun dp(v: Int) = (v * density).toInt()
 
         // 弹窗内容：批次摘要（固定头部） + 文件区（整页横向滚动：长行不换行、短行留白，文件按序排列）
-        val contentView = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(12), dp(20), dp(8))
-        }
-
-        // 批次摘要：任务状态 / 交付状态 / 仓库数 / 逐仓库进度 / diff 统计
-        val summaryTv = TextView(requireContext()).apply {
-            textSize = 13f
-            setTextIsSelectable(true)
-        }
-        contentView.addView(summaryTv)
-
+        val contentView = com.example.qgent.databinding.DialogDiffReviewBinding.inflate(layoutInflater)
+        val summaryTv = contentView.summaryTv
+        val codeBlockContainer = contentView.codeBlockContainer
         // 文件区：加载完成前转圈，完成后放入整页横向滚动的 Diff 代码块
-        val codeBlockContainer = FrameLayout(requireContext()).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(520))
-            addView(ProgressBar(requireContext()).apply {
-                layoutParams = FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER)
-            })
-        }
-        contentView.addView(codeBlockContainer)
+        codeBlockContainer.addView(ProgressBar(requireContext()).apply {
+            layoutParams = FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER)
+        })
 
         // 拉取批次摘要 + Diff 文件内容（DTO → UI DiffFile 再渲染）
         viewLifecycleOwner.lifecycleScope.launch {
@@ -1454,7 +1423,7 @@ class ChatDetailFragment : Fragment() {
         }
         val dialogBuilder = MaterialAlertDialogBuilder(requireContext())
             .setTitle(title)
-            .setView(contentView)
+            .setView(contentView.root)
         if (canConfirm || canReject) {
             if (canReject) {
                 dialogBuilder.setNegativeButton(R.string.reject_diff) { _, _ -> rejectDiffReview(projectId, taskId) }
@@ -1490,10 +1459,8 @@ class ChatDetailFragment : Fragment() {
 
     /** 拒绝整个最终 Diff 批次（POST .../tasks/{taskId}/diff-review/reject，§12.3；Idempotency-Key 必填） */
     private fun rejectDiffReview(projectId: String, taskId: String) {
-        // 拒绝可填原因
-        val input = EditText(requireContext())
-        input.hint = "拒绝原因（可选）"
-        input.setPadding(48, 32, 48, 32)
+        // 拒绝可填原因（布局 dialog_reject_diff）
+        val input = layoutInflater.inflate(R.layout.dialog_reject_diff, null) as EditText
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.reject_diff)
             .setView(input)
@@ -1608,16 +1575,15 @@ class ChatDetailFragment : Fragment() {
 
     /** 全屏查看 diff 文件：可滑动，绿加红减，文件头显示 basename（卡片点击 / 「完整 Diff」入口） */
     private fun showDiffFilesDialog(projectId: String, diffId: String, title: String?) {
-        // 完整 Diff 弹窗：整页横向滚动查看（长行不换行、短行留白），所有文件按序排列
-        val container = FrameLayout(requireContext()).apply {
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(560))
-        }
+        // 完整 Diff 弹窗（布局 dialog_diff_files）：整页横向滚动查看（长行不换行、短行留白）
+        val dialogBinding = com.example.qgent.databinding.DialogDiffFilesBinding.inflate(layoutInflater)
+        val container = dialogBinding.container
         container.addView(ProgressBar(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER)
         })
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(title ?: "Diff")
-            .setView(container)
+            .setView(dialogBinding.root)
             .setPositiveButton(R.string.close, null)
             .show()
         viewLifecycleOwner.lifecycleScope.launch {
@@ -1644,9 +1610,9 @@ class ChatDetailFragment : Fragment() {
      * （整页一起横向滑动，超长代码行不换行、短行右侧留白）。所有文件按序排列，每文件带文件头。
      */
     private fun buildDiffCodeBlock(files: List<DiffFile>): View {
-        val content = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-        }
+        // 容器布局：垂直 ScrollView > 横向 HorizontalScrollView > 行容器（整页横滚，短行留白）
+        val binding = com.example.qgent.databinding.DialogDiffScrollBinding.inflate(layoutInflater)
+        val content = binding.container
         files.forEach { file ->
             // 文件头：basename + 变更统计
             content.addView(TextView(requireContext()).apply {
@@ -1666,54 +1632,30 @@ class ChatDetailFragment : Fragment() {
             }
             file.lines.forEach { line -> content.addView(buildDiffLineView(line)) }
         }
-        // 横向滚动：所有行等宽于各自内容（wrap_content），整页一起横向移动，短行右侧留白
-        val hscroll = HorizontalScrollView(requireContext()).apply {
-            overScrollMode = View.OVER_SCROLL_NEVER
-            isHorizontalScrollBarEnabled = false
-            addView(content, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
-        return ScrollView(requireContext()).apply {
-            addView(hscroll, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
+        return binding.root
     }
 
-    /** 单行 Diff 代码（wrap_content：超长行不换行，由外层 HorizontalScrollView 整页横滚） */
-    private fun buildDiffLineView(line: DiffLine): View =
-        LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(26)
-            setPadding(dp(8), 0, dp(8), 0)
-            setBackgroundColor(requireContext().getColor(when (line.type) {
-                DiffLineType.ADD -> R.color.diff_add_bg
-                DiffLineType.DELETE -> R.color.diff_del_bg
-                else -> R.color.white
-            }))
-            val sign = when (line.type) {
-                DiffLineType.ADD -> "+"
-                DiffLineType.DELETE -> "-"
-                else -> " "
-            }
-            addView(TextView(requireContext()).apply {
-                text = sign
-                width = dp(20)
-                gravity = Gravity.CENTER
-                textSize = 13f
-                typeface = android.graphics.Typeface.MONOSPACE
-                setTextColor(requireContext().getColor(when (line.type) {
-                    DiffLineType.ADD -> R.color.diff_add_fg
-                    DiffLineType.DELETE -> R.color.diff_del_fg
-                    else -> R.color.diff_line_no
-                }))
-            })
-            addView(TextView(requireContext()).apply {
-                text = line.text
-                maxLines = 1
-                textSize = 13f
-                typeface = android.graphics.Typeface.MONOSPACE
-                setTextColor(requireContext().getColor(R.color.text_primary))
-            })
+    /** 单行 Diff 代码（布局 item_diff_full_line：wrap_content 超长行不换行，由外层横向滚动整页移动） */
+    private fun buildDiffLineView(line: DiffLine): View {
+        val binding = com.example.qgent.databinding.ItemDiffFullLineBinding.inflate(layoutInflater)
+        binding.root.setBackgroundColor(requireContext().getColor(when (line.type) {
+            DiffLineType.ADD -> R.color.diff_add_bg
+            DiffLineType.DELETE -> R.color.diff_del_bg
+            else -> R.color.white
+        }))
+        binding.tvSign.text = when (line.type) {
+            DiffLineType.ADD -> "+"
+            DiffLineType.DELETE -> "-"
+            else -> " "
         }
+        binding.tvSign.setTextColor(requireContext().getColor(when (line.type) {
+            DiffLineType.ADD -> R.color.diff_add_fg
+            DiffLineType.DELETE -> R.color.diff_del_fg
+            else -> R.color.diff_line_no
+        }))
+        binding.tvCode.text = line.text
+        return binding.root
+    }
 
     private fun buildRows(list: List<ChatMessage>): List<ChatRow> {
         val result = mutableListOf<ChatRow>()

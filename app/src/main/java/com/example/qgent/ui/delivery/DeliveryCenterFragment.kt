@@ -183,51 +183,30 @@ class DeliveryCenterFragment : Fragment() {
     private fun fillMRs(mrs: List<MergeRequestDto>) {
         binding.rvMRList.removeAllViews()
         mrs.forEach { mr ->
-            val row = LinearLayout(requireContext()).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                setBackgroundResource(R.drawable.bg_card)
-                setOnClickListener {
-                    // PENDING_CREATE 是列表投影占位（§43：number=0/webUrl=null，真实 MR 未创建），
-                    // 不得用占位 id 调真实 MR 详情；点击仅提示，不跳转
-                    if (mr.status == "PENDING_CREATE") {
-                        android.widget.Toast.makeText(requireContext(), "MR 待创建，请先通过预检与 CQ+1", android.widget.Toast.LENGTH_SHORT).show()
-                    } else {
-                        findNavController().navigate(
-                            R.id.action_deliveryCenter_to_mrDetail,
-                            bundleOf(
-                                com.example.qgent.ui.tasks.MergeRequestDetailFragment.ARG_MR_ID to mr.id,
-                                com.example.qgent.ui.tasks.MergeRequestDetailFragment.ARG_PROJECT_ID to (mainViewModel.currentProjectId().orEmpty())
-                            )
+            val row = com.example.qgent.databinding.ItemMrRowBinding.inflate(layoutInflater, binding.rvMRList, false)
+            row.root.setOnClickListener {
+                // PENDING_CREATE 是列表投影占位（§43：number=0/webUrl=null，真实 MR 未创建），
+                // 不得用占位 id 调真实 MR 详情；点击仅提示，不跳转
+                if (mr.status == "PENDING_CREATE") {
+                    android.widget.Toast.makeText(requireContext(), "MR 待创建，请先通过预检与 CQ+1", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    findNavController().navigate(
+                        R.id.action_deliveryCenter_to_mrDetail,
+                        bundleOf(
+                            com.example.qgent.ui.tasks.MergeRequestDetailFragment.ARG_MR_ID to mr.id,
+                            com.example.qgent.ui.tasks.MergeRequestDetailFragment.ARG_PROJECT_ID to (mainViewModel.currentProjectId().orEmpty())
                         )
-                    }
+                    )
                 }
             }
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(8) }
-            row.layoutParams = lp
-            row.addView(TextView(requireContext()).apply {
-                // PENDING_CREATE 占位 number=0（§43），不当作真实 PR 号展示
-                text = if (mr.status == "PENDING_CREATE") "待创建" else "#${mr.number}"
-                setTextColor(requireContext().getColor(R.color.primary))
-                textSize = 15f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-            })
-            row.addView(TextView(requireContext()).apply {
-                text = "  ${mr.sourceBranch} → ${mr.targetBranch}"
-                textSize = 13f
-                setTextColor(requireContext().getColor(R.color.text_primary))
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            row.addView(TextView(requireContext()).apply {
-                text = mrStatusLabel(mr.status)
-                textSize = 12f
-                setTextColor(requireContext().getColor(
-                    if (mr.status == "MERGED") R.color.green else R.color.text_secondary
-                ))
-            })
-            binding.rvMRList.addView(row)
+            // PENDING_CREATE 占位 number=0（§43），不当作真实 PR 号展示
+            row.tvMrNumber.text = if (mr.status == "PENDING_CREATE") "待创建" else "#${mr.number}"
+            row.tvMrBranch.text = "  ${mr.sourceBranch} → ${mr.targetBranch}"
+            row.tvMrStatus.text = mrStatusLabel(mr.status)
+            row.tvMrStatus.setTextColor(requireContext().getColor(
+                if (mr.status == "MERGED") R.color.green else R.color.text_secondary
+            ))
+            binding.rvMRList.addView(row.root)
         }
     }
 

@@ -143,34 +143,15 @@ class ProjectSelectionFragment : Fragment() {
     private fun renderNewRepoList() {
         binding.newRepoList.removeAllViews()
         newRepoNames.forEach { name ->
-            val row = LinearLayout(requireContext()).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                background = context.getDrawable(R.drawable.bg_card)
-            }
-            row.addView(TextView(requireContext()).apply {
-                text = name
-                textSize = 16f
-                setTextColor(context.getColor(R.color.charcoal))
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            row.addView(ImageView(requireContext()).apply {
-                setImageResource(R.drawable.ic_close)
-                setColorFilter(context.getColor(R.color.gray))
-                contentDescription = context.getString(R.string.github_repo_delete)
-                layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
-                setOnClickListener {
-                    newRepoNames.remove(name)
-                    renderNewRepoList()
-                }
-            })
-            binding.newRepoList.addView(
-                row,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(6) }
+            val row = com.example.qgent.databinding.ItemNewRepoRowBinding.inflate(
+                layoutInflater, binding.newRepoList, false
             )
+            row.tvRepoName.text = name
+            row.ivDeleteRepo.setOnClickListener {
+                newRepoNames.remove(name)
+                renderNewRepoList()
+            }
+            binding.newRepoList.addView(row.root)
         }
     }
 

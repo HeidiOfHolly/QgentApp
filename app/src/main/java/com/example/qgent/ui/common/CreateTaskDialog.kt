@@ -6,6 +6,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.core.view.isVisible
 import com.example.qgent.R
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.TaskCreateRequest
@@ -44,38 +45,22 @@ class CreateTaskDialog(
     private var selectedGroupId: String = initialGroupId ?: candidateGroups.firstOrNull()?.id.orEmpty()
 
     fun show() {
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 16, 48, 8)
-        }
-        val etTitle = EditText(context).apply {
-            hint = context.getString(R.string.start_task_name_hint)
-            textSize = 14f
-            setText(prefillTitle)
-        }
-        val etRequirement = EditText(context).apply {
-            hint = context.getString(R.string.start_task_requirement_hint)
-            textSize = 14f
-            minLines = 3
-            gravity = android.view.Gravity.TOP
-            setText(prefillRequirement)
-        }
-        container.addView(etTitle)
-        container.addView(etRequirement)
+        val binding = com.example.qgent.databinding.DialogCreateTaskBinding.inflate(android.view.LayoutInflater.from(context))
+        val etTitle = binding.etTitle
+        val etRequirement = binding.etRequirement
+        val container = binding.root
+        etTitle.setText(prefillTitle)
+        etRequirement.setText(prefillRequirement)
 
         // 分支群选择器：仅任务页显示（群聊直接用当前群）
         if (showGroupSelector) {
-            val groupLabel = android.widget.TextView(context).apply {
-                text = context.getString(R.string.start_task_group_label)
-                textSize = 14f
-            }
-            container.addView(groupLabel)
+            binding.tvGroupLabel.isVisible = true
             if (candidateGroups.isEmpty()) {
-                android.widget.TextView(context).apply {
+                binding.containerGroups.addView(android.widget.TextView(context).apply {
                     text = context.getString(R.string.start_task_group_empty)
                     textSize = 13f
                     setTextColor(context.getColor(R.color.text_secondary))
-                }.also { container.addView(it) }
+                })
             } else {
                 val groupChecks = candidateGroups.map { group ->
                     CheckBox(context).apply {
@@ -93,22 +78,18 @@ class CreateTaskDialog(
                             groupChecks.filter { it !== cb }.forEach { it.isChecked = false }
                         }
                     }
-                    container.addView(cb)
+                    binding.containerGroups.addView(cb)
                 }
             }
         }
 
         // 引用 DIFF 卡：展示续作提示，不提供仓库多选（服务端复用源 Workspace）
-        val tvRepoLabel = android.widget.TextView(context).apply {
-            text = if (quotingDiff) {
-                context.getString(R.string.start_task_quoting_diff_hint)
-            } else {
-                context.getString(R.string.manage_repositories)
-            }
-            textSize = 14f
+        binding.tvRepoLabel.text = if (quotingDiff) {
+            context.getString(R.string.start_task_quoting_diff_hint)
+        } else {
+            context.getString(R.string.manage_repositories)
         }
         val repoChecks = mutableListOf<CheckBox>()
-        container.addView(tvRepoLabel)
 
         // 加载项目绑定仓库；续作引用时不加载
         val repoBranchMap = mutableMapOf<String, String>()   // repoId -> defaultBranch
@@ -161,7 +142,7 @@ class CreateTaskDialog(
                     githubRepo.getProjectRepositories(projectId)
                         .onSuccess { repos ->
                             if (repos.isEmpty()) {
-                                tvRepoLabel.text = context.getString(R.string.start_task_repo_required)
+                                binding.tvRepoLabel.text = context.getString(R.string.start_task_repo_required)
                             } else {
                                 repos.forEach { repo ->
                                     val cb = CheckBox(context).apply {
@@ -172,13 +153,13 @@ class CreateTaskDialog(
                                     }
                                     repoBranchMap[repo.id] = repo.defaultBranch
                                     repoChecks.add(cb)
-                                    container.addView(cb)
+                                    binding.containerRepos.addView(cb)
                                 }
                             }
                             positive.isEnabled = repos.isNotEmpty()
                         }
                         .onFailure { e ->
-                            tvRepoLabel.text = context.getString(R.string.start_task_repo_load_failed)
+                            binding.tvRepoLabel.text = context.getString(R.string.start_task_repo_load_failed)
                             Toast.makeText(context, "加载仓库失败：${e.message}", Toast.LENGTH_LONG).show()
                         }
                 }

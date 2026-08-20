@@ -74,9 +74,7 @@ class ResourceDetailSheet(
             }
             binding.btnReject.setOnClickListener {
                 // 驳回前询问原因（可留空）
-                val input = EditText(requireContext())
-                input.hint = "请输入驳回原因（可选）"
-                input.setPadding(48, 32, 48, 32)
+                val input = layoutInflater.inflate(R.layout.dialog_reject_reason, null) as EditText
                 AlertDialog.Builder(requireContext())
                     .setTitle("驳回")
                     .setView(input)

@@ -273,27 +273,18 @@ class DeliveryItemDetailFragment : Fragment() {
         repos.forEach { rd ->
             val status = rd.deliveryStatus ?: "-"
             val reason = rd.failureReason?.takeIf { it.isNotBlank() }?.let { "（$it）" }.orEmpty()
-            val row = LinearLayout(requireContext()).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(0, dp(8), 0, dp(8))
-            }
-            row.addView(TextView(requireContext()).apply {
-                text = "• ${rd.repositoryName ?: rd.repositoryId ?: "仓库"}：$status$reason"
-                textSize = 14f
-                setTextColor(requireContext().getColor(R.color.text_primary))
-            })
+            val row = com.example.qgent.databinding.ItemRepoProgressRowBinding.inflate(
+                layoutInflater, binding.containerRepos, false
+            )
+            row.tvRepoStatus.text = "• ${rd.repositoryName ?: rd.repositoryId ?: "仓库"}：$status$reason"
             // 单仓库 MR 链接
-            rd.mergeRequest?.let { repoMr ->
-                if (!repoMr.webUrl.isNullOrBlank()) {
-                    row.addView(TextView(requireContext()).apply {
-                        text = "   查看 MR #${repoMr.number ?: "?"} ↗"
-                        textSize = 13f
-                        setTextColor(requireContext().getColor(R.color.primary))
-                        setOnClickListener { openExternalUrl(repoMr.webUrl) }
-                    })
-                }
+            val repoMr = rd.mergeRequest
+            if (repoMr != null && !repoMr.webUrl.isNullOrBlank()) {
+                row.tvMrLink.isVisible = true
+                row.tvMrLink.text = "   查看 MR #${repoMr.number ?: "?"} ↗"
+                row.tvMrLink.setOnClickListener { openExternalUrl(repoMr.webUrl) }
             }
-            binding.containerRepos.addView(row)
+            binding.containerRepos.addView(row.root)
         }
     }
 

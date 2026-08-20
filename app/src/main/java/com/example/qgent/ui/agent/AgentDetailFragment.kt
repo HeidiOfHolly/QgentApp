@@ -249,24 +249,9 @@ class AgentDetailFragment : Fragment() {
         binding.containerDetailCapabilities.removeAllViews()
         binding.containerDetailCapabilities.isVisible = capabilities.isNotEmpty()
         capabilities.forEach { cap ->
-            val chip = TextView(requireContext()).apply {
-                text = cap
-                textSize = 12f
-                setTextColor(android.graphics.Color.WHITE)
-                background = resources.getDrawable(R.drawable.bg_status_tag, null)
-                setPadding(
-                    resources.getDimensionPixelSize(R.dimen.chip_padding_h),
-                    resources.getDimensionPixelSize(R.dimen.chip_padding_v),
-                    resources.getDimensionPixelSize(R.dimen.chip_padding_h),
-                    resources.getDimensionPixelSize(R.dimen.chip_padding_v)
-                )
-                setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
-            }
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { marginEnd = resources.getDimensionPixelSize(R.dimen.chip_margin_end) }
-            binding.containerDetailCapabilities.addView(chip, lp)
+            val chip = layoutInflater.inflate(R.layout.item_capability_chip, binding.containerDetailCapabilities, false) as TextView
+            chip.text = cap
+            binding.containerDetailCapabilities.addView(chip)
         }
 
         if (avatar.isNullOrBlank()) {

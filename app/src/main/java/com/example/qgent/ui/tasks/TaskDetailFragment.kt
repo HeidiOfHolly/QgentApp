@@ -288,17 +288,11 @@ class TaskDetailFragment : Fragment() {
                     sb.append("\n")
                 }
             }
-            val scroll = ScrollView(requireContext())
-            val tv = TextView(requireContext()).apply {
-                text = sb.toString()
-                textSize = 13f
-                setTextIsSelectable(true)
-                setPadding(48, 40, 48, 40)
-            }
-            scroll.addView(tv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            val dialogBinding = com.example.qgent.databinding.DialogTextContentBinding.inflate(layoutInflater)
+            dialogBinding.tvContent.text = sb.toString()
             androidx.appcompat.app.AlertDialog.Builder(requireContext())
                 .setTitle("实时 Diff 预览")
-                .setView(scroll)
+                .setView(dialogBinding.root)
                 .setPositiveButton("关闭", null)
                 .show()
         }
@@ -369,20 +363,11 @@ class TaskDetailFragment : Fragment() {
                     logs.forEach { entry ->
                         sb.append(entry.timestamp).append("  ").append(entry.content).append("\n")
                     }
-                    val scroll = ScrollView(requireContext())
-                    val tv = TextView(requireContext()).apply {
-                        text = sb.toString()
-                        textSize = 12f
-                        setTextIsSelectable(true)
-                        setPadding(48, 40, 48, 40)
-                    }
-                    scroll.addView(
-                        tv,
-                        ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                    )
+                    val dialogBinding = com.example.qgent.databinding.DialogTextContentBinding.inflate(layoutInflater)
+                    dialogBinding.tvContent.text = sb.toString()
                     AlertDialog.Builder(requireContext())
                         .setTitle(R.string.task_run_logs_title)
-                        .setView(scroll)
+                        .setView(dialogBinding.root)
                         .setPositiveButton(R.string.close, null)
                         .show()
                 }
@@ -599,14 +584,8 @@ class TaskDetailFragment : Fragment() {
                 }
                 if (files.isEmpty()) sb.append("（该 Diff 无文件内容）\n")
             }
-            val container = ScrollView(requireContext())
-            val tv = TextView(requireContext()).apply {
-                text = if (sb.isBlank()) "暂无 Diff 内容" else sb.toString()
-                textSize = 13f
-                setTextIsSelectable(true)
-                setPadding(48, 40, 48, 40)
-            }
-            container.addView(tv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            val dialogBinding = com.example.qgent.databinding.DialogTextContentBinding.inflate(layoutInflater)
+            dialogBinding.tvContent.text = if (sb.isBlank()) "暂无 Diff 内容" else sb.toString()
 
             val builder = MaterialAlertDialogBuilder(requireContext())
                 .setTitle(if (reviewStatus == "ACCEPTED") {
@@ -614,7 +593,7 @@ class TaskDetailFragment : Fragment() {
                 } else {
                     "Diff 审核 · ${detail.title}"
                 })
-                .setView(container)
+                .setView(dialogBinding.root)
             // Diff 审核：仅任务发起人或 Project Admin 可确认/拒绝（后端能力位派生，§16.2）。
             // 能力位缺省按 true 兜底（DIFF_FIRST 旧后端回归），确认/拒绝分别判断。
             val canDecide = DiffReviewRules.canConfirmOrReject(reviewStatus, confirmationSource)
@@ -659,9 +638,7 @@ class TaskDetailFragment : Fragment() {
 
     /** 拒绝整个最终 Diff 批次（POST .../diff-review/reject，§12.3；可填原因） */
     private fun rejectTaskDiffReview() {
-        val input = EditText(requireContext())
-        input.hint = "拒绝原因（可选）"
-        input.setPadding(48, 32, 48, 32)
+        val input = layoutInflater.inflate(R.layout.dialog_reject_diff, null) as EditText
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.reject_diff)
             .setView(input)

@@ -17,18 +17,10 @@ import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.ChatRepositoryImpl
 import com.example.qgent.data.repository.DiffRepository
 import com.example.qgent.data.repository.DiffRepositoryImpl
-import com.example.qgent.data.repository.FallbackAgentRepository
-import com.example.qgent.data.repository.FallbackDiffRepository
-import com.example.qgent.data.repository.FallbackMemoryRepository
-import com.example.qgent.data.repository.FallbackSkillRepository
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.GitHubRepositoryImpl
 import com.example.qgent.data.repository.MemoryRepository
 import com.example.qgent.data.repository.MemoryRepositoryImpl
-import com.example.qgent.data.repository.MockAgentRepository
-import com.example.qgent.data.repository.MockDiffRepository
-import com.example.qgent.data.repository.MockMemoryRepository
-import com.example.qgent.data.repository.MockSkillRepository
 import com.example.qgent.data.repository.SkillRepository
 import com.example.qgent.data.repository.SkillRepositoryImpl
 import com.example.qgent.data.repository.TaskRepository
@@ -62,33 +54,18 @@ class AppContainer(context: Context) {
     val chatRepository: ChatRepository = ChatRepositoryImpl(RetrofitClient.service)
 
     /**
-     * Agent：真实接口优先，失败回退 mock（"新手大礼包"演示 Agent）。
-     * 真实 GET /teams/{id}/agents 未就绪时，@ Agent / 发起任务仍需 Agent 数据可用，故用 Fallback 保底。
+     * Agent：真实接口实现（mock 回退已移除，后端接口已就绪）。
      */
-    val agentRepository: AgentRepository = FallbackAgentRepository(
-        AgentRepositoryImpl(RetrofitClient.service),
-        MockAgentRepository()
-    )
+    val agentRepository: AgentRepository = AgentRepositoryImpl(RetrofitClient.service)
 
     /**
-     * Skill / Memory：真实接口优先，失败回退 mock 保底（Fallback 层）。
-     * 等真实接口全部测试通过后，可移除 Fallback 与 Mock 实现。
+     * Skill / Memory / Diff：真实接口实现（Fallback/Mock 已移除，后端接口已就绪）。
      */
-    val skillRepository: SkillRepository = FallbackSkillRepository(
-        SkillRepositoryImpl(RetrofitClient.service),
-        MockSkillRepository()
-    )
+    val skillRepository: SkillRepository = SkillRepositoryImpl(RetrofitClient.service)
 
-    val memoryRepository: MemoryRepository = FallbackMemoryRepository(
-        MemoryRepositoryImpl(RetrofitClient.service),
-        MockMemoryRepository()
-    )
+    val memoryRepository: MemoryRepository = MemoryRepositoryImpl(RetrofitClient.service)
 
-    /** Diff 文件内容：真实接口优先，失败 mock 保底（测试完成后移除 Fallback/Mock） */
-    val diffRepository: DiffRepository = FallbackDiffRepository(
-        DiffRepositoryImpl(RetrofitClient.service),
-        MockDiffRepository()
-    )
+    val diffRepository: DiffRepository = DiffRepositoryImpl(RetrofitClient.service)
 
     val githubRepository: GitHubRepository = GitHubRepositoryImpl(RetrofitClient.service)
 

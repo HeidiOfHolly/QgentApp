@@ -64,12 +64,9 @@ object DeliveryItemCardBuilder {
         repos.forEach { rd ->
             val status = rd.deliveryStatus ?: "-"
             val reason = rd.failureReason?.takeIf { it.isNotBlank() }?.let { "（$it）" }.orEmpty()
-            val row = TextView(binding.root.context).apply {
-                text = "• ${rd.repositoryName ?: rd.repositoryId ?: "仓库"}：$status$reason"
-                textSize = 12f
-                setTextColor(binding.root.context.getColor(R.color.text_primary))
-                setPadding(0, dp(binding.root.context, 2), 0, dp(binding.root.context, 2))
-            }
+            val row = android.view.LayoutInflater.from(binding.root.context)
+                .inflate(R.layout.item_delivery_repo_row, binding.containerRepos, false) as TextView
+            row.text = "• ${rd.repositoryName ?: rd.repositoryId ?: "仓库"}：$status$reason"
             binding.containerRepos.addView(row)
         }
     }
@@ -79,14 +76,13 @@ object DeliveryItemCardBuilder {
         container.removeAllViews()
         val caps = item.capabilities
 
-        fun actionButton(text: String, onClick: () -> Unit): TextView =
-            TextView(binding.root.context).apply {
-                this.text = text
-                setTextColor(binding.root.context.getColor(R.color.primary))
-                textSize = 13f
-                setPadding(dp(binding.root.context, 10), dp(binding.root.context, 6), dp(binding.root.context, 10), dp(binding.root.context, 6))
-                setOnClickListener { onClick() }
-            }
+        fun actionButton(text: String, onClick: () -> Unit): TextView {
+            val btn = android.view.LayoutInflater.from(binding.root.context)
+                .inflate(R.layout.item_delivery_action_btn, container, false) as TextView
+            btn.text = text
+            btn.setOnClickListener { onClick() }
+            return btn
+        }
         // 查看 Diff：同项目所有成员可见（后端 GET /diffs/{id}/files 权限=项目成员），
         // 不依赖 canOpenResource 能力位（后端对部分成员返回 null 会误隐藏查看入口）
         if (!item.diffId.isNullOrBlank()) {

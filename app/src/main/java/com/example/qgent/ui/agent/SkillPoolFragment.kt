@@ -117,24 +117,18 @@ class SkillPoolFragment : Fragment() {
             Toast.makeText(requireContext(), "请先选择项目", Toast.LENGTH_SHORT).show()
             return
         }
-        val etName = EditText(requireContext()).apply { hint = "Skill 名称（必填）" }
-        val etContent = EditText(requireContext()).apply { hint = "Skill 内容（可选）"; minLines = 4 }
-        val container = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(etName)
-            addView(etContent)
-        }
+        val dialogBinding = com.example.qgent.databinding.DialogCreateSkillBinding.inflate(layoutInflater)
         AlertDialog.Builder(requireContext())
             .setTitle("新建 Skill")
-            .setView(container)
+            .setView(dialogBinding.root)
             .setNegativeButton(R.string.cancel, null)
             .setPositiveButton("创建") { _, _ ->
-                val name = etName.text.toString().trim()
+                val name = dialogBinding.etName.text.toString().trim()
                 if (name.isEmpty()) {
                     Toast.makeText(requireContext(), "请输入 Skill 名称", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
-                createSkill(projectId, name, etContent.text.toString().trim().ifEmpty { null })
+                createSkill(projectId, name, dialogBinding.etContent.text.toString().trim().ifEmpty { null })
             }
             .show()
     }

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自动建仓列表：仓库名 + 删除按钮 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="6dp"
+    android:background="@drawable/bg_card"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="12dp"
+    android:paddingEnd="4dp">
+
+    <TextView
+        android:id="@+id/tvRepoName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textColor="@color/charcoal"
+        android:textSize="16sp"
+        tools:text="auth-service" />
+
+    <ImageView
+        android:id="@+id/ivDeleteRepo"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:contentDescription="@string/github_repo_delete"
+        android:padding="6dp"
+        android:src="@drawable/ic_close"
+        app:tint="@color/gray" />
+</LinearLayout>

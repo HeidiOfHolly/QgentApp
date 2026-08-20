@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Agent 能力标签（chips） -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="@dimen/chip_margin_end"
+    android:background="@drawable/bg_status_tag"
+    android:paddingStart="@dimen/chip_padding_h"
+    android:paddingTop="@dimen/chip_padding_v"
+    android:paddingEnd="@dimen/chip_padding_h"
+    android:paddingBottom="@dimen/chip_padding_v"
+    android:textColor="@android:color/white"
+    android:textSize="12sp"
+    tools:text="java" />
