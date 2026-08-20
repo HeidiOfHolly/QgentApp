@@ -14,13 +14,14 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.repository.GitHubRepository
+import com.example.qgent.data.sse.ProjectEventStream
 import com.example.qgent.data.sse.SseEventType
 import com.example.qgent.databinding.FragmentMrListBinding
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/** MR 列表页：展示当前项目的全部 MR（§13），复用 item_mr_card 卡片；实时监听项目 SSE + WS（MR/分支/仓库事件） */
+/** MR 列表页：展示当前项目的全部 MR（§13），复用 item_mr_card 卡片；实时监听项目 SSE + WS（MR/分支/交付/仓库事件） */
 class MergeRequestListFragment : Fragment() {
 
     private var _binding: FragmentMrListBinding? = null
@@ -35,8 +36,8 @@ class MergeRequestListFragment : Fragment() {
     private val githubRepository: GitHubRepository
         get() = (requireActivity().application as QgentApp).container.githubRepository
 
-    /** 项目级 SSE 事件流：MR/分支/仓库状态事件到达 → 刷新 MR 列表与仓库名映射 */
-    private val eventStream: com.example.qgent.data.sse.ProjectEventStream
+    /** 项目级 SSE 事件流：MR/分支/交付/仓库状态事件到达 → 刷新 MR 列表与仓库名映射 */
+    private val eventStream: ProjectEventStream
         get() = (requireActivity().application as QgentApp).container.projectEventStream
 
     /** WebSocket 实时通道（单连接用户级聚合；事件名与 SSE 一致） */
@@ -95,39 +96,48 @@ class MergeRequestListFragment : Fragment() {
     }
 
     /**
-     * 实时监听：项目 SSE + WebSocket。
-     * MR 状态变化（打开/更新/关闭/合并）、分支锁定/解锁、仓库授权变化 → 重新查询接口（不信任 payload 为完整数据）。
+     * 实时监听：项目 SSE + WebSocket（事件名一致，双通道兜底）。
+     * MR 打开/更新/关闭/合并、分支锁定/解锁、DryRun/预检/交付、任务状态、仓库授权变化 →
+     * 一律重新查询接口（事件只作刷新信号，不信任 payload 为完整数据）。
      */
     private fun startEventStream(projectId: String) {
         eventStream.startProject(projectId)
         if (eventStreamJob == null) {
             eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
                 eventStream.events.collect { event ->
-                    when (event.type) {
-                        SseEventType.MERGE_REQUEST_UPDATED,
-                        SseEventType.WORK_BRANCH_UPDATED,
-                        SseEventType.GITHUB_REPOSITORY_UPDATED -> {
-                            taskListViewModel.loadMergeRequestsForList(projectId)
-                            loadRepoNameMap(projectId)
-                        }
-                        else -> Unit
-                    }
+                    if (eventAffectsMrList(event.type)) refreshMrList(projectId)
                 }
             }
         }
         if (wsJob == null) {
             wsJob = viewLifecycleOwner.lifecycleScope.launch {
                 realtimeClient.events.collect { frame ->
-                    when (frame.type) {
-                        "merge-request.updated", "work-branch.updated", "github-repository.updated" -> {
-                            taskListViewModel.loadMergeRequestsForList(projectId)
-                            loadRepoNameMap(projectId)
-                        }
-                        else -> Unit
-                    }
+                    val type = runCatching { SseEventType.fromWire(frame.type) }.getOrNull()
+                    if (eventAffectsMrList(type)) refreshMrList(projectId)
                 }
             }
         }
+    }
+
+    /** 会影响 MR 列表的事件：MR 状态 / 分支锁定解锁 / DryRun / 预检 / 交付 / 任务状态 / 仓库授权 */
+    private fun eventAffectsMrList(type: SseEventType?): Boolean = when (type) {
+        SseEventType.MERGE_REQUEST_UPDATED,
+        SseEventType.WORK_BRANCH_UPDATED,
+        SseEventType.GITHUB_REPOSITORY_UPDATED,
+        SseEventType.DRY_RUN_UPDATED,
+        SseEventType.PREFLIGHT_UPDATED,
+        SseEventType.DELIVERY_STARTED,
+        SseEventType.DELIVERY_REPOSITORY_UPDATED,
+        SseEventType.DELIVERY_FAILED,
+        SseEventType.DELIVERY_COMPLETED,
+        SseEventType.TASK_UPDATED -> true
+        else -> false
+    }
+
+    /** 事件到：强制重新查询 MR 列表 + 仓库名映射（force 跳过防重复，事件一律以查询为准） */
+    private fun refreshMrList(projectId: String) {
+        taskListViewModel.loadMergeRequestsForList(projectId, force = true)
+        loadRepoNameMap(projectId)
     }
 
     private fun stopEventStream() {

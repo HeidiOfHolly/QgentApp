@@ -68,7 +68,17 @@
         <action
             android:id="@+id/action_deliveryCenter_to_deliveryItemDetail"
             app:destination="@id/deliveryItemDetailFragment" />
+        <action
+            android:id="@+id/action_deliveryCenter_to_testsetList"
+            app:destination="@id/testsetListFragment" />
     </fragment>
+
+    <!-- Testset 列表页（仅管理员可见入口） -->
+    <fragment
+        android:id="@+id/testsetListFragment"
+        android:name="com.example.qgent.ui.tasks.TestsetListFragment"
+        android:label="TestSet"
+        tools:layout="@layout/fragment_testset_list" />
 
     <fragment
         android:id="@+id/deliveryItemListFragment"

@@ -25,6 +25,9 @@ class TaskListViewModel(
         const val MAX_AGENT_ACTIVITIES = 5
         const val MAX_MR = 2
 
+        /** 任务终态（任务首页「未完成优先」排序：不在终态集合的视为未完成） */
+        private val TERMINAL_STATUSES = setOf("SUCCEEDED", "FAILED", "DELIVERY_FAILED", "CANCELLED", "CANCELLING")
+
         /** 任务状态筛选项（§3.2 状态枚举的常用子集） */
         val STATUS_OPTIONS = listOf(
             "PLANNING" to "规划中",
@@ -60,6 +63,8 @@ class TaskListViewModel(
     data class TaskListUiState(
         val loading: Boolean = false,
         val tasks: List<TaskListItemDto> = emptyList(),
+        /** 任务首页专用：当前用户的最近任务（不受列表页筛选影响，仅按创建者过滤） */
+        val myTasks: List<TaskListItemDto> = emptyList(),
         val agentRuns: List<AgentRun> = emptyList(),
         val mergeRequests: List<MergeRequestDto> = emptyList(),
         val filter: TaskFilter = TaskFilter(),
@@ -101,6 +106,26 @@ class TaskListViewModel(
                 .onFailure { e ->
                     android.util.Log.e("TaskPoll", "getTasks FAILED: ${e.message}")
                     _uiState.value = _uiState.value.copy(loading = false, error = e.message ?: "加载任务失败")
+                }
+        }
+    }
+
+    /** 任务首页：仅加载当前用户创建的任务（createdBy=userId，无列表页筛选），
+     *  与 state.tasks（列表页可筛选）分离，返回主界面时列表页筛选不影响首页展示。
+     *  排序：未完成优先（未完成/已完成分组内再按 updatedAt 倒序）。 */
+    fun loadMyTasks(projectId: String?, userId: String?) {
+        if (projectId == null || userId == null) return
+        viewModelScope.launch {
+            repo.getTasks(projectId, createdBy = userId)
+                .onSuccess { tasks ->
+                    val sorted = tasks.sortedWith(
+                        compareByDescending<TaskListItemDto> { it.status !in TERMINAL_STATUSES }
+                            .thenByDescending { it.updatedAt }
+                    )
+                    _uiState.value = _uiState.value.copy(myTasks = sorted)
+                }
+                .onFailure { e ->
+                    android.util.Log.e("TaskPoll", "loadMyTasks FAILED: ${e.message}")
                 }
         }
     }
@@ -160,11 +185,12 @@ class TaskListViewModel(
         }
     }
 
-    /** MR 列表页专用：只加载 MR（全量），供独立 MR 列表页使用 */
-    fun loadMergeRequestsForList(projectId: String?) {
+    /** MR 列表页专用：只加载 MR（全量），供独立 MR 列表页使用。
+     *  @param force true 时跳过「同项目已加载」防重复（事件触发刷新用，设计要点：事件一律重新查询） */
+    fun loadMergeRequestsForList(projectId: String?, force: Boolean = false) {
         if (projectId == null) return
         // 独立跟踪 MR 项目：与任务加载共用 loadedProjectId 会串数据（见 loadTasks）
-        if (loadedMrProjectId == projectId && _uiState.value.mergeRequests.isNotEmpty()) return
+        if (!force && loadedMrProjectId == projectId && _uiState.value.mergeRequests.isNotEmpty()) return
         loadedMrProjectId = projectId
         viewModelScope.launch {
             repo.getMergeRequests(projectId)

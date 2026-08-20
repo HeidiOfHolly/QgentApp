@@ -2,18 +2,23 @@ package com.example.qgent.data.repository
 
 import com.example.qgent.data.model.ActivityDto
 import com.example.qgent.data.model.CqActionRequest
+import com.example.qgent.data.model.CreateDryRunRequest
+import com.example.qgent.data.model.CreateDryRunResponse
 import com.example.qgent.data.model.CreateMergeRequestRequest
 import com.example.qgent.data.model.CreateMergeRequestResponse
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.DiffFileResponseDto
+import com.example.qgent.data.model.DryRunListItemDto
+import com.example.qgent.data.model.DryRunReportDto
+import com.example.qgent.data.model.DryRunRetryResponse
 import com.example.qgent.data.model.EmptyBody
 import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
 import com.example.qgent.data.model.MergeRequestPreflightDto
-import com.example.qgent.data.model.PreflightDto
 import com.example.qgent.data.model.RequestMergeRequestPreflightRequest
 import com.example.qgent.data.model.RequestMergeRequestPreflightResponse
+import com.example.qgent.data.model.TestsetResponseDto
 import com.example.qgent.data.model.MergeRequestReviewDto
 import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
@@ -109,6 +114,9 @@ interface TaskRepository {
         limit: Int = 100
     ): Result<List<DeliveryItemDto>>
 
+    /** Testset 列表（§10：项目成员可查，支持仓库/状态过滤） */
+    suspend fun getTestsets(projectId: String, repositoryId: String? = null, status: String? = null): Result<List<TestsetResponseDto>>
+
     /** MR 门禁检查（TESTSET/AI_REVIEW/DRY_RUN/CQ_PLUS_ONE） */
     suspend fun getMergeRequestChecks(projectId: String, mergeRequestId: String): Result<List<MergeRequestCheckDto>>
 
@@ -137,10 +145,7 @@ interface TaskRepository {
         idempotencyKey: String
     ): Result<CreateMergeRequestResponse>
 
-    /** MR 创建前预检（v2.0.3 §2：查 Dry Run + CQ+1 状态，拿 dryRunId） */
-    suspend fun getPreflight(projectId: String, taskId: String, repositoryId: String, targetBranch: String?): Result<PreflightDto>
-
-    /** 申请 MR 预检（统一创建 MR 计划 C1：启动 Dry Run，202） */
+    /** 申请 MR 预检（§46.2：启动 Dry Run，202） */
     suspend fun requestMergeRequestPreflight(
         projectId: String,
         taskId: String,
@@ -148,11 +153,42 @@ interface TaskRepository {
         idempotencyKey: String
     ): Result<RequestMergeRequestPreflightResponse>
 
-    /** 按 Task 查询全部仓库 MR 预检状态（统一创建 MR 计划 C2） */
+    /** 按 Task 查询全部仓库 MR 预检状态（§46.7） */
     suspend fun getTaskMergeRequestPreflight(projectId: String, taskId: String): Result<List<MergeRequestPreflightDto>>
+
+    /** 单条 MR 预检详情（§46.7：页面刷新/SSE 断线后恢复状态） */
+    suspend fun getMergeRequestPreflight(projectId: String, preflightId: String): Result<MergeRequestPreflightDto>
 
     /** Dry Run 预检 CQ+1（§27.10：通过后触发自动创建 MR） */
     suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit>
+
+    /** 创建 Dry Run（§12.4/§32.1：repositoryId/sourceRef/targetBranch，taskId 可选；202 受理） */
+    suspend fun createDryRun(
+        projectId: String,
+        repositoryId: String,
+        sourceRef: String,
+        targetBranch: String,
+        taskId: String?,
+        idempotencyKey: String
+    ): Result<CreateDryRunResponse>
+
+    /** Dry Run 报告（§12.4/§32.1：冲突/测试汇总；排队/运行时 report 为 null） */
+    suspend fun getDryRunReport(projectId: String, dryRunId: String): Result<DryRunReportDto>
+
+    /** 重试 Dry Run（§32.2：返回新的 Dry Run ID，原报告只读） */
+    suspend fun retryDryRun(projectId: String, dryRunId: String, idempotencyKey: String): Result<DryRunRetryResponse>
+
+    /** Dry Run 历史列表（§38.3：筛选 + 游标分页） */
+    suspend fun getDryRuns(
+        projectId: String,
+        repositoryId: String? = null,
+        taskId: String? = null,
+        status: String? = null,
+        targetBranch: String? = null,
+        createdByUserId: String? = null,
+        cursor: String? = null,
+        limit: Int = 20
+    ): Result<List<DryRunListItemDto>>
 
     /** 读取 Diff 文件与代码行（§12.3） */
     suspend fun getDiffFiles(projectId: String, diffId: String): Result<List<DiffFileResponseDto>>
