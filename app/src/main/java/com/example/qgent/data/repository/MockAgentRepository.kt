@@ -2,7 +2,6 @@ package com.example.qgent.data.repository
 
 import com.example.qgent.data.datasource.MockDataSource
 import com.example.qgent.data.model.AgentDto
-import com.example.qgent.data.model.AgentSkillBindingsResponse
 
 /** mock Agent：提供系统内置“新手大礼包” Agent，仅支持查询 */
 class MockAgentRepository : AgentRepository {
@@ -29,10 +28,4 @@ class MockAgentRepository : AgentRepository {
 
     override suspend fun archiveAgent(teamId: String, agentId: String, idempotencyKey: String): Result<AgentDto> =
         Result.failure(UnsupportedOperationException("mock 不支持下线 Agent"))
-
-    override suspend fun bindAgentSkills(projectId: String, agentId: String, skillIds: List<String>, idempotencyKey: String): Result<AgentDto> =
-        Result.failure(UnsupportedOperationException("mock 不支持绑定 Skill"))
-
-    override suspend fun getAgentSkillBindings(projectId: String, agentId: String): Result<AgentSkillBindingsResponse> =
-        Result.success(AgentSkillBindingsResponse(agentId = agentId, skillIds = emptyList(), skills = emptyList()))
 }

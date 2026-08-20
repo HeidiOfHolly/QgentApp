@@ -1,11 +1,10 @@
 package com.example.qgent.data.api
 
 import com.example.qgent.data.model.AgentDto
-import com.example.qgent.data.model.AgentSkillBindingsRequest
-import com.example.qgent.data.model.AgentSkillBindingsResponse
 import com.example.qgent.data.model.AddGroupMemberRequest
 import com.example.qgent.data.model.AddProjectMemberRequest
 import com.example.qgent.data.model.ApiResponse
+import com.example.qgent.data.model.AiMemoryDraftRequest
 import com.example.qgent.data.model.AttachmentDto
 import com.example.qgent.data.model.AttachmentConfirmDto
 import com.example.qgent.data.model.AvatarConfirmRequest
@@ -43,6 +42,8 @@ import com.example.qgent.data.model.ProjectMemberDto
 import com.example.qgent.data.model.ProjectRepositoryDto
 import com.example.qgent.data.model.ReceivedInvitationDto
 import com.example.qgent.data.model.RefreshRequest
+import com.example.qgent.data.model.UpdateProjectRequest
+import com.example.qgent.data.model.UpdateTeamRequest
 import com.example.qgent.data.model.ReplaceAgentRequest
 import com.example.qgent.data.model.RegisterRequest
 import com.example.qgent.data.model.SendMessageRequest
@@ -171,6 +172,30 @@ interface QgApiService {
         @Body body: CreateTeamRequest
     ): Response<ApiResponse<TeamDto>>
 
+    /** 更新团队（§28.2）：avatarUrl null 保留原值、空串清空 */
+    @PATCH("teams/{teamId}")
+    suspend fun updateTeam(
+        @Path("teamId") teamId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: UpdateTeamRequest
+    ): Response<ApiResponse<TeamDto>>
+
+    /** 团队头像直传凭证（§28.1）：对象键前缀必须 teams/{teamId}/，否则 403 AVATAR_OBJECT_KEY_FORBIDDEN */
+    @POST("teams/{teamId}/avatar/credential")
+    suspend fun createTeamAvatarCredential(
+        @Path("teamId") teamId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: AvatarCredentialRequest
+    ): Response<ApiResponse<AvatarCredentialResponse>>
+
+    /** 团队头像上传确认（§28.1）：返回公共读 avatarUrl；对象未上传 409 AVATAR_NOT_UPLOADED、OSS 未启用 501 */
+    @POST("teams/{teamId}/avatar/confirm")
+    suspend fun confirmTeamAvatar(
+        @Path("teamId") teamId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: AvatarConfirmRequest
+    ): Response<ApiResponse<AvatarConfirmResponse>>
+
     @GET("teams/{teamId}/members")
     suspend fun getTeamMembers(
         @Path("teamId") teamId: String,
@@ -235,6 +260,30 @@ interface QgApiService {
         @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: CreateProjectRequest
     ): Response<ApiResponse<ProjectDto>>
+
+    /** 更新项目（§31.1）：avatarUrl null 保留原值、空串清空 */
+    @PATCH("projects/{projectId}")
+    suspend fun updateProject(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: UpdateProjectRequest
+    ): Response<ApiResponse<ProjectDto>>
+
+    /** 项目头像直传凭证（§31.1）：对象键 projects/{projectId}/{uuid}.{ext}，错误码与团队头像一致 */
+    @POST("projects/{projectId}/avatar/credential")
+    suspend fun createProjectAvatarCredential(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: AvatarCredentialRequest
+    ): Response<ApiResponse<AvatarCredentialResponse>>
+
+    /** 项目头像上传确认（§31.1）：返回公共读 URL，前端随 PATCH /projects/{projectId} 回写 */
+    @POST("projects/{projectId}/avatar/confirm")
+    suspend fun confirmProjectAvatar(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: AvatarConfirmRequest
+    ): Response<ApiResponse<AvatarConfirmResponse>>
 
     @POST("projects/{projectId}/members")
     suspend fun addProjectMember(
@@ -469,21 +518,6 @@ interface QgApiService {
         @Header("Idempotency-Key") idempotencyKey: String
     ): Response<ApiResponse<AgentDto>>
 
-    @PUT("projects/{projectId}/agent-skill-bindings/{agentId}")
-    suspend fun bindAgentSkills(
-        @Path("projectId") projectId: String,
-        @Path("agentId") agentId: String,
-        @Header("Idempotency-Key") idempotencyKey: String,
-        @Body body: AgentSkillBindingsRequest
-    ): Response<ApiResponse<AgentDto>>
-
-    /** 读取 Agent 在当前项目的 Skill 绑定集（项目成员） */
-    @GET("projects/{projectId}/agent-skill-bindings/{agentId}")
-    suspend fun getAgentSkillBindings(
-        @Path("projectId") projectId: String,
-        @Path("agentId") agentId: String
-    ): Response<ApiResponse<AgentSkillBindingsResponse>>
-
     /** v2.0.6 §5.2：签发 Agent 头像直传凭证（对象键 agents/{teamId}/{uuid}.{ext}） */
     @POST("teams/{teamId}/agents/avatar/credential")
     suspend fun createAgentAvatarCredential(
@@ -631,7 +665,7 @@ interface QgApiService {
     suspend fun createMemoryAiDraft(
         @Path("projectId") projectId: String,
         @Header("Idempotency-Key") idempotencyKey: String,
-        @Body body: CreateMemoryRequest
+        @Body body: AiMemoryDraftRequest
     ): Response<ApiResponse<MemoryDto>>
 
     @GET("projects/{projectId}/memories/{memoryId}")

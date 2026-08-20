@@ -155,7 +155,10 @@ class TaskCardListFragment : Fragment() {
                         com.example.qgent.data.sse.SseEventType.DELIVERY_REPOSITORY_UPDATED,
                         com.example.qgent.data.sse.SseEventType.DELIVERY_FAILED,
                         com.example.qgent.data.sse.SseEventType.DELIVERY_COMPLETED,
-                        com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SKIPPED -> {
+                        com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SKIPPED,
+                        // MR 打开/合并/状态变化、分支锁定/解锁 → 任务交付状态与分支可能联动变化
+                        com.example.qgent.data.sse.SseEventType.MERGE_REQUEST_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.WORK_BRANCH_UPDATED -> {
                             taskListViewModel.loadTasks(projectId)
                         }
                         else -> Unit

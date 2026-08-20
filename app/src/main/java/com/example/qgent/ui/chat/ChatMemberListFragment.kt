@@ -139,12 +139,14 @@ class ChatMemberListFragment : Fragment() {
             ?.type == GroupType.PROJECT_MAIN
         if (isMainGroup) return dtos
         val allAgents = mainViewModel.agents.value.orEmpty()
+        // 群里只合并一个 Agent（取团队第一个 ACTIVE；角色已收敛为 4 种执行角色）
         val teamAgents = allAgents
-            .filter { it.status.name != "ARCHIVED" }
-            .map { GroupMemberDto(id = it.id, nickname = it.name, displayName = it.name, avatar = it.avatar, memberType = "AGENT") }
+            .firstOrNull { it.status.name != "ARCHIVED" }
+            ?.let { listOf(GroupMemberDto(id = it.id, nickname = it.name, displayName = it.name, avatar = it.avatar, memberType = "AGENT")) }
+            .orEmpty()
         val agentIds = teamAgents.map { it.id }.toSet()
-        // 群成员中与 Agent 名单同 id 的条目以名单为准；其余（真人 + 名单缺失的 Agent）保留
-        return dtos.filter { it.id !in agentIds } + teamAgents
+        // 后端群成员中可能含 Agent：全部过滤，只保留合并的单一 Agent（避免叠加成多个）
+        return dtos.filter { it.id !in agentIds && !it.isAgent } + teamAgents
     }
 
     private fun renderMembers(members: List<GroupMemberDto>) {

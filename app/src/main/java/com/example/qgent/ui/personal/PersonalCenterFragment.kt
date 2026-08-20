@@ -9,6 +9,7 @@ import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.fragment.NavHostFragment
@@ -20,9 +21,11 @@ import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.api.RetrofitClient
+import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.databinding.FragmentPersonalCenterBinding
 import com.example.qgent.ui.team.TeamAdapter
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
 
 class PersonalCenterFragment : Fragment() {
 
@@ -104,6 +107,7 @@ class PersonalCenterFragment : Fragment() {
         mainViewModel.projects.observe(viewLifecycleOwner) { projects ->
             projectAdapter.submitList(projects)
             refreshHighlight()
+            loadProjectAvatarMap()
         }
 
         // 切换团队加载项目期间，抽屉中央显示 ProgressBar
@@ -200,6 +204,18 @@ class PersonalCenterFragment : Fragment() {
         // 已在 GitHub 页时避免重复压栈（团队无项目时 onTeamClick 回调会再次进入）
         if (onGithubPage) return
         navController.navigate(R.id.githubFragment)
+    }
+
+    /** 项目名 → 头像映射（§31.1，抽屉项目列表显示） */
+    private fun loadProjectAvatarMap() {
+        val teamId = mainViewModel.currentTeamId() ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val map = (requireActivity().application as QgentApp).container.userRepository
+                .getProjects(teamId).getOrNull().orEmpty()
+                .mapNotNull { p -> p.avatarUrl?.takeIf { it.isNotBlank() }?.let { p.name to it } }
+                .toMap()
+            projectAdapter.setAvatarMap(map)
+        }
     }
 
     /** 收起个人中心抽屉，并跳转至主界面（群聊 / 任务 / Agent 三 Tab） */

@@ -64,12 +64,12 @@ class MockMemoryRepository : MemoryRepository {
             )
         )
 
-    override suspend fun createAiDraft(projectId: String, request: CreateMemoryRequest, idempotencyKey: String): Result<MemoryDto> =
+    override suspend fun createAiDraft(projectId: String, request: com.example.qgent.data.model.AiMemoryDraftRequest, idempotencyKey: String): Result<MemoryDto> =
         Result.success(
             MemoryDto(
                 id = "mock-memory-ai-${System.currentTimeMillis()}", projectId = projectId,
-                title = request.title, content = request.content, category = request.category,
-                tags = request.tags, status = "DRAFT",
+                title = "AI 总结草稿", content = "（AI 按群自动检索生成的草稿）", category = null,
+                tags = null, status = "DRAFT",
                 creator = null, reviewer = null, rejectionReason = null,
                 reviewedAt = null, createdAt = "2026-08-16T08:00:00Z"
             )

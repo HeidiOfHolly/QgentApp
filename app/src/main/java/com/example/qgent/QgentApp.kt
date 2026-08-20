@@ -145,8 +145,46 @@ class QgentApp : Application() {
             "$name：$text"
         } ?: "新消息"
         val mentioned = latest?.mentions?.any { it.type == "USER" && it.id == myId } == true
-        NotificationHelper.showChatNotification(this, groupId, groupName, body, mentioned, unread)
+        // 通知右侧图标 = 群聊头像（成员拼图）；生成失败/无头像时 NotificationHelper 兜底品牌 Logo
+        val largeIcon = buildGroupAvatarBitmap(projectId, groupId)
+        NotificationHelper.showChatNotification(this, projectId, groupId, groupName, body, mentioned, unread, largeIcon)
     }
+
+    /** 群聊头像拼图（通知大图标）：拉群成员头像（前 9 个）按 1/2x2/3x3 网格拼成白底 Bitmap，与 GroupAvatarView 一致 */
+    private suspend fun buildGroupAvatarBitmap(projectId: String, groupId: String): android.graphics.Bitmap? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val members = container.chatRepository.getMembers(projectId, groupId).getOrNull().orEmpty()
+            val urls = members.mapNotNull { it.avatar?.takeIf { u -> u.isNotBlank() } }.take(9)
+            if (urls.isEmpty()) return@withContext null
+            val size = 192
+            val grid = when (urls.size) { 1 -> 1; in 2..4 -> 2; else -> 3 }
+            val gap = 2
+            val cell = (size - gap * (grid - 1)) / grid
+            val bmp = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bmp)
+            canvas.drawColor(android.graphics.Color.WHITE)
+            val token = SessionStore.accessToken()
+            val headers = com.bumptech.glide.load.model.LazyHeaders.Builder().apply {
+                if (!token.isNullOrEmpty()) addHeader("Authorization", "Bearer $token")
+            }.build()
+            urls.forEachIndexed { index, url ->
+                val row = index / grid
+                val col = index % grid
+                val left = col * (cell + gap)
+                val top = row * (cell + gap)
+                val avatar = runCatching {
+                    com.bumptech.glide.Glide.with(this@QgentApp)
+                        .asBitmap()
+                        .load(com.bumptech.glide.load.model.GlideUrl(com.example.qgent.data.api.RetrofitClient.resolveMediaUrl(url), headers))
+                        .submit(cell, cell)
+                        .get(5, java.util.concurrent.TimeUnit.SECONDS)
+                }.getOrNull()
+                if (avatar != null) {
+                    canvas.drawBitmap(avatar, null, android.graphics.Rect(left, top, left + cell, top + cell), null)
+                }
+            }
+            bmp
+        }
 
     private fun forceLogout() {
         if (!SessionStore.isLoggedIn()) return

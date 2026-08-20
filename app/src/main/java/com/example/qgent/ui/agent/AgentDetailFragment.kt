@@ -31,10 +31,9 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
- * Agent 详情：身份卡 + 管理操作 + Skill 绑定。
+ * Agent 详情：身份卡 + 管理操作。
  * - 管理操作（创建者或 Team Owner）：编辑 / 发布(审批占位) / 收回发布 / 下线
- * - Skill 绑定：项目内可用 Skill 多选 → 全量替换（PUT agent-skill-bindings）
- * - Memory 绑定：后端暂无接口，保持空态
+ * - Skill / Memory 在池中共享、执行时按需调用（后端），无需手动绑定（已移除绑定 UI）
  */
 class AgentDetailFragment : Fragment() {
 
@@ -75,20 +74,6 @@ class AgentDetailFragment : Fragment() {
         )
 
         loadAgentDetail()
-
-        // 已绑定 Memory：后端暂无绑定查询接口，无数据时隐藏列表、显示空态（不展示 mock）
-        binding.rvBoundMemory.addItemDecoration(DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL))
-        binding.rvBoundMemory.adapter = BoundResourceAdapter(mutableListOf()) { }
-        binding.rvBoundMemory.isVisible = false
-        binding.tvBoundMemoryEmpty.isVisible = true
-        binding.tvDetailAddMemory.setOnClickListener {
-            Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
-        }
-
-        // 已绑定 Skill：加载真实绑定集；「管理」→ 项目可用 Skill 多选全量替换
-        binding.rvBoundSkill.addItemDecoration(DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL))
-        binding.tvDetailAddSkill.setOnClickListener { showSkillManageDialog() }
-        loadSkillBindings()
     }
 
     /** 从「编辑」返回后重新加载详情（onResume 刷新，保证改名/换头像/改描述即时生效） */
@@ -229,71 +214,6 @@ class AgentDetailFragment : Fragment() {
         )
     }
 
-    // ── Skill 绑定 ──
-
-    private fun loadSkillBindings() {
-        val projectId = mainViewModel.currentProjectId() ?: return
-        if (agentId.isEmpty()) return
-        viewLifecycleOwner.lifecycleScope.launch {
-            agentRepo.getAgentSkillBindings(projectId, agentId)
-                .onSuccess { resp ->
-                    val names = resp.skills.orEmpty().map { it.name ?: it.id }
-                    renderSkillList(names)
-                }
-                .onFailure { renderSkillList(emptyList()) }
-        }
-    }
-
-    private fun renderSkillList(names: List<String>) {
-        binding.rvBoundSkill.adapter = BoundResourceAdapter(names.toMutableList()) { }
-        binding.rvBoundSkill.isVisible = names.isNotEmpty()
-        binding.tvBoundSkillEmpty.isVisible = names.isEmpty()
-    }
-
-    /** 项目可用 Skill 多选（本人 PRIVATE 未归档 + 已发布 PROJECT_SHARED）→ 全量替换绑定 */
-    private fun showSkillManageDialog() {
-        val projectId = mainViewModel.currentProjectId() ?: run {
-            Toast.makeText(requireContext(), "请先选择项目", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val app = requireActivity().application as QgentApp
-        viewLifecycleOwner.lifecycleScope.launch {
-            val available = app.container.skillRepository.getSkills(projectId).getOrNull().orEmpty()
-                .filter { it.status != "ARCHIVED" && (it.visibility == "PRIVATE" || it.status == "PUBLISHED") }
-            val boundIds = app.container.agentRepository.getAgentSkillBindings(projectId, agentId)
-                .getOrNull()?.skillIds.orEmpty().toSet()
-            if (available.isEmpty()) {
-                Toast.makeText(requireContext(), "项目内暂无可用 Skill（本人 PRIVATE 或已发布）", Toast.LENGTH_LONG).show()
-                return@launch
-            }
-            val checked = mutableMapOf<String, Boolean>()
-            available.forEach { checked[it.id] = it.id in boundIds }
-            val names = available.map { it.name }.toTypedArray()
-            AlertDialog.Builder(requireContext())
-                .setTitle("绑定 Skill（多选）")
-                .setMultiChoiceItems(names, available.map { checked[it.id] == true }.toBooleanArray()) { _, which, isChecked ->
-                    checked[available[which].id] = isChecked
-                }
-                .setPositiveButton("保存") { _, _ ->
-                    val selected = checked.filterValues { it }.keys.toList()
-                    saveSkillBindings(projectId, selected)
-                }
-                .setNegativeButton(R.string.cancel, null)
-                .show()
-        }
-    }
-
-    private fun saveSkillBindings(projectId: String, skillIds: List<String>) {
-        viewLifecycleOwner.lifecycleScope.launch {
-            agentRepo.bindAgentSkills(projectId, agentId, skillIds, UUID.randomUUID().toString())
-                .onSuccess {
-                    Toast.makeText(requireContext(), "Skill 绑定已更新", Toast.LENGTH_SHORT).show()
-                    loadSkillBindings()
-                }
-                .onFailure { Toast.makeText(requireContext(), "保存失败：${it.message}", Toast.LENGTH_SHORT).show() }
-        }
-    }
-
     // ── 身份卡渲染 ──
 
     private fun renderIdentity(agent: Agent) = renderIdentity(
@@ -364,12 +284,10 @@ class AgentDetailFragment : Fragment() {
     }
 
     private fun mapRoleDisplay(role: String): String = when (role) {
-        "ORCHESTRATOR" -> "调度者"
         "PLANNER" -> "规划者"
         "DEVELOPER" -> "开发者"
         "TESTER" -> "测试者"
         "REVIEWER" -> "审查者"
-        "GENERAL" -> "通用"
         else -> role
     }
 

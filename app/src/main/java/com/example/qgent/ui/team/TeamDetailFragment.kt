@@ -5,12 +5,15 @@ import android.app.Dialog
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
@@ -18,8 +21,10 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
+import com.bumptech.glide.Glide
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.ui.auth.TeamEntryActivity
@@ -28,6 +33,7 @@ import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.UserRepository
+import com.example.qgent.data.sse.SseEventType
 import com.example.qgent.databinding.DialogInviteHistoryBinding
 import com.example.qgent.databinding.DialogInviteMemberBinding
 import com.example.qgent.databinding.FragmentTeamDetailBinding
@@ -38,7 +44,10 @@ import com.example.qgent.databinding.ItemRepositoryBinding
 import com.example.qgent.ui.personal.bindCollapsibleSection
 import com.example.qgent.ui.personal.fillLinearLayout
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 /**
@@ -61,6 +70,11 @@ class TeamDetailFragment : Fragment() {
 
     /** 当前用户是否团队创建者（仅团长可见撤销仓库授权入口等管理操作） */
     private var isOwner = false
+
+    /** 团队级 SSE：GitHub 安装/仓库状态事件 → 刷新授权仓库（撤销授权/归档/恢复实时可见） */
+    private val eventStream: com.example.qgent.data.sse.ProjectEventStream
+        get() = (requireActivity().application as QgentApp).container.projectEventStream
+    private var eventStreamJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -108,7 +122,21 @@ class TeamDetailFragment : Fragment() {
         // 项目列表来自 MainViewModel（真实数据流）
         mainViewModel.projects.observe(viewLifecycleOwner) { projects ->
             fillLinearLayout(binding.rvProjects, projects, R.layout.item_project) { view, name ->
-                ItemProjectBinding.bind(view).tvProjectName.text = name
+                ItemProjectBinding.bind(view).apply {
+                    tvProjectName.text = name
+                    // 项目头像（§31.1）：有则显示，无则默认文件夹图标
+                    val avatarUrl = projectAvatarByName[name]
+                    if (avatarUrl.isNullOrBlank()) {
+                        ivProjectAvatar.setImageResource(R.drawable.ic_folder)
+                    } else {
+                        Glide.with(ivProjectAvatar)
+                            .load(RetrofitClient.resolveMediaUrl(avatarUrl))
+                            .centerCrop()
+                            .placeholder(R.drawable.ic_folder)
+                            .error(R.drawable.ic_folder)
+                            .into(ivProjectAvatar)
+                    }
+                }
             }
         }
 
@@ -116,6 +144,16 @@ class TeamDetailFragment : Fragment() {
             // 仓库列表 = 团队授权仓库（与 GitHub 页计数口径一致）
             loadAuthorizedRepositories(teamId, isOwner)
             loadMembers(teamId, isOwner)
+            startTeamEventStream(teamId, isOwner)
+            loadTeamAvatar(teamId)
+            loadProjectAvatars(teamId)
+        }
+
+        // 团队头像：点击更换（仅 Team Owner；头像上传失败提示但不阻断）
+        if (isOwner) {
+            binding.ivTeamAvatar.setOnClickListener {
+                pickAvatar.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
         }
 
         binding.btnDissolveTeam.text =
@@ -132,6 +170,17 @@ class TeamDetailFragment : Fragment() {
                 fillLinearLayout(binding.rvMembers, sorted, R.layout.item_chat_member) { view, member ->
                     val item = ItemChatMemberBinding.bind(view)
                     item.tvMemberName.text = member.displayName
+                    // 成员头像（§28.2：members 返回 avatarUrl，可为空；无则默认占位）
+                    if (member.avatarUrl.isNullOrBlank()) {
+                        item.ivMemberAvatar.setImageResource(R.drawable.ic_avatar_default)
+                    } else {
+                        Glide.with(item.ivMemberAvatar)
+                            .load(RetrofitClient.resolveMediaUrl(member.avatarUrl))
+                            .centerCrop()
+                            .placeholder(R.drawable.ic_avatar_default)
+                            .error(R.drawable.ic_avatar_default)
+                            .into(item.ivMemberAvatar)
+                    }
                     item.tvAgentTag.isVisible = member.role == "TEAM_OWNER"
                     item.tvAgentTag.text = "创建者"
                     // 仅我创建的团队可移除成员；创建者行不显示删除按钮
@@ -152,6 +201,94 @@ class TeamDetailFragment : Fragment() {
      * 用 isOwner 明确分流而非尝试调用接口：Fallback 机制下普通成员调用会回退到 mock 静态仓库，
      * 无法仅凭返回值区分真实授权仓库与 mock 数据。
      */
+    /** 团队头像显示（从团队列表缓存 teamDtos 取 avatarUrl；Glide 加载，无则默认图标） */
+    private fun loadTeamAvatar(teamId: String) {
+        val avatarUrl = mainViewModel.teamDtos.value?.firstOrNull { it.id == teamId }?.avatarUrl
+        if (avatarUrl.isNullOrBlank()) {
+            binding.ivTeamAvatar.setImageResource(R.drawable.ic_group)
+            return
+        }
+        Glide.with(binding.ivTeamAvatar)
+            .load(RetrofitClient.resolveMediaUrl(avatarUrl))
+            .centerCrop()
+            .placeholder(R.drawable.ic_group)
+            .error(R.drawable.ic_group)
+            .into(binding.ivTeamAvatar)
+    }
+
+    private val pickAvatar = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) uploadTeamAvatar(uri)
+    }
+
+    /** 团队头像上传（§28.1）：credential → OSS PUT → confirm → PATCH /teams/{id} 回写 → 刷新团队列表 */
+    private fun uploadTeamAvatar(uri: Uri) {
+        val teamId = arguments?.getString(ARG_TEAM_ID).orEmpty()
+        if (teamId.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val bytes = withContext(Dispatchers.IO) {
+                runCatching { requireContext().contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+            }
+            if (bytes == null || bytes.isEmpty()) {
+                Toast.makeText(requireContext(), "读取图片失败", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (bytes.size > AVATAR_MAX_BYTES) {
+                Toast.makeText(requireContext(), "头像图片不能超过 5MB", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val mime = requireContext().contentResolver.getType(uri) ?: "image/png"
+            Toast.makeText(requireContext(), "正在上传头像…", Toast.LENGTH_SHORT).show()
+            val uploader = (requireActivity().application as QgentApp).container.avatarUploader
+            uploader.uploadFor(
+                mime, bytes.size.toLong(), bytes,
+                { key, body -> RetrofitClient.service.createTeamAvatarCredential(teamId, key, body) },
+                { key, body -> RetrofitClient.service.confirmTeamAvatar(teamId, key, body) }
+            ).onSuccess { avatarUrl ->
+                (requireActivity().application as QgentApp).container.userRepository
+                    .updateTeam(teamId, avatarUrl, UUID.randomUUID().toString())
+                mainViewModel.refreshTeams()
+                loadTeamAvatar(teamId)
+                Toast.makeText(requireContext(), "团队头像已更新", Toast.LENGTH_SHORT).show()
+            }.onFailure { e ->
+                val code = (e as? ApiException)?.code
+                Toast.makeText(
+                    requireContext(),
+                    if (code == "AVATAR_STORAGE_NOT_CONFIGURED") "头像上传暂不可用" else "头像上传失败：${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    /** 项目名 → 项目头像 URL 映射（§31.1，项目分组行显示用） */
+    private val projectAvatarByName = mutableMapOf<String, String>()
+
+    /** 拉取团队项目列表，建立 项目名 → avatarUrl 映射 */
+    private fun loadProjectAvatars(teamId: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            userRepository.getProjects(teamId).getOrNull().orEmpty().forEach { project ->
+                if (!project.avatarUrl.isNullOrBlank()) projectAvatarByName[project.name] = project.avatarUrl!!
+            }
+        }
+    }
+
+    /** 团队级 SSE：GitHub App/仓库状态变化（暂停/删除/撤销授权/归档/恢复）→ 刷新授权仓库与绑定状态 */
+    private fun startTeamEventStream(teamId: String, isOwner: Boolean) {        eventStream.startTeam(teamId)
+        if (eventStreamJob == null) {
+            eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
+                eventStream.events.collect { event ->
+                    when (event.type) {
+                        SseEventType.GITHUB_INSTALLATION_UPDATED,
+                        SseEventType.GITHUB_REPOSITORY_UPDATED -> {
+                            loadAuthorizedRepositories(teamId, isOwner)
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+        }
+    }
+
     private fun loadAuthorizedRepositories(teamId: String, isOwner: Boolean) {
         viewLifecycleOwner.lifecycleScope.launch {
             if (isOwner) {
@@ -550,6 +687,8 @@ class TeamDetailFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        eventStreamJob?.cancel()
+        eventStreamJob = null
         _binding = null
     }
 
@@ -557,5 +696,6 @@ class TeamDetailFragment : Fragment() {
         const val ARG_TEAM_NAME = "teamName"
         const val ARG_TEAM_ID = "teamId"
         const val ARG_IS_OWNER = "isOwner"
+        private const val AVATAR_MAX_BYTES = 5 * 1024 * 1024L
     }
 }

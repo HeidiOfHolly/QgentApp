@@ -138,12 +138,47 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /** 通知点击（extras: groupId/groupName）→ 跳进对应群聊 */
+    /** 通知点击（extras: projectId/groupId/groupName）→ 切到消息所属项目后跳进对应群聊 */
     private fun handleNotificationIntent(intent: Intent?) {
         val groupId = intent?.getStringExtra("groupId") ?: return
         val groupName = intent?.getStringExtra("groupName").orEmpty()
+        val projectId = intent?.getStringExtra("projectId")
         intent.removeExtra("groupId")
+        intent.removeExtra("projectId")
         if (!::navController.isInitialized) return
+        // 通知消息属于其他项目 → 先把团队/项目切过去再进群（群消息按项目隔离，
+        // ChatDetailFragment 用 currentProjectId 决定加载哪个项目的群）
+        if (projectId != null && projectId != mainViewModel.currentProjectId()) {
+            lifecycleScope.launch {
+                val resolved = mainViewModel.resolveProjectContext(projectId)
+                if (resolved != null) {
+                    val (teamName, projectName) = resolved
+                    if (teamName != mainViewModel.currentTeam.value) {
+                        // 跨团队：等该项目 projects 加载完成（currentProjectId 生效）后再切项目、进群
+                        mainViewModel.setCurrentTeam(
+                            teamName,
+                            onProjectsLoaded = {
+                                mainViewModel.setCurrentProject(projectName)
+                                navigateToGroupChat(groupId, groupName)
+                            },
+                            autoSelectProject = false
+                        )
+                    } else {
+                        mainViewModel.setCurrentProject(projectName)
+                        navigateToGroupChat(groupId, groupName)
+                    }
+                } else {
+                    // 解析失败：按当前项目进群（兼容旧通知/解析异常）
+                    navigateToGroupChat(groupId, groupName)
+                }
+            }
+            return
+        }
+        navigateToGroupChat(groupId, groupName)
+    }
+
+    /** 进群聊：先回群聊列表页（清栈），再进群详情 */
+    private fun navigateToGroupChat(groupId: String, groupName: String) {
         navController.navigate(
             R.id.chatListFragment,
             null,

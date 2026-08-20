@@ -14,9 +14,11 @@
     android:paddingBottom="14dp">
 
     <ImageView
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:contentDescription="@string/nav_chat"
+        android:id="@+id/ivProjectAvatar"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:background="@drawable/bg_avatar"
+        android:contentDescription="@string/project_avatar"
         android:src="@drawable/ic_folder"
         app:tint="@color/text_secondary" />
 

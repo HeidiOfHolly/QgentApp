@@ -54,6 +54,12 @@ enum class SseEventType(val wire: String) {
     TASK_DIFF_REVIEW_FAILED("task.diff-review.failed"),
     DIFF_REVIEW_SKIPPED("diff-review.skipped"),
     MERGE_REQUEST_UPDATED("merge-request.updated"),
+    /** 工作分支状态变化（GitHub Webhook 处理后发布）：MR 打开锁定分支 / 合并后解锁 / canContinueDevelopment / 分支开发状态变化 */
+    WORK_BRANCH_UPDATED("work-branch.updated"),
+    /** GitHub 仓库状态变化（撤销授权 / 归档 / 恢复授权）；收到后刷新仓库列表与授权状态 */
+    GITHUB_REPOSITORY_UPDATED("github-repository.updated"),
+    /** GitHub App/Installation 状态变化（暂停 / 删除 / 恢复）；收到后刷新团队仓库与安装状态 */
+    GITHUB_INSTALLATION_UPDATED("github-installation.updated"),
     /** Workspace 实时 Diff Preview 更新（Coding 写入后累计工作树变化；payload 只含元数据，patch 走 REST） */
     WORKSPACE_DIFF_PREVIEW_UPDATED("workspace.diff-preview.updated"),
 

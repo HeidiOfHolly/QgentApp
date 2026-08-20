@@ -417,10 +417,11 @@ class ChatListFragment : Fragment() {
                 userRepository.getProjectMembers(projectId).getOrNull().orEmpty().forEach {
                     picks.add(GroupMemberPick(it.userId, nameById[it.userId] ?: "成员", it.role))
                 }
-                // 团队 Agent 并入（isAgent 标记，默认勾选 = 自动加入需求群）
+                // 团队 Agent 并入（isAgent 标记，默认勾选）；只合并一个 Agent（取第一个 ACTIVE，
+                // 提交时不随 memberIds 发送）
                 agentRepository().getAgents(teamId).getOrNull().orEmpty()
-                    .filter { it.status == "ACTIVE" }
-                    .forEach { picks.add(GroupMemberPick(it.id, it.name, "AGENT", checked = true, isAgent = true)) }
+                    .firstOrNull { it.status == "ACTIVE" }
+                    ?.let { picks.add(GroupMemberPick(it.id, it.name, "AGENT", checked = true, isAgent = true)) }
             }
             memberAdapter.submitList(picks)
         }

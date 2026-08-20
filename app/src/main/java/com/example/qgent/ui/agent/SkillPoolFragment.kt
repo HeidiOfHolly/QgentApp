@@ -1,9 +1,12 @@
 package com.example.qgent.ui.agent
 
+import android.app.AlertDialog
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
@@ -13,6 +16,7 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.model.CreateSkillRequest
 import com.example.qgent.data.repository.SkillRepository
 import com.example.qgent.databinding.FragmentSkillPoolBinding
 import com.example.qgent.model.SkillItem
@@ -23,9 +27,10 @@ import java.util.UUID
 
 /**
  * Skill 池：审核队列（PENDING_REVIEW）+ 共享池（PUBLISHED）。
+ * - 新建（顶部「+ 新建」，创建草稿后自行提交审核）；
  * - 点击条目：弹纯文本详情（ResourceDetailSheet）；
- * - 审核队列条目：长按弹出 通过/拒绝（仅项目 Admin，权限从项目成员角色实时判断）；
- * - 真实接口优先，失败由数据层 Fallback 回退 mock 保底（测试完成后移除）。
+ * - 审核队列条目：长按弹出 通过/拒绝（仅项目 Admin）；
+ * - 共享池条目：长按归档删除（仅项目 Admin）。
  */
 class SkillPoolFragment : Fragment() {
 
@@ -52,6 +57,8 @@ class SkillPoolFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.btnBack.setOnClickListener { findNavController().popBackStack() }
+        // 新建 Skill：输入名称/内容创建草稿（创建后可在审核队列/详情提交审核）
+        binding.btnAddSkill.setOnClickListener { showCreateSkillDialog() }
 
         binding.rvReviewList.layoutManager = LinearLayoutManager(requireContext())
         binding.rvApprovedList.layoutManager = LinearLayoutManager(requireContext())
@@ -94,12 +101,74 @@ class SkillPoolFragment : Fragment() {
         }
         binding.tvReviewEmpty.isVisible = pending.isEmpty()
 
-        // 共享池：点击看纯文本详情
+        // 共享池：点击看纯文本详情；长按归档删除（仅 Admin）
         binding.tvApprovedCount.text = "共 ${approved.size} 条"
-        binding.rvApprovedList.adapter = PoolResourceAdapter(approved) { item ->
-            onItemClick(item)
+        val approvedAdapter = PoolResourceAdapter(approved) { item -> onItemClick(item) }
+        approvedAdapter.setOnItemLongClick { item, _ ->
+            if (isAdmin) confirmDeleteSkill(item)
         }
+        binding.rvApprovedList.adapter = approvedAdapter
         binding.tvApprovedEmpty.isVisible = approved.isEmpty()
+    }
+
+    /** 新建 Skill 弹窗：名称必填 + 内容可选（创建草稿后可在审核队列处理） */
+    private fun showCreateSkillDialog() {
+        val projectId = mainViewModel.currentProjectId() ?: run {
+            Toast.makeText(requireContext(), "请先选择项目", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val etName = EditText(requireContext()).apply { hint = "Skill 名称（必填）" }
+        val etContent = EditText(requireContext()).apply { hint = "Skill 内容（可选）"; minLines = 4 }
+        val container = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(etName)
+            addView(etContent)
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle("新建 Skill")
+            .setView(container)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton("创建") { _, _ ->
+                val name = etName.text.toString().trim()
+                if (name.isEmpty()) {
+                    Toast.makeText(requireContext(), "请输入 Skill 名称", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                createSkill(projectId, name, etContent.text.toString().trim().ifEmpty { null })
+            }
+            .show()
+    }
+
+    private fun createSkill(projectId: String, name: String, content: String?) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            skillRepo.createSkill(projectId, CreateSkillRequest(name = name, content = content), UUID.randomUUID().toString())
+                .onSuccess {
+                    Toast.makeText(requireContext(), "已创建 Skill（草稿）", Toast.LENGTH_SHORT).show()
+                    loadSkills()
+                }
+                .onFailure { Toast.makeText(requireContext(), "创建失败：${it.message}", Toast.LENGTH_SHORT).show() }
+        }
+    }
+
+    private fun confirmDeleteSkill(item: SkillItem) {
+        AlertDialog.Builder(requireContext())
+            .setTitle("删除 Skill")
+            .setMessage("确定归档删除「${item.name}」？")
+            .setPositiveButton("删除") { _, _ -> deleteSkill(item) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun deleteSkill(item: SkillItem) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            skillRepo.archive(projectId, item.id, UUID.randomUUID().toString())
+                .onSuccess {
+                    Toast.makeText(requireContext(), "已删除", Toast.LENGTH_SHORT).show()
+                    loadSkills()
+                }
+                .onFailure { Toast.makeText(requireContext(), "删除失败：${it.message}", Toast.LENGTH_SHORT).show() }
+        }
     }
 
     /** 审核队列详情卡片：显示内容 + 右上角通过/拒绝（非 Admin 无按钮） */

@@ -54,14 +54,17 @@ object NotificationHelper {
             }
     }
 
-    /** 弹一条群消息通知；微信式：未读数（>1）显示在发送者名字前（[N条] 发送者：内容）；@我时加「@你：」；点击进群 */
+    /** 弹一条群消息通知；微信式：未读数（>1）显示在发送者名字前（[N条] 发送者：内容）；@我时加「@你：」；点击进群。
+     *  [largeIcon] 通知横幅/卡片右侧图标：群聊头像拼图（成员头像拼，由调用方生成），null 时兜底品牌 Logo */
     fun showChatNotification(
         context: Context,
+        projectId: String,
         groupId: String,
         groupName: String,
         body: String,
         mentioned: Boolean,
-        unreadCount: Int? = null
+        unreadCount: Int? = null,
+        largeIcon: android.graphics.Bitmap? = null
     ) {
         if (!hasPermission(context)) return
         ensureChannel(context)
@@ -70,6 +73,8 @@ object NotificationHelper {
         val text = unreadPrefix + (if (mentioned) "@你：$body" else body)
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            // projectId 用于点击后先把团队/项目切到该消息所属项目，再进对应群聊（群消息按项目隔离）
+            putExtra("projectId", projectId)
             putExtra("groupId", groupId)
             putExtra("groupName", groupName)
         }
@@ -77,7 +82,7 @@ object NotificationHelper {
             context, groupId.hashCode(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val notification = NotificationCompat.Builder(context, CHANNEL_CHAT)
+        val builder = NotificationCompat.Builder(context, CHANNEL_CHAT)
             .setSmallIcon(R.drawable.ic_bell)
             .setContentTitle(if (mentioned) "有人@你" else groupName)
             .setContentText(text)
@@ -86,7 +91,15 @@ object NotificationHelper {
             .setContentIntent(pending)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .build()
+        // 右侧图标：优先群聊头像拼图，缺省兜底品牌 Logo（adaptive icon 在横幅里缩成小缩略图像默认）
+        if (largeIcon != null) {
+            builder.setLargeIcon(largeIcon)
+        } else {
+            builder.setLargeIcon(
+                android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.ic_launcher_foreground_img)
+            )
+        }
+        val notification = builder.build()
         // 同群固定 ID：同一群新消息更新同一条；不同群各自独立
         NotificationManagerCompat.from(context).notify(1000 + groupId.hashCode(), notification)
     }

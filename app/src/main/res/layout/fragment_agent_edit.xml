@@ -115,12 +115,6 @@
                     android:orientation="vertical">
 
                     <RadioButton
-                        android:id="@+id/rbOrchestrator"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="调度者（ORCHESTRATOR）" />
-
-                    <RadioButton
                         android:id="@+id/rbPlanner"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -143,12 +137,6 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="审查者（REVIEWER）" />
-
-                    <RadioButton
-                        android:id="@+id/rbGeneral"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="通用（GENERAL）" />
                 </RadioGroup>
 
                 <!-- 用途描述（必填） -->

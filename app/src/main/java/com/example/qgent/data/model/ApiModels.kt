@@ -195,6 +195,8 @@ data class TeamDto(
     val role: String,           // TEAM_OWNER / TEAM_MEMBER
     @SerializedName("memberCount") val memberCount: Int,
     @SerializedName("createdAt") val createdAt: String,
+    /** 团队头像（§28.2：GET /teams、GET /teams/{id}、by-last-activity 返回，可为空） */
+    @SerializedName("avatarUrl") val avatarUrl: String? = null,
     /** 最后活跃时间（GET /teams/by-last-activity 返回，ISO8601 UTC；其余接口可能不带） */
     @SerializedName("lastActivityAt") val lastActivityAt: String? = null
 )
@@ -204,7 +206,9 @@ data class TeamMemberDto(
     @SerializedName("userId") val userId: String,
     val role: String,                       // TEAM_OWNER / TEAM_MEMBER
     @SerializedName("displayName") val displayName: String,
-    val email: String
+    val email: String,
+    /** 成员头像（§28.2：users.avatar_url，可为空）；无头像时前端回退首字占位 */
+    @SerializedName("avatarUrl") val avatarUrl: String? = null
 )
 
 /** 团队邀请（GET /teams/{teamId}/invitations，§5.1）：email + status + expiresAt */
@@ -234,10 +238,21 @@ data class InviteTeamMemberRequest(
     @SerializedName("expiresInDays") val expiresInDays: Int
 )
 
-/** 创建团队（POST /teams） */
+/** 创建团队（POST /teams）；avatarUrl 可选（§28.2：创建后可经 PATCH 回写，失败不阻断创建） */
 data class CreateTeamRequest(
     val name: String,
-    val description: String? = null
+    val description: String? = null,
+    @SerializedName("avatarUrl") val avatarUrl: String? = null
+)
+
+/** 更新团队（PATCH /teams/{teamId}，§28.2）：avatarUrl null 保留原值、空串清空 */
+data class UpdateTeamRequest(
+    @SerializedName("avatarUrl") val avatarUrl: String? = null
+)
+
+/** 更新项目（PATCH /projects/{projectId}，§31.1）：avatarUrl null 保留原值、空串清空 */
+data class UpdateProjectRequest(
+    @SerializedName("avatarUrl") val avatarUrl: String? = null
 )
 
 /** 创建项目（POST /teams/{teamId}/projects）；成员通过 API-069 逐个加入。
@@ -278,6 +293,8 @@ data class ProjectDto(
     val role: String? = null,
     /** 生效（ACTIVE）仓库绑定数（v2.0.6 §24.1，项目卡/详情展示，避免逐卡 N+1 查询） */
     @SerializedName("repositoryCount") val repositoryCount: Int? = null,
+    /** 项目头像（§31.1：ProjectResponse 返回，可为空） */
+    @SerializedName("avatarUrl") val avatarUrl: String? = null,
     /** 最后活跃时间（GET /teams/{teamId}/projects/by-last-activity 返回，ISO8601 UTC；其余接口可能不带） */
     @SerializedName("lastActivityAt") val lastActivityAt: String? = null
 )
@@ -516,26 +533,6 @@ data class UpdateAgentRequest(
     val prompt: String? = null
 )
 
-/** 为 Agent 绑定当前项目 Skill（PUT /projects/{projectId}/agent-skill-bindings/{agentId}） */
-data class AgentSkillBindingsRequest(
-    @SerializedName("skillIds") val skillIds: List<String>
-)
-
-/** Agent 在当前项目的 Skill 绑定集（GET /projects/{projectId}/agent-skill-bindings/{agentId}） */
-data class AgentSkillBindingsResponse(
-    @SerializedName("agentId") val agentId: String,
-    @SerializedName("skillIds") val skillIds: List<String>? = null,
-    val skills: List<AgentSkillSummaryDto>? = null
-)
-
-/** 绑定集内 Skill 摘要（{id, name, visibility, status}） */
-data class AgentSkillSummaryDto(
-    val id: String,
-    val name: String? = null,
-    val visibility: String? = null,
-    val status: String? = null
-)
-
 // ── GitHub 集成（§6）──
 
 /**
@@ -678,6 +675,13 @@ data class CreateMemoryRequest(
     val content: String? = null,
     val category: String? = null,
     val tags: List<String>? = null
+)
+
+/** 群聊 AI 生成 Memory 草稿（v2.0.6 §9：POST /projects/{projectId}/memories/drafts，
+ *  服务端按群自动检索最近消息交由 AI 总结，客户端不再勾选消息） */
+data class AiMemoryDraftRequest(
+    @SerializedName("groupId") val groupId: String,
+    val instruction: String? = null
 )
 
 // ── Diff（§12.3，GET /projects/{projectId}/diffs/{diffId}/files） ──

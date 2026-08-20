@@ -37,6 +37,10 @@ interface UserRepository {
     suspend fun removeProjectMember(projectId: String, userId: String, idempotencyKey: String): Result<Unit>
     suspend fun createTeam(name: String, description: String? = null, idempotencyKey: String): Result<TeamDto>
     suspend fun deleteTeam(teamId: String, idempotencyKey: String): Result<TeamDto>
+    /** 更新团队（§28.2）：avatarUrl null 保留原值、空串清空 */
+    suspend fun updateTeam(teamId: String, avatarUrl: String?, idempotencyKey: String): Result<TeamDto>
+    /** 更新项目（§31.1）：avatarUrl null 保留原值、空串清空 */
+    suspend fun updateProject(projectId: String, avatarUrl: String?, idempotencyKey: String): Result<ProjectDto>
     suspend fun getNotifications(): Result<List<NotificationDto>>
     suspend fun markNotificationRead(notificationId: String, idempotencyKey: String): Result<Unit>
     suspend fun markAllNotificationsRead(idempotencyKey: String): Result<Unit>

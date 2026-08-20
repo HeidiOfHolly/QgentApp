@@ -1,5 +1,6 @@
 package com.example.qgent.data.repository
 
+import com.example.qgent.data.model.AiMemoryDraftRequest
 import com.example.qgent.data.model.CreateMemoryRequest
 import com.example.qgent.data.model.MemoryDto
 
@@ -19,7 +20,7 @@ class FallbackMemoryRepository(
     override suspend fun createMemory(projectId: String, request: CreateMemoryRequest, idempotencyKey: String) =
         fb.call { createMemory(projectId, request, idempotencyKey) }
 
-    override suspend fun createAiDraft(projectId: String, request: CreateMemoryRequest, idempotencyKey: String) =
+    override suspend fun createAiDraft(projectId: String, request: AiMemoryDraftRequest, idempotencyKey: String) =
         fb.call { createAiDraft(projectId, request, idempotencyKey) }
 
     override suspend fun submitReview(projectId: String, memoryId: String, idempotencyKey: String) =

@@ -141,6 +141,12 @@ class MockUserRepository : UserRepository {
     override suspend fun deleteTeam(teamId: String, idempotencyKey: String): Result<TeamDto> =
         Result.failure(UnsupportedOperationException("mock 不支持解散团队"))
 
+    override suspend fun updateTeam(teamId: String, avatarUrl: String?, idempotencyKey: String): Result<TeamDto> =
+        Result.failure(UnsupportedOperationException("mock 不支持更新团队"))
+
+    override suspend fun updateProject(projectId: String, avatarUrl: String?, idempotencyKey: String): Result<ProjectDto> =
+        Result.failure(UnsupportedOperationException("mock 不支持更新项目"))
+
     override suspend fun getNotifications(): Result<List<NotificationDto>> =
         Result.success(
             listOf(

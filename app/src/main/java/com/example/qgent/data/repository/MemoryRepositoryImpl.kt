@@ -1,6 +1,7 @@
 package com.example.qgent.data.repository
 
 import com.example.qgent.data.api.QgApiService
+import com.example.qgent.data.model.AiMemoryDraftRequest
 import com.example.qgent.data.model.CreateMemoryRequest
 import com.example.qgent.data.model.MemoryDto
 import com.example.qgent.data.model.toDataOrThrow
@@ -19,7 +20,7 @@ class MemoryRepositoryImpl(private val service: QgApiService) : MemoryRepository
         service.createMemory(projectId, idempotencyKey, request).toDataOrThrow()
     }
 
-    override suspend fun createAiDraft(projectId: String, request: CreateMemoryRequest, idempotencyKey: String): Result<MemoryDto> = apiCall {
+    override suspend fun createAiDraft(projectId: String, request: AiMemoryDraftRequest, idempotencyKey: String): Result<MemoryDto> = apiCall {
         service.createMemoryAiDraft(projectId, idempotencyKey, request).toDataOrThrow()
     }
 

@@ -23,7 +23,7 @@ fun AgentDto.toAgent(): Agent = Agent(
     id = id,
     name = name,
     description = description?.takeIf { it.isNotBlank() } ?: capabilities?.joinToString(", ").orEmpty(),
-    role = runCatching { AgentRole.valueOf(role) }.getOrDefault(AgentRole.GENERAL),
+    role = runCatching { AgentRole.valueOf(role) }.getOrDefault(AgentRole.DEVELOPER),
     capabilities = capabilities ?: emptyList(),
     status = if (status == "ARCHIVED") AgentStatus.ARCHIVED else AgentStatus.ACTIVE,
     visibility = if (visibility == "PRIVATE") AgentVisibility.PRIVATE else AgentVisibility.TEAM_SHARED,

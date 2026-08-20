@@ -13,6 +13,8 @@ import com.example.qgent.data.model.TeamDto
 import com.example.qgent.data.model.TeamInvitationDto
 import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.model.UpdateProjectMemberRequest
+import com.example.qgent.data.model.UpdateProjectRequest
+import com.example.qgent.data.model.UpdateTeamRequest
 import com.example.qgent.data.model.UserProfileDto
 import com.example.qgent.data.model.toDataOrThrow
 import com.example.qgent.data.model.toUnitOrThrow
@@ -137,6 +139,14 @@ class UserRepositoryImpl(private val service: QgApiService) : UserRepository {
 
     override suspend fun deleteTeam(teamId: String, idempotencyKey: String): Result<TeamDto> = apiCall {
         service.deleteTeam(teamId, idempotencyKey).toDataOrThrow()
+    }
+
+    override suspend fun updateTeam(teamId: String, avatarUrl: String?, idempotencyKey: String): Result<TeamDto> = apiCall {
+        service.updateTeam(teamId, idempotencyKey, UpdateTeamRequest(avatarUrl)).toDataOrThrow()
+    }
+
+    override suspend fun updateProject(projectId: String, avatarUrl: String?, idempotencyKey: String): Result<ProjectDto> = apiCall {
+        service.updateProject(projectId, idempotencyKey, UpdateProjectRequest(avatarUrl)).toDataOrThrow()
     }
 
     override suspend fun getNotifications(): Result<List<NotificationDto>> = apiCall {

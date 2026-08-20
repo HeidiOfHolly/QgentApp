@@ -2,8 +2,6 @@ package com.example.qgent.data.repository
 
 import com.example.qgent.data.api.QgApiService
 import com.example.qgent.data.model.AgentDto
-import com.example.qgent.data.model.AgentSkillBindingsRequest
-import com.example.qgent.data.model.AgentSkillBindingsResponse
 import com.example.qgent.data.model.CreateAgentRequest
 import com.example.qgent.data.model.UpdateAgentRequest
 import com.example.qgent.data.model.toDataOrThrow
@@ -60,18 +58,5 @@ class AgentRepositoryImpl(private val service: QgApiService) : AgentRepository {
 
     override suspend fun archiveAgent(teamId: String, agentId: String, idempotencyKey: String): Result<AgentDto> = apiCall {
         service.archiveAgent(teamId, agentId, idempotencyKey).toDataOrThrow()
-    }
-
-    override suspend fun bindAgentSkills(
-        projectId: String,
-        agentId: String,
-        skillIds: List<String>,
-        idempotencyKey: String
-    ): Result<AgentDto> = apiCall {
-        service.bindAgentSkills(projectId, agentId, idempotencyKey, AgentSkillBindingsRequest(skillIds)).toDataOrThrow()
-    }
-
-    override suspend fun getAgentSkillBindings(projectId: String, agentId: String): Result<AgentSkillBindingsResponse> = apiCall {
-        service.getAgentSkillBindings(projectId, agentId).toDataOrThrow()
     }
 }

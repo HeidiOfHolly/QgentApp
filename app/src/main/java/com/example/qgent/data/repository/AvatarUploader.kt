@@ -4,18 +4,24 @@ import android.util.Log
 import com.example.qgent.data.api.QgApiService
 import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.model.ApiException
+import com.example.qgent.data.model.ApiResponse
 import com.example.qgent.data.model.AvatarConfirmRequest
+import com.example.qgent.data.model.AvatarConfirmResponse
 import com.example.qgent.data.model.AvatarCredentialRequest
+import com.example.qgent.data.model.AvatarCredentialResponse
 import com.example.qgent.data.model.toDataOrThrow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.Response
 import java.util.UUID
 
 /**
- * 头像上传（§7.0 /me/avatar）：签发直传凭证 → PUT 直传 OSS → confirm 确认并返回公共读 URL。
+ * 头像上传（§7.0 /me/avatar；§28.1 团队头像；§31.1 项目头像）：
+ * 签发直传凭证 → PUT 直传 OSS → confirm 确认并返回公共读 URL。
+ * credential/confirm 由调用方注入（用户/团队/项目各自的端点），本类只做通用流程。
  * OSS 未启用（本地/CI）时 credential/confirm 返回 501 AVATAR_STORAGE_NOT_CONFIGURED，
  * 调用方按「头像上传暂不可用」提示。
  */
@@ -24,9 +30,19 @@ class AvatarUploader(
     private val uploadClient: OkHttpClient
 ) {
 
-    /** 上传头像，成功返回长期稳定、公共可读的头像 URL */
-    suspend fun upload(mediaType: String, sizeBytes: Long, bytes: ByteArray): Result<String> = try {
-        val credential = service.createAvatarCredential(
+    /** 用户头像上传（/me/avatar，既有入口） */
+    suspend fun upload(mediaType: String, sizeBytes: Long, bytes: ByteArray): Result<String> =
+        uploadFor(mediaType, sizeBytes, bytes, service::createAvatarCredential, service::confirmAvatar)
+
+    /** 通用头像上传：credential/confirm 由调用方指定端点（团队/项目/Agent 等） */
+    suspend fun uploadFor(
+        mediaType: String,
+        sizeBytes: Long,
+        bytes: ByteArray,
+        createCredential: suspend (idempotencyKey: String, body: AvatarCredentialRequest) -> Response<ApiResponse<AvatarCredentialResponse>>,
+        confirm: suspend (idempotencyKey: String, body: AvatarConfirmRequest) -> Response<ApiResponse<AvatarConfirmResponse>>
+    ): Result<String> = try {
+        val credential = createCredential(
             UUID.randomUUID().toString(),
             AvatarCredentialRequest(mediaType = mediaType, sizeBytes = sizeBytes)
         ).toDataOrThrow()
@@ -51,7 +67,7 @@ class AvatarUploader(
             }
         }
 
-        val confirmed = service.confirmAvatar(
+        val confirmed = confirm(
             UUID.randomUUID().toString(),
             AvatarConfirmRequest(objectKey)
         ).toDataOrThrow()

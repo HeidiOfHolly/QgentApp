@@ -5,7 +5,10 @@ import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.os.Bundle
@@ -13,6 +16,7 @@ import android.provider.OpenableColumns
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -33,6 +37,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
@@ -63,6 +68,8 @@ import com.example.qgent.databinding.DialogImagePreviewBinding
 import com.example.qgent.databinding.FragmentChatDetailBinding
 import com.example.qgent.model.ChatMessage
 import com.example.qgent.model.DiffFile
+import com.example.qgent.model.DiffLine
+import com.example.qgent.model.DiffLineType
 import com.example.qgent.model.GroupMember
 import com.example.qgent.model.GroupType
 import com.example.qgent.model.MemberType
@@ -355,8 +362,9 @@ class ChatDetailFragment : Fragment() {
                         .onSuccess { dto ->
                             Log.d("SendMsg", "send success id=${dto.id} senderId=${dto.senderId} mentions=${dto.mentions} replyTo=${dto.replyToId}")
                             replaceLocalMessage(local.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
-                            // @ 了 Agent → 发送成功后弹「发起任务」弹窗，确认后调 trigger-task（契约 §7）
-                            if (agentMentioned) {
+                            // 触发任务弹窗：@Agent（契约 §7）或 引用 DIFF 卡（续作自动路径，无需 @Agent，
+                            // 服务端按 replyToId 指向 DIFF 消息判定续作、复用源 Workspace）
+                            if (agentMentioned || quotingDiff) {
                                 showCreateTaskDialog(
                                     prefillTitle = text.take(30),
                                     prefillRequirement = text,
@@ -576,71 +584,60 @@ class ChatDetailFragment : Fragment() {
         binding.tvMultiSelectCount.text = getString(R.string.multi_select_count, selectedMessageIds.size)
     }
 
-    /** 生成 Memory 草稿：让用户填标题，内容固定为选中消息拼接，POST /memories 提交审核 */
+    /**
+     * 生成 Memory 草稿（v2.0.6 §9）：按群 AI 总结——服务端读取该群最近消息交由 AI 生成草稿，
+     * 客户端只传 groupId + instruction，不再勾选消息拼接。草稿始终 DRAFT，需人工审核。
+     */
     private fun createMemoryDraftFromSelection() {
-        if (selectedMessageIds.isEmpty()) {
-            Toast.makeText(requireContext(), R.string.memory_draft_empty, Toast.LENGTH_SHORT).show()
-            return
-        }
         val projectId = mainViewModel.currentProjectId()
         if (projectId == null) {
             Toast.makeText(requireContext(), R.string.add_member_missing_project, Toast.LENGTH_SHORT).show()
             return
         }
-        val selected = messages.filter { it.id in selectedMessageIds }
-            .filter { it.type != MessageType.SYSTEM }
-        if (selected.isEmpty()) {
-            Toast.makeText(requireContext(), R.string.memory_draft_empty, Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // 弹窗：仅输入 Memory 标题，内容固定为选中消息拼接（不提供简介输入，避免覆盖聊天记录）
+        val groupId = arguments?.getString("groupId").orEmpty()
+        if (groupId.isEmpty()) return
+        // 弹窗：仅输入沉淀说明（instruction，可选），AI 按群自动检索最近 50 条消息总结
         val container = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 16, 48, 8)
         }
-        val etTitle = EditText(requireContext()).apply {
-            hint = getString(R.string.memory_draft_title_hint)
+        val etInstruction = EditText(requireContext()).apply {
+            hint = getString(R.string.memory_draft_instruction_hint)
             textSize = 14f
         }
-        container.addView(etTitle)
+        container.addView(etInstruction)
 
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.memory_draft_title)
             .setView(container)
             .setNegativeButton(R.string.cancel, null)
             .setPositiveButton(R.string.confirm) { _, _ ->
-                val title = etTitle.text.toString().trim()
-                if (title.isEmpty()) {
-                    Toast.makeText(requireContext(), R.string.memory_draft_title_required, Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                // 内容固定为选中消息拼接，不再允许用简介覆盖聊天记录
-                val content = selected.joinToString("\n") { "${it.senderName}：${it.displayContent()}" }
-                submitMemoryDraft(projectId, title, content)
+                val instruction = etInstruction.text.toString().trim().ifEmpty { null }
+                submitAiMemoryDraft(projectId, groupId, instruction)
             }
             .show()
     }
 
-    private fun submitMemoryDraft(projectId: String, title: String, content: String) {
+    private fun submitAiMemoryDraft(projectId: String, groupId: String, instruction: String?) {
         viewLifecycleOwner.lifecycleScope.launch {
-            // 创建草稿（DRAFT）→ 立即提交审核（PENDING_REVIEW，进审核队列）
-            memoryRepo().createMemory(
+            // AI 总结生成草稿（DRAFT，始终需人工审核）
+            memoryRepo().createAiDraft(
                 projectId,
-                CreateMemoryRequest(title = title, content = content, category = "聊天记录"),
+                com.example.qgent.data.model.AiMemoryDraftRequest(groupId = groupId, instruction = instruction),
                 UUID.randomUUID().toString()
-            ).onSuccess { draft ->
-                memoryRepo().submitReview(
-                    projectId, draft.id,
-                    UUID.randomUUID().toString()
-                ).onSuccess {
-                    Toast.makeText(requireContext(), R.string.memory_draft_created, Toast.LENGTH_SHORT).show()
-                    exitMultiSelect()
-                }.onFailure {
-                    Toast.makeText(requireContext(), R.string.memory_draft_failed, Toast.LENGTH_SHORT).show()
+            ).onSuccess {
+                Toast.makeText(requireContext(), R.string.memory_draft_created, Toast.LENGTH_SHORT).show()
+                exitMultiSelect()
+            }.onFailure { e ->
+                // 空群/群不属于项目/AI 生成失败：给出具体提示（422/500 业务码）
+                val code = (e as? com.example.qgent.data.model.ApiException)?.code
+                val msg = when (code) {
+                    "GROUP_NO_MESSAGES" -> "该需求群暂无消息，无需沉淀"
+                    "GROUP_NOT_IN_PROJECT" -> "群不属于该项目"
+                    "AI_DRAFT_FAILED" -> "AI 总结失败，请稍后重试"
+                    else -> e.message ?: getString(R.string.memory_draft_failed)
                 }
-            }.onFailure {
-                Toast.makeText(requireContext(), R.string.memory_draft_failed, Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), msg, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -1121,9 +1118,9 @@ class ChatDetailFragment : Fragment() {
                 )
                     .onSuccess { dto ->
                         replaceLocalMessage(message.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
-                        // 引用 DIFF 卡重发（增量修改续作判定：被引用消息为 DIFF）
+                        // 触发任务弹窗：@Agent 或 引用 DIFF 卡（续作自动路径，无需 @Agent；判定同 sendTextMessage）
                         val quotingDiff = messages.firstOrNull { it.id == message.replyToId }?.type == MessageType.DIFF
-                        if (agentMentioned) {
+                        if (agentMentioned || quotingDiff) {
                             showCreateTaskDialog(
                                 prefillTitle = message.content.take(30),
                                 prefillRequirement = message.content,
@@ -1347,15 +1344,32 @@ class ChatDetailFragment : Fragment() {
         deliveryStatus: String? = null,
         deliveryFailedReason: String? = null
     ) {
-        val container = ScrollView(requireContext())
-        val tv = TextView(requireContext()).apply {
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+
+        // 弹窗内容：批次摘要（固定头部） + 文件区（整页横向滚动：长行不换行、短行留白，文件按序排列）
+        val contentView = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+
+        // 批次摘要：任务状态 / 交付状态 / 仓库数 / 逐仓库进度 / diff 统计
+        val summaryTv = TextView(requireContext()).apply {
             textSize = 13f
             setTextIsSelectable(true)
-            setPadding(48, 40, 48, 40)
         }
-        container.addView(tv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        contentView.addView(summaryTv)
 
-        // 拉取批次摘要 + 首个 Diff 文件内容（DTO → UI DiffFile 再渲染）
+        // 文件区：加载完成前转圈，完成后放入整页横向滚动的 Diff 代码块
+        val codeBlockContainer = FrameLayout(requireContext()).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(520))
+            addView(ProgressBar(requireContext()).apply {
+                layoutParams = FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER)
+            })
+        }
+        contentView.addView(codeBlockContainer)
+
+        // 拉取批次摘要 + Diff 文件内容（DTO → UI DiffFile 再渲染）
         viewLifecycleOwner.lifecycleScope.launch {
             val sb = StringBuilder("任务状态：").append(taskStatus).append("\n\n")
             when {
@@ -1408,23 +1422,29 @@ class ChatDetailFragment : Fragment() {
                         Log.w("DiffReview", "批次摘要加载失败: ${e.message}")
                     }
                 }
+            summaryTv.text = if (sb.isBlank()) "暂无 Diff 内容" else sb.toString()
+
+            // 文件区：整页横向滚动查看（长行不换行、短行留白）
+            codeBlockContainer.removeAllViews()
             if (!diffId.isNullOrBlank()) {
                 val files = diffRepo.getDiffFiles(projectId, diffId).getOrNull().orEmpty().map { it.toDiffFile() }
-                files.forEach { file ->
-                    sb.append("📄 ").append(file.fileName).append("  (+${file.additions} -${file.deletions})").append("\n")
-                    file.lines.forEach { line ->
-                        val marker = when (line.type) {
-                            com.example.qgent.model.DiffLineType.ADD -> "+"
-                            com.example.qgent.model.DiffLineType.DELETE -> "-"
-                            else -> " "
-                        }
-                        sb.append(marker).append(" ").append(line.text).append("\n")
-                    }
-                    sb.append("\n")
+                if (files.isNotEmpty()) {
+                    codeBlockContainer.addView(buildDiffCodeBlock(files))
+                } else {
+                    summaryTv.append("\n\n（该 Diff 无文件内容）")
+                    codeBlockContainer.addView(TextView(requireContext()).apply {
+                        text = "（该 Diff 无文件内容）"
+                        textSize = 13f
+                        gravity = Gravity.CENTER
+                    })
                 }
-                if (files.isEmpty()) sb.append("（该 Diff 无文件内容）\n")
+            } else {
+                codeBlockContainer.addView(TextView(requireContext()).apply {
+                    text = "（无文件内容）"
+                    textSize = 13f
+                    gravity = Gravity.CENTER
+                })
             }
-            tv.text = if (sb.isBlank()) "暂无 Diff 内容" else sb.toString()
         }
 
         val title = when {
@@ -1434,7 +1454,7 @@ class ChatDetailFragment : Fragment() {
         }
         val dialogBuilder = MaterialAlertDialogBuilder(requireContext())
             .setTitle(title)
-            .setView(container)
+            .setView(contentView)
         if (canConfirm || canReject) {
             if (canReject) {
                 dialogBuilder.setNegativeButton(R.string.reject_diff) { _, _ -> rejectDiffReview(projectId, taskId) }
@@ -1588,64 +1608,29 @@ class ChatDetailFragment : Fragment() {
 
     /** 全屏查看 diff 文件：可滑动，绿加红减，文件头显示 basename（卡片点击 / 「完整 Diff」入口） */
     private fun showDiffFilesDialog(projectId: String, diffId: String, title: String?) {
-        val scroll = ScrollView(requireContext())
-        val container = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(12), dp(16), dp(12))
+        // 完整 Diff 弹窗：整页横向滚动查看（长行不换行、短行留白），所有文件按序排列
+        val container = FrameLayout(requireContext()).apply {
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(560))
         }
-        scroll.addView(container, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        container.addView(ProgressBar(requireContext()).apply {
+            layoutParams = FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER)
+        })
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(title ?: "Diff")
-            .setView(scroll)
+            .setView(container)
             .setPositiveButton(R.string.close, null)
             .show()
         viewLifecycleOwner.lifecycleScope.launch {
             val files = diffRepo.getDiffFiles(projectId, diffId).getOrNull().orEmpty().map { it.toDiffFile() }
+            container.removeAllViews()
             if (files.isEmpty()) {
                 container.addView(TextView(requireContext()).apply {
                     text = "（该 Diff 无文件内容）"
                     textSize = 13f
+                    gravity = Gravity.CENTER
                 })
-                return@launch
-            }
-            files.forEach { file ->
-                // 文件头：basename + 变更统计（不显示完整路径）
-                container.addView(TextView(requireContext()).apply {
-                    text = "${file.fileName.substringAfterLast('/')}  +${file.additions} -${file.deletions}"
-                    setTextColor(requireContext().getColor(R.color.text_primary))
-                    setBackgroundColor(requireContext().getColor(R.color.diff_header_bg))
-                    setTypeface(null, android.graphics.Typeface.BOLD)
-                    setPadding(dp(10), dp(6), dp(10), dp(6))
-                    textSize = 13f
-                })
-                if (file.lines.isEmpty()) {
-                    container.addView(TextView(requireContext()).apply {
-                        text = "（该文件无行内容）"
-                        textSize = 12f
-                        setPadding(dp(10), dp(4), dp(10), dp(4))
-                    })
-                }
-                file.lines.forEach { line ->
-                    // 代码行：+ 绿底 / - 红底，monospace
-                    container.addView(TextView(requireContext()).apply {
-                        val sign = when (line.type) {
-                            com.example.qgent.model.DiffLineType.ADD -> "+"
-                            com.example.qgent.model.DiffLineType.DELETE -> "-"
-                            else -> " "
-                        }
-                        text = "$sign ${line.text}"
-                        setTypeface(android.graphics.Typeface.MONOSPACE)
-                        setPadding(dp(10), dp(2), dp(10), dp(2))
-                        textSize = 12f
-                        setBackgroundColor(requireContext().getColor(
-                            when (line.type) {
-                                com.example.qgent.model.DiffLineType.ADD -> R.color.diff_add_bg
-                                com.example.qgent.model.DiffLineType.DELETE -> R.color.diff_del_bg
-                                else -> R.color.white
-                            }
-                        ))
-                    })
-                }
+            } else {
+                container.addView(buildDiffCodeBlock(files))
             }
         }
     }
@@ -1653,6 +1638,82 @@ class ChatDetailFragment : Fragment() {
     /** dp 转 px（弹窗内代码行布局用） */
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
+
+    /**
+     * 构建 Diff 代码块（弹窗用）：垂直 ScrollView（上下浏览文件/行）+ 横向 HorizontalScrollView
+     * （整页一起横向滑动，超长代码行不换行、短行右侧留白）。所有文件按序排列，每文件带文件头。
+     */
+    private fun buildDiffCodeBlock(files: List<DiffFile>): View {
+        val content = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        files.forEach { file ->
+            // 文件头：basename + 变更统计
+            content.addView(TextView(requireContext()).apply {
+                text = "${file.fileName.substringAfterLast('/')}  +${file.additions} -${file.deletions}"
+                setTextColor(requireContext().getColor(R.color.text_primary))
+                setBackgroundColor(requireContext().getColor(R.color.diff_header_bg))
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                textSize = 13f
+            })
+            if (file.lines.isEmpty()) {
+                content.addView(TextView(requireContext()).apply {
+                    text = "（该文件无行内容）"
+                    textSize = 12f
+                    setPadding(dp(10), dp(4), dp(10), dp(4))
+                })
+            }
+            file.lines.forEach { line -> content.addView(buildDiffLineView(line)) }
+        }
+        // 横向滚动：所有行等宽于各自内容（wrap_content），整页一起横向移动，短行右侧留白
+        val hscroll = HorizontalScrollView(requireContext()).apply {
+            overScrollMode = View.OVER_SCROLL_NEVER
+            isHorizontalScrollBarEnabled = false
+            addView(content, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        return ScrollView(requireContext()).apply {
+            addView(hscroll, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+    }
+
+    /** 单行 Diff 代码（wrap_content：超长行不换行，由外层 HorizontalScrollView 整页横滚） */
+    private fun buildDiffLineView(line: DiffLine): View =
+        LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(26)
+            setPadding(dp(8), 0, dp(8), 0)
+            setBackgroundColor(requireContext().getColor(when (line.type) {
+                DiffLineType.ADD -> R.color.diff_add_bg
+                DiffLineType.DELETE -> R.color.diff_del_bg
+                else -> R.color.white
+            }))
+            val sign = when (line.type) {
+                DiffLineType.ADD -> "+"
+                DiffLineType.DELETE -> "-"
+                else -> " "
+            }
+            addView(TextView(requireContext()).apply {
+                text = sign
+                width = dp(20)
+                gravity = Gravity.CENTER
+                textSize = 13f
+                typeface = android.graphics.Typeface.MONOSPACE
+                setTextColor(requireContext().getColor(when (line.type) {
+                    DiffLineType.ADD -> R.color.diff_add_fg
+                    DiffLineType.DELETE -> R.color.diff_del_fg
+                    else -> R.color.diff_line_no
+                }))
+            })
+            addView(TextView(requireContext()).apply {
+                text = line.text
+                maxLines = 1
+                textSize = 13f
+                typeface = android.graphics.Typeface.MONOSPACE
+                setTextColor(requireContext().getColor(R.color.text_primary))
+            })
+        }
 
     private fun buildRows(list: List<ChatMessage>): List<ChatRow> {
         val result = mutableListOf<ChatRow>()
@@ -1886,13 +1947,15 @@ class ChatDetailFragment : Fragment() {
         val teamAgents = if (isMainGroup) {
             emptyList()
         } else {
+            // 群里只合并一个 Agent（取团队第一个 ACTIVE；角色已收敛为 4 种执行角色，@ 触发任务逻辑不变）
             mainViewModel.agents.value.orEmpty()
-                .filter { it.status.name != "ARCHIVED" }
-                .map { GroupMember(id = it.id, name = it.name, type = MemberType.AGENT) }
+                .firstOrNull { it.status.name != "ARCHIVED" }
+                ?.let { listOf(GroupMember(id = it.id, name = it.name, type = MemberType.AGENT)) }
+                .orEmpty()
         }
         val agentIds = teamAgents.map { it.id }.toSet()
-        // 群成员列表中与 Agent 名单同 id 的条目以名单为准；其余（真人 + 名单缺失的 Agent）保留
-        val mergedMembers = baseGroupMembers.filter { it.id !in agentIds } + teamAgents
+        // 后端群成员中可能含 Agent（memberType=AGENT）：全部过滤，只保留合并的单一 Agent（避免叠加成多个）
+        val mergedMembers = baseGroupMembers.filter { it.id !in agentIds && it.type != MemberType.AGENT } + teamAgents
         groupMembers = mergedMembers
         memberNamesById = mergedMembers.associate { it.id to it.name }
         memberById = mergedMembers.associate { it.id to it }

@@ -48,6 +48,8 @@ class ChatListAdapter(
         fun bind(group: ChatGroup) {
             binding.tvName.text = group.name
             binding.tvTime.text = group.time
+            // 群头像：成员头像拼图（loadGroups 已缓存成员头像）
+            binding.groupAvatar.setAvatars(group.memberAvatars)
             // 项目总群标识（PROJECT_MAIN 恒置顶，标「总群」）
             binding.tvGroupTag.isVisible = group.type == GroupType.PROJECT_MAIN
             binding.tvUnread.isVisible = group.unread > 0

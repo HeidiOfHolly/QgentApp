@@ -110,7 +110,8 @@
     <string name="memory_draft_created">Memory 草稿已提交审核</string>
     <string name="memory_draft_failed">生成 Memory 草稿失败</string>
     <string name="memory_draft_empty">请先选择要生成的消息</string>
-    <string name="memory_draft_title">新建 Memory 草稿</string>
+    <string name="memory_draft_title">生成 Memory 草稿（AI 总结）</string>
+    <string name="memory_draft_instruction_hint">沉淀说明（可选），如：沉淀为项目认证安全约定</string>
     <string name="memory_draft_title_hint">标题</string>
     <string name="memory_draft_title_required">请输入标题</string>
     <string name="chat_send_failed_title">消息发送失败</string>

@@ -60,6 +60,12 @@ class FallbackUserRepository(
     override suspend fun deleteTeam(teamId: String, idempotencyKey: String) =
         fb.call { deleteTeam(teamId, idempotencyKey) }
 
+    override suspend fun updateTeam(teamId: String, avatarUrl: String?, idempotencyKey: String) =
+        fb.call { updateTeam(teamId, avatarUrl, idempotencyKey) }
+
+    override suspend fun updateProject(projectId: String, avatarUrl: String?, idempotencyKey: String) =
+        fb.call { updateProject(projectId, avatarUrl, idempotencyKey) }
+
     override suspend fun getNotifications() = fb.call { getNotifications() }
 
     override suspend fun markNotificationRead(notificationId: String, idempotencyKey: String) =

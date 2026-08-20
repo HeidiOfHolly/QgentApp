@@ -134,7 +134,10 @@ class TaskDetailFragment : Fragment() {
                         com.example.qgent.data.sse.SseEventType.DELIVERY_REPOSITORY_UPDATED,
                         com.example.qgent.data.sse.SseEventType.DELIVERY_FAILED,
                         com.example.qgent.data.sse.SseEventType.DELIVERY_COMPLETED,
-                        com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SKIPPED -> {
+                        com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SKIPPED,
+                        // MR 状态/分支锁定解锁变化 → 刷新任务详情（交付状态、分支、MR 相关展示保持一致）
+                        com.example.qgent.data.sse.SseEventType.MERGE_REQUEST_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.WORK_BRANCH_UPDATED -> {
                             // 无代码变更（FINAL_DIFF_EMPTY）：记录当前任务，详情页展示空态（MainViewModel 跨页共享，重进不丢失）
                             val taskIdFromEvent = runCatching {
                                 org.json.JSONObject(event.data).optString("taskId")

@@ -15,5 +15,7 @@ data class ChatGroup(
     /** 群类型：项目总群（PROJECT_MAIN）恒置顶并标识；其余为需求群 */
     val type: GroupType = GroupType.REQUIREMENT,
     /** 最新消息类型（TEXT/IMAGE/SYSTEM/QUOTE/...），通知过滤 SYSTEM 用 */
-    val lastMessageType: String? = null
+    val lastMessageType: String? = null,
+    /** 群成员头像 URL 列表（拼图头像用，最多取 9 个；由 loadGroups 拉成员时缓存填充） */
+    val memberAvatars: List<String> = emptyList()
 )

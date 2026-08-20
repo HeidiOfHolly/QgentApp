@@ -51,6 +51,9 @@ class AgentFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // 下拉刷新：重新拉取 Agent 列表 + Memory/Skill 预览（与其他 Tab 页一致）
+        binding.swipeRefresh.setOnRefreshListener { refreshAll() }
+
         val agentAdapter = AgentCardAdapter(emptyList()) { agent ->
             findNavController().navigate(
                 R.id.action_agent_to_agentDetail,
@@ -68,7 +71,8 @@ class AgentFragment : Fragment() {
         binding.rvAgents.adapter = agentAdapter
         this.agentAdapter = agentAdapter
         mainViewModel.agents.observe(viewLifecycleOwner) { agents ->
-            agentAdapter.submitList(agents)
+            // 展示全部 ACTIVE Agent（角色已收敛为 4 种执行角色）
+            agentAdapter.submitList(agents.filter { it.status.name != "ARCHIVED" })
         }
 
         // 「+ 新建」→ 新建 Agent 表单（任何人都可创建自己的 PRIVATE Agent）
@@ -91,6 +95,16 @@ class AgentFragment : Fragment() {
         loadPreviews()
     }
 
+    /** 下拉刷新：Agent 列表 + Memory/Skill 预览（加载完成后收起动画） */
+    private fun refreshAll() {
+        mainViewModel.refreshAgents()
+        loadPreviews()
+        viewLifecycleOwner.lifecycleScope.launch {
+            refreshWorkingState()
+            binding.swipeRefresh.isRefreshing = false
+        }
+    }
+
     private fun loadPreviews() {
         val projectId = mainViewModel.currentProjectId() ?: return
         val app = requireActivity().application as QgentApp
@@ -109,6 +123,7 @@ class AgentFragment : Fragment() {
                 .take(3)
                 .map { it.toSkillItem() }
             renderSkillPreview(publishedSkills)
+            binding.swipeRefresh.isRefreshing = false
         }
     }
 

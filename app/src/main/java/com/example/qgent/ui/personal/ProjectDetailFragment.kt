@@ -1,5 +1,6 @@
 package com.example.qgent.ui.personal
 
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -7,6 +8,8 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
@@ -32,7 +35,9 @@ import com.example.qgent.ui.chat.GroupMemberPickAdapter
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 /**
@@ -65,6 +70,8 @@ class ProjectDetailFragment : Fragment() {
 
     /** 成员 userId → 显示名（团队成员表反查） */
     private var memberNameById = emptyMap<String, String>()
+    /** userId → 头像 URL（团队成员表反查，成员行展示用） */
+    private var memberAvatarById = emptyMap<String, String>()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -103,17 +110,82 @@ class ProjectDetailFragment : Fragment() {
         loadProjectInfo(projectId)
         // 成员加载时会判定管理员身份并联动渲染仓库管理入口
         loadMembers(projectId)
+
+        // 项目头像（§31.1）：点击更换，仅 Project Admin（Team Owner 由后端兜底 PROJECT_ADMIN）
+        binding.ivProjectAvatar.setOnClickListener {
+            if (isAdmin) {
+                pickProjectAvatar.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            } else {
+                Toast.makeText(requireContext(), "仅项目管理员可设置项目头像", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
-    /** 项目简介：从团队项目列表查当前项目的 description */
+    /** 项目简介 + 项目头像（§31.1）：从团队项目列表查当前项目的 description / avatarUrl */
     private fun loadProjectInfo(projectId: String) {
         val teamId = mainViewModel.currentTeamId() ?: return
         viewLifecycleOwner.lifecycleScope.launch {
-            userRepository.getProjects(teamId).getOrNull().orEmpty()
+            val project = userRepository.getProjects(teamId).getOrNull().orEmpty()
                 .firstOrNull { it.id == projectId }
-                ?.description
-                ?.takeIf { it.isNotBlank() }
+            project?.description?.takeIf { it.isNotBlank() }
                 ?.let { binding.tvProjectDescription.text = it }
+            loadProjectAvatar(project?.avatarUrl)
+        }
+    }
+
+    /** 项目头像显示：有 URL 用 Glide（公共读地址），无则默认项目图标 */
+    private fun loadProjectAvatar(avatarUrl: String?) {
+        if (avatarUrl.isNullOrBlank()) {
+            binding.ivProjectAvatar.setImageResource(R.drawable.ic_folder)
+            return
+        }
+        com.bumptech.glide.Glide.with(binding.ivProjectAvatar)
+            .load(com.example.qgent.data.api.RetrofitClient.resolveMediaUrl(avatarUrl))
+            .centerCrop()
+            .placeholder(R.drawable.ic_folder)
+            .error(R.drawable.ic_folder)
+            .into(binding.ivProjectAvatar)
+    }
+
+    private val pickProjectAvatar = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) uploadProjectAvatar(uri)
+    }
+
+    /** 项目头像上传（§31.1）：credential → OSS PUT → confirm → PATCH /projects/{id} 回写（仅 Project Admin） */
+    private fun uploadProjectAvatar(uri: Uri) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val bytes = withContext(Dispatchers.IO) {
+                runCatching { requireContext().contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+            }
+            if (bytes == null || bytes.isEmpty()) {
+                Toast.makeText(requireContext(), "读取图片失败", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (bytes.size > AVATAR_MAX_BYTES) {
+                Toast.makeText(requireContext(), "头像图片不能超过 5MB", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val mime = requireContext().contentResolver.getType(uri) ?: "image/png"
+            Toast.makeText(requireContext(), "正在上传头像…", Toast.LENGTH_SHORT).show()
+            val uploader = (requireActivity().application as QgentApp).container.avatarUploader
+            uploader.uploadFor(
+                mime, bytes.size.toLong(), bytes,
+                { key, body -> com.example.qgent.data.api.RetrofitClient.service.createProjectAvatarCredential(projectId, key, body) },
+                { key, body -> com.example.qgent.data.api.RetrofitClient.service.confirmProjectAvatar(projectId, key, body) }
+            ).onSuccess { avatarUrl ->
+                (requireActivity().application as QgentApp).container.userRepository
+                    .updateProject(projectId, avatarUrl, UUID.randomUUID().toString())
+                loadProjectAvatar(avatarUrl)
+                Toast.makeText(requireContext(), "项目头像已更新", Toast.LENGTH_SHORT).show()
+            }.onFailure { e ->
+                val code = (e as? ApiException)?.code
+                Toast.makeText(
+                    requireContext(),
+                    if (code == "AVATAR_STORAGE_NOT_CONFIGURED") "头像上传暂不可用" else "头像上传失败：${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 
@@ -124,6 +196,11 @@ class ProjectDetailFragment : Fragment() {
             memberNameById = if (teamId != null) {
                 userRepository.getTeamMembers(teamId).getOrNull().orEmpty()
                     .associate { it.userId to it.displayName }
+            } else emptyMap()
+            memberAvatarById = if (teamId != null) {
+                userRepository.getTeamMembers(teamId).getOrNull().orEmpty()
+                    .mapNotNull { it.avatarUrl?.takeIf { u -> u.isNotBlank() }?.let { u -> it.userId to u } }
+                    .toMap()
             } else emptyMap()
             val members = userRepository.getProjectMembers(projectId).getOrNull().orEmpty()
             // 管理员判断以项目详情返回的当前用户有效角色为准（权限方案 v1.1）：
@@ -141,6 +218,18 @@ class ProjectDetailFragment : Fragment() {
             fillLinearLayout(binding.rvMembers, sortedMembers, R.layout.item_chat_member) { view, member ->
                 val item = ItemChatMemberBinding.bind(view)
                 item.tvMemberName.text = memberNameById[member.userId] ?: getString(R.string.member_unknown)
+                // 成员头像（团队成员表反查 avatarUrl，无则默认占位）
+                val memberAvatar = memberAvatarById[member.userId]
+                if (memberAvatar.isNullOrBlank()) {
+                    item.ivMemberAvatar.setImageResource(R.drawable.ic_avatar_default)
+                } else {
+                    com.bumptech.glide.Glide.with(item.ivMemberAvatar)
+                        .load(com.example.qgent.data.api.RetrofitClient.resolveMediaUrl(memberAvatar))
+                        .centerCrop()
+                        .placeholder(R.drawable.ic_avatar_default)
+                        .error(R.drawable.ic_avatar_default)
+                        .into(item.ivMemberAvatar)
+                }
                 // 角色标签：仅管理员可见；点击切换 成员/管理员（PATCH 角色）
                 item.tvMemberRole.isVisible = isAdmin
                 item.tvMemberRole.text = roleLabel(member.role)
@@ -515,5 +604,9 @@ class ProjectDetailFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    companion object {
+        private const val AVATAR_MAX_BYTES = 5 * 1024 * 1024L
     }
 }

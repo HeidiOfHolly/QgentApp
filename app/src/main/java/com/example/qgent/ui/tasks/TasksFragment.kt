@@ -52,6 +52,11 @@ class TasksFragment : Fragment() {
     private val activityAdapter = ActivityAdapter()
 
     private var pollingJob: Job? = null
+    private var eventStreamJob: Job? = null
+
+    /** 项目级 SSE：任务/MR/分支事件到达 → 立即刷新（减少对 3s 轮询的依赖） */
+    private val eventStream: com.example.qgent.data.sse.ProjectEventStream
+        get() = (requireActivity().application as QgentApp).container.projectEventStream
     /** 新建任务弹窗正在加载（拉群）中：防止连点触发多次加载/弹窗 */
     private var isNewTaskDialogLoading = false
 
@@ -181,12 +186,48 @@ class TasksFragment : Fragment() {
         // loadTasks 内部对同项目防重复跳过，这里先强制刷新一次再启动轮询
         taskListViewModel.loadTasks(projectId)
         taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
+        startEventStream()
         startPolling()
     }
 
     override fun onPause() {
         super.onPause()
         stopPolling()
+        stopEventStream()
+    }
+
+    /** 项目 SSE：任务/交付/MR/分支事件 → 刷新任务与最近动态（事件驱动，轮询保留兜底） */
+    private fun startEventStream() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        eventStream.startProject(projectId)
+        if (eventStreamJob == null) {
+            eventStreamJob = viewLifecycleOwner.lifecycleScope.launch {
+                eventStream.events.collect { event ->
+                    when (event.type) {
+                        com.example.qgent.data.sse.SseEventType.TASK_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.TASK_STEP_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.TASK_RUN_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.DIFF_CREATED,
+                        com.example.qgent.data.sse.SseEventType.DELIVERY_REPOSITORY_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.DELIVERY_FAILED,
+                        com.example.qgent.data.sse.SseEventType.DELIVERY_COMPLETED,
+                        com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SKIPPED,
+                        // MR/分支事件：任务交付状态与分支可能联动变化
+                        com.example.qgent.data.sse.SseEventType.MERGE_REQUEST_UPDATED,
+                        com.example.qgent.data.sse.SseEventType.WORK_BRANCH_UPDATED -> {
+                            refreshAllData()
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopEventStream() {
+        eventStreamJob?.cancel()
+        eventStreamJob = null
+        eventStream.stop()
     }
 
     /** 轮询：任务页 Tab 停留时每 3 秒刷新任务/最近动态（后端任务执行进度实时可见）。

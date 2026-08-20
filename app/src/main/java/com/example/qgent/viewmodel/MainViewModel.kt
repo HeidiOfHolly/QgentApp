@@ -10,6 +10,7 @@ import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.BindProjectRepositoryRequest
 import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.model.GroupDto
+import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.NewRepositoryRequest
 import com.example.qgent.data.model.ProjectDto
 import com.example.qgent.data.model.TeamDto
@@ -129,8 +130,8 @@ class MainViewModel(
     /** 群 id → 后端已读游标（lastReadSequenceNo）：群聊页「有人@你」未读 @ 判定基准（对齐 web ChatPanel） */
     private val lastReadSeqByGroup = mutableMapOf<String, Long>()
 
-    /** 群 id → 当前用户是否在群内（isGroupMember 缓存，避免每次 loadGroups 对每个群重复调 getMembers） */
-    private val groupMemberCache = mutableMapOf<String, Boolean>()
+    /** 群 id → 群成员列表缓存（拼图头像 + 成员校验共用；拉取失败为 null 按「在群内/无头像」兜底） */
+    private val groupMembersCache = mutableMapOf<String, List<GroupMemberDto>?>()
 
     /** 无代码变更（diff-review.skipped FINAL_DIFF_EMPTY）任务 id 集合（Activity 级，跨详情页/聊天页共享）：
      *  文档 §15.6.4/§20.3 无代码任务无 DiffReviewBatch，不能走确认/拒绝/重试；
@@ -390,6 +391,28 @@ class MainViewModel(
     }
 
     /**
+     * 通知直达：projectId → (teamName, projectName)，供点击系统通知后把团队/项目切到消息所属项目再进群。
+     * 本地已加载的项目桶优先（命中零网络）；未命中时拉全量团队/项目查找（通知可能来自其他团队的项目）。
+     */
+    suspend fun resolveProjectContext(projectId: String): Pair<String, String>? {
+        if (projectId.isBlank()) return null
+        // 1) 本地已加载桶（当前团队的项目已 loadProjects 过）
+        projectIdsByTeam.entries.forEach { (teamId, nameToId) ->
+            nameToId.entries.firstOrNull { it.value == projectId }?.let { (name, _) ->
+                val teamName = teamNameToId.entries.firstOrNull { it.value == teamId }?.key
+                if (teamName != null) return teamName to name
+            }
+        }
+        // 2) 全量拉取：遍历团队找该项目（通知可能属于其他团队）
+        val teams = userRepo.getTeams().getOrNull().orEmpty()
+        for (team in teams) {
+            val projects = userRepo.getProjects(team.id).getOrNull().orEmpty()
+            projects.firstOrNull { it.id == projectId }?.let { return team.name to it.name }
+        }
+        return null
+    }
+
+    /**
      * 退回列表页时刷新群聊最新消息摘要（onResume 调用）；projectId 未就绪时跳过，避免冷启动误清空。
      * 轮询/SSE 高频调用：上一次加载仍在途（接口慢于轮询间隔）时跳过本次，
      * 避免 loadGroupsJob 被反复 cancel 导致请求永远完不成（列表/未读永不刷新）。
@@ -536,12 +559,17 @@ class MainViewModel(
                 if (myId != null) {
                     coroutineScope {
                         dtos.map { dto ->
-                            async { dto.type == "PROJECT_MAIN" || isGroupMember(projectId, dto.id, myId) }
-                        }.awaitAll().zip(dtos) { ok, dto -> if (ok) dto else null }
-                    }.filterNotNull().let { visible ->
-                        if (visible.size != dtos.size) {
-                            // v2.0.6 §1.1：未读/@我 直接用后端权威值（unreadCount / mentionedUnread）
-                            _groups.value = toChatGroups(visible)
+                            async {
+                                // 所有群都拉成员（缓存头像供拼图，见 groupMembersCache）；总群恒显示，需求群校验是否在群内
+                                val members = groupMembers(projectId, dto.id)
+                                val ok = dto.type == "PROJECT_MAIN" || members?.any { it.id == myId } != false
+                                if (ok) dto else null
+                            }
+                        }.awaitAll().filterNotNull().let { visible ->
+                            if (visible.size != dtos.size) {
+                                // v2.0.6 §1.1：未读/@我 直接用后端权威值（unreadCount / mentionedUnread）
+                                _groups.value = toChatGroups(visible)
+                            }
                         }
                     }
                 }
@@ -556,20 +584,20 @@ class MainViewModel(
     /** 当前用户是否在该群成员列表中。成员关系缓存避免每次 loadGroups 对每个群重复调 getMembers；
      *  成员拉取失败时按「在群内」处理（信任 getGroups 返回的群列表），
      *  避免后端成员接口抖动导致需求群被整体误隐藏（列表/摘要/未读全部不更新）。 */
-    private suspend fun isGroupMember(projectId: String, groupId: String, myId: String): Boolean {
-        groupMemberCache[groupId]?.let { return it }
-        val result = chatRepo.getMembers(projectId, groupId)
-            .fold(
-                onSuccess = { members -> members.any { it.id == myId } },
-                onFailure = { true }
-            )
-        groupMemberCache[groupId] = result
+    private suspend fun isGroupMember(projectId: String, groupId: String, myId: String): Boolean =
+        groupMembers(projectId, groupId)?.any { it.id == myId } ?: true
+
+    /** 群成员列表（缓存，拼图头像 + 成员校验共用）：拉取失败返回 null（调用方按「在群内/无头像」兜底） */
+    private suspend fun groupMembers(projectId: String, groupId: String): List<GroupMemberDto>? {
+        groupMembersCache[groupId]?.let { return it }
+        val result = chatRepo.getMembers(projectId, groupId).getOrNull()
+        groupMembersCache[groupId] = result
         return result
     }
 
     /** 成员变动（SSE group.member.updated / 移入移出群后）清空成员缓存 */
     fun clearGroupMemberCache() {
-        groupMemberCache.clear()
+        groupMembersCache.clear()
     }
 
     /** GroupDto → ChatGroup 映射（v2.0.6 §1.1：未读/@我 直接用后端权威值 unreadCount / mentionedUnread） */
@@ -585,7 +613,9 @@ class MainViewModel(
                 lastActiveTime = lastActive,
                 mentionedMe = (dto.mentionedUnread ?: 0) > 0,
                 type = if (dto.type == "PROJECT_MAIN") GroupType.PROJECT_MAIN else GroupType.REQUIREMENT,
-                lastMessageType = dto.latestMessage?.type
+                lastMessageType = dto.latestMessage?.type,
+                // 拼图头像：成员缓存（loadGroups 已拉取）中取最多 9 个非空头像
+                memberAvatars = groupMembersCache[dto.id].orEmpty().mapNotNull { it.avatar }
             )
         })
 

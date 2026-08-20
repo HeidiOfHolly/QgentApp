@@ -90,22 +90,18 @@ class AgentEditFragment : Fragment() {
 
     private fun selectRole(role: String) {
         val rb = when (role) {
-            "ORCHESTRATOR" -> binding.rbOrchestrator
             "PLANNER" -> binding.rbPlanner
             "TESTER" -> binding.rbTester
             "REVIEWER" -> binding.rbReviewer
-            "GENERAL" -> binding.rbGeneral
             else -> binding.rbDeveloper
         }
         rb.isChecked = true
     }
 
     private fun selectedRole(): String = when (binding.rgRole.checkedRadioButtonId) {
-        R.id.rbOrchestrator -> "ORCHESTRATOR"
         R.id.rbPlanner -> "PLANNER"
         R.id.rbTester -> "TESTER"
         R.id.rbReviewer -> "REVIEWER"
-        R.id.rbGeneral -> "GENERAL"
         else -> "DEVELOPER"
     }
 

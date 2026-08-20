@@ -21,6 +21,14 @@ class SseEventTypeTest {
     }
 
     @Test
+    fun mrBranchAndGithubEvents_registered() {
+        assertEquals(SseEventType.MERGE_REQUEST_UPDATED, SseEventType.fromWire("merge-request.updated"))
+        assertEquals(SseEventType.WORK_BRANCH_UPDATED, SseEventType.fromWire("work-branch.updated"))
+        assertEquals(SseEventType.GITHUB_REPOSITORY_UPDATED, SseEventType.fromWire("github-repository.updated"))
+        assertEquals(SseEventType.GITHUB_INSTALLATION_UPDATED, SseEventType.fromWire("github-installation.updated"))
+    }
+
+    @Test
     fun unknownEvent_returnsNull() {
         assertNull(SseEventType.fromWire("delivery.started.v2"))
         assertNull(SseEventType.fromWire("unknown.event"))

@@ -1,6 +1,7 @@
 package com.example.qgent.ui.chat
 
 import android.app.Dialog
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -13,6 +14,8 @@ import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
@@ -29,6 +32,7 @@ import com.example.qgent.R
 import com.example.qgent.data.DndStore
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.api.RetrofitClient
+import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.repository.ChatRepository
@@ -40,7 +44,9 @@ import com.example.qgent.databinding.FragmentChatSettingsBinding
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 class ChatSettingsFragment : Fragment() {
@@ -327,11 +333,40 @@ class ChatSettingsFragment : Fragment() {
             chatRepo.getGroup(projectId, groupId).onSuccess { dto ->
                 binding.tvGroupName.text = dto.title
                 groupCreatorId = dto.createdBy
+                loadBoundRepositories(projectId, dto.repositoryIds.orEmpty())
             }
             chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
                 Log.d("ChatSettings", "getMembers raw: $dtos")
                 lastRawMembers = dtos
                 renderMembers(mergeAgents(projectId, groupId, dtos))
+            }
+        }
+    }
+
+    /** dp 转 px */
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    /** 绑定仓库：群 repositoryIds → 项目仓库映射 → 填充列表（复用 getProjectRepositories） */
+    private fun loadBoundRepositories(projectId: String, repositoryIds: List<String>) {
+        binding.containerRepositories.removeAllViews()
+        if (repositoryIds.isEmpty()) {
+            binding.tvRepositoriesEmpty.isVisible = true
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            val nameById = (requireActivity().application as QgentApp).container.githubRepository
+                .getProjectRepositories(projectId).getOrNull().orEmpty()
+                .associate { it.id to (it.displayName.ifBlank { it.fullName }) }
+            val names = repositoryIds.mapNotNull { nameById[it] }
+            binding.tvRepositoriesEmpty.isVisible = names.isEmpty()
+            names.forEach { name ->
+                val row = TextView(requireContext()).apply {
+                    text = "• $name"
+                    textSize = 14f
+                    setTextColor(requireContext().getColor(R.color.text_primary))
+                    setPadding(0, dp(4), 0, dp(4))
+                }
+                binding.containerRepositories.addView(row)
             }
         }
     }
@@ -347,12 +382,14 @@ class ChatSettingsFragment : Fragment() {
         if (isMainGroup) return dtos
         val allAgents = mainViewModel.agents.value.orEmpty()
         Log.d("ChatSettings", "mergeAgents: raw=${dtos.size} agents=${allAgents.size} groups=${mainViewModel.groups.value.orEmpty().size}")
+        // 群里只合并一个 Agent（取团队第一个 ACTIVE；角色已收敛为 4 种执行角色）
         val teamAgents = allAgents
-            .filter { it.status.name != "ARCHIVED" }
-            .map { GroupMemberDto(id = it.id, nickname = it.name, displayName = it.name, avatar = it.avatar, memberType = "AGENT") }
+            .firstOrNull { it.status.name != "ARCHIVED" }
+            ?.let { listOf(GroupMemberDto(id = it.id, nickname = it.name, displayName = it.name, avatar = it.avatar, memberType = "AGENT")) }
+            .orEmpty()
         val agentIds = teamAgents.map { it.id }.toSet()
-        // 群成员中与 Agent 名单同 id 的条目以名单为准；其余（真人 + 名单缺失的 Agent）保留
-        return dtos.filter { it.id !in agentIds } + teamAgents
+        // 后端群成员中可能含 Agent：全部过滤，只保留合并的单一 Agent（避免叠加成多个）
+        return dtos.filter { it.id !in agentIds && !it.isAgent } + teamAgents
     }
 
     private fun renderMembers(members: List<GroupMemberDto>) {
