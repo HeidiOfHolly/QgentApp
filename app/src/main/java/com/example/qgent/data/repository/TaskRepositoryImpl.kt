@@ -3,19 +3,24 @@ package com.example.qgent.data.repository
 import com.example.qgent.data.api.QgApiService
 import com.example.qgent.data.model.ActivityDto
 import com.example.qgent.data.model.CqActionRequest
+import com.example.qgent.data.model.CreateDryRunRequest
+import com.example.qgent.data.model.CreateDryRunResponse
 import com.example.qgent.data.model.CreateMergeRequestRequest
 import com.example.qgent.data.model.CreateMergeRequestResponse
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.DiffFileResponseDto
+import com.example.qgent.data.model.DryRunListItemDto
+import com.example.qgent.data.model.DryRunReportDto
+import com.example.qgent.data.model.DryRunRetryResponse
 import com.example.qgent.data.model.EmptyBody
 import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
 import com.example.qgent.data.model.MergeRequestPreflightDto
 import com.example.qgent.data.model.MergeRequestReviewDto
-import com.example.qgent.data.model.PreflightDto
 import com.example.qgent.data.model.RequestMergeRequestPreflightRequest
 import com.example.qgent.data.model.RequestMergeRequestPreflightResponse
+import com.example.qgent.data.model.TestsetResponseDto
 import com.example.qgent.data.model.ReplaceAgentRequest
 import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
@@ -132,6 +137,9 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
             all
         }
 
+    override suspend fun getTestsets(projectId: String, repositoryId: String?, status: String?): Result<List<TestsetResponseDto>> =
+        apiCall { service.getTestsets(projectId, repositoryId, status).toDataOrThrow() }
+
     override suspend fun getMergeRequestChecks(projectId: String, mergeRequestId: String): Result<List<MergeRequestCheckDto>> =
         apiCall { service.getMergeRequestChecks(projectId, mergeRequestId).toDataOrThrow() }
 
@@ -165,9 +173,6 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
             ).toDataOrThrow()
         }
 
-    override suspend fun getPreflight(projectId: String, taskId: String, repositoryId: String, targetBranch: String?): Result<PreflightDto> =
-        apiCall { service.getPreflight(projectId, taskId, repositoryId, targetBranch).toDataOrThrow() }
-
     override suspend fun requestMergeRequestPreflight(
         projectId: String,
         taskId: String,
@@ -184,8 +189,48 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
     override suspend fun getTaskMergeRequestPreflight(projectId: String, taskId: String): Result<List<MergeRequestPreflightDto>> =
         apiCall { service.getTaskMergeRequestPreflight(projectId, taskId).toDataOrThrow() }
 
+    override suspend fun getMergeRequestPreflight(projectId: String, preflightId: String): Result<MergeRequestPreflightDto> =
+        apiCall { service.getMergeRequestPreflight(projectId, preflightId).toDataOrThrow() }
+
     override suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit> =
         apiCall { service.dryRunCqApprove(projectId, dryRunId, idempotencyKey, CqActionRequest(reason)).toUnitOrThrow() }
+
+    override suspend fun createDryRun(
+        projectId: String,
+        repositoryId: String,
+        sourceRef: String,
+        targetBranch: String,
+        taskId: String?,
+        idempotencyKey: String
+    ): Result<CreateDryRunResponse> =
+        apiCall {
+            service.createDryRun(
+                projectId, idempotencyKey,
+                CreateDryRunRequest(repositoryId, sourceRef, targetBranch, taskId)
+            ).toDataOrThrow()
+        }
+
+    override suspend fun getDryRunReport(projectId: String, dryRunId: String): Result<DryRunReportDto> =
+        apiCall { service.getDryRunReport(projectId, dryRunId).toDataOrThrow() }
+
+    override suspend fun retryDryRun(projectId: String, dryRunId: String, idempotencyKey: String): Result<DryRunRetryResponse> =
+        apiCall { service.retryDryRun(projectId, dryRunId, idempotencyKey, EmptyBody()).toDataOrThrow() }
+
+    override suspend fun getDryRuns(
+        projectId: String,
+        repositoryId: String?,
+        taskId: String?,
+        status: String?,
+        targetBranch: String?,
+        createdByUserId: String?,
+        cursor: String?,
+        limit: Int
+    ): Result<List<DryRunListItemDto>> =
+        apiCall {
+            service.getDryRuns(
+                projectId, repositoryId, taskId, status, targetBranch, createdByUserId, cursor, limit
+            ).toDataOrThrow()
+        }
 
     override suspend fun getDiffFiles(projectId: String, diffId: String): Result<List<DiffFileResponseDto>> =
         apiCall { service.getDiffFiles(projectId, diffId).toDataOrThrow() }

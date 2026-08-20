@@ -68,6 +68,9 @@ class FallbackTaskRepository(
         limit: Int
     ) = fb.call { getDeliveryItems(projectId, type, groupId, createdBy, repositoryId, cursor, limit) }
 
+    override suspend fun getTestsets(projectId: String, repositoryId: String?, status: String?) =
+        fb.call { getTestsets(projectId, repositoryId, status) }
+
     override suspend fun getMergeRequestChecks(projectId: String, mergeRequestId: String) =
         fb.call { getMergeRequestChecks(projectId, mergeRequestId) }
 
@@ -95,9 +98,6 @@ class FallbackTaskRepository(
         idempotencyKey: String
     ) = fb.call { createMergeRequest(projectId, taskId, repositoryId, targetBranch, title, idempotencyKey) }
 
-    override suspend fun getPreflight(projectId: String, taskId: String, repositoryId: String, targetBranch: String?) =
-        fb.call { getPreflight(projectId, taskId, repositoryId, targetBranch) }
-
     override suspend fun requestMergeRequestPreflight(
         projectId: String,
         taskId: String,
@@ -108,8 +108,37 @@ class FallbackTaskRepository(
     override suspend fun getTaskMergeRequestPreflight(projectId: String, taskId: String) =
         fb.call { getTaskMergeRequestPreflight(projectId, taskId) }
 
+    override suspend fun getMergeRequestPreflight(projectId: String, preflightId: String) =
+        fb.call { getMergeRequestPreflight(projectId, preflightId) }
+
     override suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String) =
         fb.call { dryRunCqApprove(projectId, dryRunId, reason, idempotencyKey) }
+
+    override suspend fun createDryRun(
+        projectId: String,
+        repositoryId: String,
+        sourceRef: String,
+        targetBranch: String,
+        taskId: String?,
+        idempotencyKey: String
+    ) = fb.call { createDryRun(projectId, repositoryId, sourceRef, targetBranch, taskId, idempotencyKey) }
+
+    override suspend fun getDryRunReport(projectId: String, dryRunId: String) =
+        fb.call { getDryRunReport(projectId, dryRunId) }
+
+    override suspend fun retryDryRun(projectId: String, dryRunId: String, idempotencyKey: String) =
+        fb.call { retryDryRun(projectId, dryRunId, idempotencyKey) }
+
+    override suspend fun getDryRuns(
+        projectId: String,
+        repositoryId: String?,
+        taskId: String?,
+        status: String?,
+        targetBranch: String?,
+        createdByUserId: String?,
+        cursor: String?,
+        limit: Int
+    ) = fb.call { getDryRuns(projectId, repositoryId, taskId, status, targetBranch, createdByUserId, cursor, limit) }
 
     override suspend fun getDiffFiles(projectId: String, diffId: String) =
         fb.call { getDiffFiles(projectId, diffId) }

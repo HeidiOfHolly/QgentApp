@@ -62,7 +62,25 @@ class DeliveryCenterFragment : Fragment() {
         binding.tvDeliveriesMore.setOnClickListener {
             findNavController().navigate(R.id.action_deliveryCenter_to_deliveryItemList)
         }
+        // 顶栏按钮：TestSet / 通知，仅项目管理员可见
+        binding.btnTestset.setOnClickListener {
+            findNavController().navigate(R.id.action_deliveryCenter_to_testsetList)
+        }
+        binding.btnNotification.setOnClickListener {
+            findNavController().navigate(R.id.messageListFragment)
+        }
+        loadAdminButtons()
         refreshAll()
+    }
+
+    /** 顶栏按钮（TestSet / 通知）仅项目管理员可见：管理员身份后端权威（GET /projects/{id}.role，Team Owner 兜底） */
+    private fun loadAdminButtons() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val isAdmin = mainViewModel.isProjectAdmin(projectId)
+            binding.btnTestset.isVisible = isAdmin
+            binding.btnNotification.isVisible = isAdmin
+        }
     }
 
     override fun onResume() {

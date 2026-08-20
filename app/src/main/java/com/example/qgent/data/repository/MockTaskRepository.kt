@@ -1,16 +1,20 @@
 package com.example.qgent.data.repository
 
 import com.example.qgent.data.model.ActivityDto
+import com.example.qgent.data.model.CreateDryRunResponse
 import com.example.qgent.data.model.CreateMergeRequestResponse
 import com.example.qgent.data.model.DiffFileResponseDto
 import com.example.qgent.data.model.DeliveryItemDto
+import com.example.qgent.data.model.DryRunListItemDto
+import com.example.qgent.data.model.DryRunReportDto
+import com.example.qgent.data.model.DryRunRetryResponse
 import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestReviewDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
 import com.example.qgent.data.model.MergeRequestPreflightDto
-import com.example.qgent.data.model.PreflightDto
 import com.example.qgent.data.model.RequestMergeRequestPreflightResponse
+import com.example.qgent.data.model.TestsetResponseDto
 import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.WorkspaceDiffPreviewDto
@@ -108,6 +112,9 @@ class MockTaskRepository : TaskRepository {
     ): Result<List<DeliveryItemDto>> =
         Result.success(emptyList())
 
+    override suspend fun getTestsets(projectId: String, repositoryId: String?, status: String?): Result<List<TestsetResponseDto>> =
+        Result.success(emptyList())
+
     override suspend fun getMergeRequestChecks(projectId: String, mergeRequestId: String): Result<List<MergeRequestCheckDto>> =
         Result.success(emptyList())
 
@@ -136,9 +143,6 @@ class MockTaskRepository : TaskRepository {
     ): Result<CreateMergeRequestResponse> =
         Result.failure(UnsupportedOperationException("mock 不支持创建 MR"))
 
-    override suspend fun getPreflight(projectId: String, taskId: String, repositoryId: String, targetBranch: String?): Result<PreflightDto> =
-        Result.failure(UnsupportedOperationException("mock 不支持 preflight"))
-
     override suspend fun requestMergeRequestPreflight(
         projectId: String,
         taskId: String,
@@ -150,8 +154,39 @@ class MockTaskRepository : TaskRepository {
     override suspend fun getTaskMergeRequestPreflight(projectId: String, taskId: String): Result<List<MergeRequestPreflightDto>> =
         Result.failure(UnsupportedOperationException("mock 不支持查询 MR 预检"))
 
+    override suspend fun getMergeRequestPreflight(projectId: String, preflightId: String): Result<MergeRequestPreflightDto> =
+        Result.failure(UnsupportedOperationException("mock 不支持查询 MR 预检"))
+
     override suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit> =
         Result.failure(UnsupportedOperationException("mock 不支持 DryRun CQ+1"))
+
+    override suspend fun createDryRun(
+        projectId: String,
+        repositoryId: String,
+        sourceRef: String,
+        targetBranch: String,
+        taskId: String?,
+        idempotencyKey: String
+    ): Result<CreateDryRunResponse> =
+        Result.failure(UnsupportedOperationException("mock 不支持创建 Dry Run"))
+
+    override suspend fun getDryRunReport(projectId: String, dryRunId: String): Result<DryRunReportDto> =
+        Result.failure(UnsupportedOperationException("mock 不支持 Dry Run 报告"))
+
+    override suspend fun retryDryRun(projectId: String, dryRunId: String, idempotencyKey: String): Result<DryRunRetryResponse> =
+        Result.failure(UnsupportedOperationException("mock 不支持重试 Dry Run"))
+
+    override suspend fun getDryRuns(
+        projectId: String,
+        repositoryId: String?,
+        taskId: String?,
+        status: String?,
+        targetBranch: String?,
+        createdByUserId: String?,
+        cursor: String?,
+        limit: Int
+    ): Result<List<DryRunListItemDto>> =
+        Result.failure(UnsupportedOperationException("mock 不支持 Dry Run 列表"))
 
     override suspend fun getDiffFiles(projectId: String, diffId: String): Result<List<DiffFileResponseDto>> =
         Result.failure(UnsupportedOperationException("mock 不支持 diff"))

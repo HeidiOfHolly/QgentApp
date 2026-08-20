@@ -116,6 +116,11 @@ class TaskCardListFragment : Fragment() {
         super.onPause()
         stopEventStream()
         stopPolling()
+        // 退出任务列表界面时自动清空筛选条件，下次进入为干净的全量列表
+        val projectId = mainViewModel.currentProjectId()
+        if (projectId != null) {
+            taskListViewModel.applyFilter(projectId, TaskListViewModel.TaskFilter())
+        }
     }
 
     /** 轮询兜底：SSE 偶发断连时任务进度仍能刷新（3s 一次） */

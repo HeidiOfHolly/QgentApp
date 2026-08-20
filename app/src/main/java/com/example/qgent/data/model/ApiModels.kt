@@ -1285,39 +1285,7 @@ data class CreateMergeRequestResponse(
     val status: String?
 )
 
-/** MR 创建前预检（v2.0.3 §2：GET .../tasks/{taskId}/repositories/{repositoryId}/preflight） */
-data class PreflightDto(
-    @SerializedName("taskId") val taskId: String,
-    @SerializedName("repositoryId") val repositoryId: String,
-    @SerializedName("sourceCommit") val sourceCommit: String?,
-    @SerializedName("targetBranch") val targetBranch: String?,
-    @SerializedName("targetCommit") val targetCommit: String?,
-    /** PENDING / PASSED / FAILED */
-    val status: String,
-    /** 常用：DRY_RUN_MISSING / DRY_RUN_FAILED / CQ_PLUS_ONE_MISSING / CQ_PLUS_ONE_REJECTED 等 */
-    val blockers: List<String>?,
-    @SerializedName("dryRun") val dryRun: PreflightDryRunDto?,
-    @SerializedName("cqPlusOne") val cqPlusOne: PreflightCqPlusOneDto?
-)
-
-/** preflight.dryRun：Dry Run 预检摘要 */
-data class PreflightDryRunDto(
-    val id: String,
-    val status: String,
-    @SerializedName("sourceCommit") val sourceCommit: String?,
-    @SerializedName("targetCommit") val targetCommit: String?,
-    @SerializedName("completedAt") val completedAt: String?
-)
-
-/** preflight.cqPlusOne：独立成员 CQ+1 决定 */
-data class PreflightCqPlusOneDto(
-    val status: String,
-    @SerializedName("reviewerUserId") val reviewerUserId: String?,
-    val reason: String?,
-    @SerializedName("reviewedAt") val reviewedAt: String?
-)
-
-// ── 统一创建 MR 自动预检（计划 §C1/C2；v2.0.19 之后） ──
+// ── 统一创建 MR 自动预检（§46；v2.0.19 之后） ──
 
 /** 申请 MR 预检请求（计划 C1：POST /merge-requests/preflight，body 只含 taskId/repositoryId） */
 data class RequestMergeRequestPreflightRequest(
@@ -1349,7 +1317,11 @@ data class MergeRequestPreflightDto(
     @SerializedName("canRetry") val canRetry: Boolean?,
     @SerializedName("mergeRequest") val mergeRequest: DeliveryMergeRequestSummaryDto?,
     @SerializedName("branchLockStatus") val branchLockStatus: String?,
-    @SerializedName("isBranchLevel") val isBranchLevel: Boolean?
+    @SerializedName("isBranchLevel") val isBranchLevel: Boolean?,
+    /** 该分支级预检覆盖的已交付 Task（§46.4） */
+    @SerializedName("coveredTaskIds") val coveredTaskIds: List<String>?,
+    /** 该分支级预检覆盖的已推送 Diff（§46.4） */
+    @SerializedName("coveredDiffIds") val coveredDiffIds: List<String>?
 )
 
 /** 申请 MR 预检响应（计划 C1：202；mergeRequest 未创建时为 null） */
@@ -1365,6 +1337,107 @@ data class RequestMergeRequestPreflightResponse(
     @SerializedName("dryRunId") val dryRunId: String?,
     val blockers: List<String>?,
     @SerializedName("mergeRequest") val mergeRequest: DeliveryMergeRequestSummaryDto?
+)
+
+// ── Dry Run（§12.4/§32/§38；v2.0.23） ──
+
+/** 创建 Dry Run 请求（§32.1：repositoryId/sourceRef/targetBranch 必填，taskId 可选；不提交 targetCommit） */
+data class CreateDryRunRequest(
+    @SerializedName("repositoryId") val repositoryId: String,
+    @SerializedName("sourceRef") val sourceRef: String,
+    @SerializedName("targetBranch") val targetBranch: String,
+    @SerializedName("taskId") val taskId: String? = null
+)
+
+/** 创建 Dry Run 响应（202 受理；仅排队，不代表通过） */
+data class CreateDryRunResponse(
+    val id: String,
+    val status: String?,
+    @SerializedName("createdAt") val createdAt: String?
+)
+
+/** Dry Run 列表项（§38.3：轻量生命周期摘要，不含报告/用例） */
+data class DryRunListItemDto(
+    val id: String,
+    @SerializedName("projectId") val projectId: String,
+    @SerializedName("repositoryId") val repositoryId: String,
+    @SerializedName("sourceRef") val sourceRef: String,
+    @SerializedName("targetBranch") val targetBranch: String,
+    @SerializedName("taskId") val taskId: String?,
+    val status: String,
+    @SerializedName("createdBy") val createdBy: String,
+    @SerializedName("createdAt") val createdAt: String,
+    @SerializedName("startedAt") val startedAt: String?,
+    @SerializedName("finishedAt") val finishedAt: String?
+)
+
+/** Dry Run 报告（§32.1：id/status/headCommit/targetBranch/targetCommit/attemptCount/report） */
+data class DryRunReportDto(
+    val id: String,
+    val status: String,
+    @SerializedName("headCommit") val headCommit: String?,
+    @SerializedName("targetBranch") val targetBranch: String?,
+    @SerializedName("targetCommit") val targetCommit: String?,
+    @SerializedName("attemptCount") val attemptCount: Int?,
+    @SerializedName("createdAt") val createdAt: String?,
+    @SerializedName("updatedAt") val updatedAt: String?,
+    val report: DryRunReportDetail?
+)
+
+/** Dry Run 报告详情（冲突/测试汇总；排队/运行时为 null） */
+data class DryRunReportDetail(
+    val tests: DryRunTestsSummary?
+)
+
+/** 报告测试汇总（§12.4/§32.1：status/resolvedHeadCommit/results[]） */
+data class DryRunTestsSummary(
+    val status: String?,
+    @SerializedName("resolvedHeadCommit") val resolvedHeadCommit: String?,
+    val results: List<DryRunTestResultDto>?
+)
+
+/** 单条 Testset 执行结果（message 为脱敏摘要，禁止展示 stdout/stderr/命令/凭据） */
+data class DryRunTestResultDto(
+    @SerializedName("testsetId") val testsetId: String?,
+    val status: String?,
+    @SerializedName("exitCode") val exitCode: Int?,
+    @SerializedName("durationMs") val durationMs: Long?,
+    @SerializedName("failureCode") val failureCode: String?,
+    val message: String?
+)
+
+/** Dry Run 重试响应（§32.2：返回新的 Dry Run ID，原报告只读） */
+data class DryRunRetryResponse(
+    val id: String
+)
+
+// ── Testset（§10/§17.2） ──
+
+/** Testset 列表项（GET /projects/{projectId}/testsets，§10；§17.2 响应示例） */
+data class TestsetResponseDto(
+    val id: String,
+    val name: String,
+    @SerializedName("repositoryId") val repositoryId: String?,
+    /** ENABLED / DISABLED（§17.2：status 只用 ENABLED/DISABLED，无独立 enabled 布尔） */
+    val status: String?,
+    @SerializedName("definition") val definition: TestsetDefinitionDto?,
+    @SerializedName("scopeTags") val scopeTags: List<String>?,
+    @SerializedName("createdBy") val createdBy: String?,
+    @SerializedName("createdAt") val createdAt: String?,
+    @SerializedName("updatedAt") val updatedAt: String?
+)
+
+/** Testset 执行定义（command/timeoutSeconds/passRule；§10/§17.2） */
+data class TestsetDefinitionDto(
+    val command: String?,
+    @SerializedName("timeoutSeconds") val timeoutSeconds: Int?,
+    @SerializedName("passRule") val passRule: TestsetPassRuleDto?
+)
+
+/** Testset 通过规则（§10：type=EXIT_CODE 等，expected 期望值） */
+data class TestsetPassRuleDto(
+    val type: String?,
+    val expected: Int?
 )
 
 // ── 项目级 TaskRun（§20.6） ──

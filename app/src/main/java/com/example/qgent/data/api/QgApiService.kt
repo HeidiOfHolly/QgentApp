@@ -62,14 +62,19 @@ import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskRunListItemDto
 import com.example.qgent.data.model.TaskRunLogEntryDto
 import com.example.qgent.data.model.TaskStepListItemDto
+import com.example.qgent.data.model.TestsetResponseDto
 import com.example.qgent.data.model.CqActionRequest
+import com.example.qgent.data.model.CreateDryRunRequest
+import com.example.qgent.data.model.CreateDryRunResponse
 import com.example.qgent.data.model.CreateMergeRequestRequest
 import com.example.qgent.data.model.CreateMergeRequestResponse
 import com.example.qgent.data.model.DeliveryItemDto
+import com.example.qgent.data.model.DryRunListItemDto
+import com.example.qgent.data.model.DryRunReportDto
+import com.example.qgent.data.model.DryRunRetryResponse
 import com.example.qgent.data.model.EmptyBody
 import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestPreflightDto
-import com.example.qgent.data.model.PreflightDto
 import com.example.qgent.data.model.MergeRequestReviewDto
 import com.example.qgent.data.model.RequestMergeRequestPreflightRequest
 import com.example.qgent.data.model.RequestMergeRequestPreflightResponse
@@ -736,6 +741,14 @@ interface QgApiService {
         @Query("limit") limit: Int = 100
     ): Response<ApiResponse<List<DeliveryItemDto>>>
 
+    /** Testset 列表（§10：项目成员可查，支持仓库/状态过滤） */
+    @GET("projects/{projectId}/testsets")
+    suspend fun getTestsets(
+        @Path("projectId") projectId: String,
+        @Query("repositoryId") repositoryId: String? = null,
+        @Query("status") status: String? = null
+    ): Response<ApiResponse<List<TestsetResponseDto>>>
+
     /** MR 门禁检查（§21.2 Q1；type=TESTSET/AI_REVIEW/DRY_RUN/CQ_PLUS_ONE） */
     @GET("projects/{projectId}/merge-requests/{mergeRequestId}/checks")
     suspend fun getMergeRequestChecks(
@@ -794,16 +807,7 @@ interface QgApiService {
         @Body body: CreateMergeRequestRequest
     ): Response<ApiResponse<CreateMergeRequestResponse>>
 
-    /** MR 创建前预检（v2.0.3 §2：查 Dry Run + CQ+1 状态，拿 dryRunId） */
-    @GET("projects/{projectId}/tasks/{taskId}/repositories/{repositoryId}/preflight")
-    suspend fun getPreflight(
-        @Path("projectId") projectId: String,
-        @Path("taskId") taskId: String,
-        @Path("repositoryId") repositoryId: String,
-        @Query("targetBranch") targetBranch: String?
-    ): Response<ApiResponse<PreflightDto>>
-
-    /** 申请 MR 预检（统一创建 MR 计划 C1：POST /merge-requests/preflight，启动 Dry Run，202） */
+    /** 申请 MR 预检（§46.2：POST /merge-requests/preflight，启动 Dry Run，202） */
     @POST("projects/{projectId}/merge-requests/preflight")
     suspend fun requestMergeRequestPreflight(
         @Path("projectId") projectId: String,
@@ -811,12 +815,19 @@ interface QgApiService {
         @Body body: RequestMergeRequestPreflightRequest
     ): Response<ApiResponse<RequestMergeRequestPreflightResponse>>
 
-    /** 按 Task 查询全部仓库 MR 预检状态（统一创建 MR 计划 C2） */
+    /** 按 Task 查询全部仓库 MR 预检状态（§46.7） */
     @GET("projects/{projectId}/tasks/{taskId}/merge-request-preflight")
     suspend fun getTaskMergeRequestPreflight(
         @Path("projectId") projectId: String,
         @Path("taskId") taskId: String
     ): Response<ApiResponse<List<MergeRequestPreflightDto>>>
+
+    /** 单条 MR 预检详情（§46.7：页面刷新/SSE 断线后恢复状态） */
+    @GET("projects/{projectId}/merge-requests/preflight/{preflightId}")
+    suspend fun getMergeRequestPreflight(
+        @Path("projectId") projectId: String,
+        @Path("preflightId") preflightId: String
+    ): Response<ApiResponse<MergeRequestPreflightDto>>
 
     /** Dry Run 预检 CQ+1（§27.10：通过后触发自动创建 MR） */
     @POST("projects/{projectId}/dry-runs/{dryRunId}/cq-approvals")
@@ -826,6 +837,43 @@ interface QgApiService {
         @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: CqActionRequest
     ): Response<ApiResponse<Unit>>
+
+    /** 创建 Dry Run（§12.4/§32.1：repositoryId/sourceRef/targetBranch，taskId 可选；202 受理） */
+    @POST("projects/{projectId}/dry-runs")
+    suspend fun createDryRun(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CreateDryRunRequest
+    ): Response<ApiResponse<CreateDryRunResponse>>
+
+    /** Dry Run 报告（§12.4/§32.1：冲突/测试汇总；排队/运行时 report 为 null） */
+    @GET("projects/{projectId}/dry-runs/{dryRunId}/report")
+    suspend fun getDryRunReport(
+        @Path("projectId") projectId: String,
+        @Path("dryRunId") dryRunId: String
+    ): Response<ApiResponse<DryRunReportDto>>
+
+    /** 重试 Dry Run（§32.2：返回新的 Dry Run ID，原报告只读） */
+    @POST("projects/{projectId}/dry-runs/{dryRunId}/retries")
+    suspend fun retryDryRun(
+        @Path("projectId") projectId: String,
+        @Path("dryRunId") dryRunId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: EmptyBody
+    ): Response<ApiResponse<DryRunRetryResponse>>
+
+    /** Dry Run 历史列表（§38.3：repositoryId/taskId/status/targetBranch/createdByUserId + cursor/limit） */
+    @GET("projects/{projectId}/dry-runs")
+    suspend fun getDryRuns(
+        @Path("projectId") projectId: String,
+        @Query("repositoryId") repositoryId: String? = null,
+        @Query("taskId") taskId: String? = null,
+        @Query("status") status: String? = null,
+        @Query("targetBranch") targetBranch: String? = null,
+        @Query("createdByUserId") createdByUserId: String? = null,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 20
+    ): Response<ApiResponse<List<DryRunListItemDto>>>
 
     @GET("projects/{projectId}/diffs/{diffId}/files")
     suspend fun getDiffFiles(
