@@ -80,16 +80,27 @@ class TaskCardListFragment : Fragment() {
         binding.rvTaskList.layoutManager = LinearLayoutManager(requireContext())
         binding.rvTaskList.adapter = taskAdapter
 
+        // 下拉刷新：重新拉取当前任务列表
+        binding.swipeRefresh.setOnRefreshListener { refresh() }
+
         taskListViewModel.uiState.observe(viewLifecycleOwner) { state ->
             taskAdapter.submitList(state.tasks)
             binding.tvEmpty.isVisible = state.tasks.isEmpty() && !state.loading
             // 刷新筛选行选中值；从当前任务列表提取发起人候选
             refreshFilterRow(state)
+            // uiState 更新即视为刷新结束，收起下拉刷新动画
+            binding.swipeRefresh.isRefreshing = false
             state.error?.let {
                 Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
                 taskListViewModel.consumeError()
             }
         }
+    }
+
+    /** 下拉刷新：按当前筛选条件重新拉取任务 */
+    private fun refresh() {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        taskListViewModel.loadTasks(projectId)
     }
 
     override fun onResume() {

@@ -3,6 +3,8 @@ package com.example.qgent.data.repository
 import com.example.qgent.data.api.QgApiService
 import com.example.qgent.data.model.ActivityDto
 import com.example.qgent.data.model.CqActionRequest
+import com.example.qgent.data.model.CreateMergeRequestRequest
+import com.example.qgent.data.model.CreateMergeRequestResponse
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.DiffFileResponseDto
 import com.example.qgent.data.model.EmptyBody
@@ -10,6 +12,7 @@ import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
 import com.example.qgent.data.model.MergeRequestReviewDto
+import com.example.qgent.data.model.PreflightDto
 import com.example.qgent.data.model.ReplaceAgentRequest
 import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
@@ -96,8 +99,35 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
     override suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String): Result<MergeRequestDetailDto> =
         apiCall { service.getMergeRequestDetail(projectId, mergeRequestId).toDataOrThrow() }
 
-    override suspend fun getDeliveryItems(projectId: String, type: String?, cursor: String?, limit: Int): Result<List<DeliveryItemDto>> =
-        apiCall { service.getDeliveryItems(projectId, type, cursor, limit).toDataOrThrow() }
+    override suspend fun getDeliveryItems(
+        projectId: String,
+        type: String?,
+        groupId: String?,
+        createdBy: String?,
+        repositoryId: String?,
+        cursor: String?,
+        limit: Int
+    ): Result<List<DeliveryItemDto>> =
+        apiCall {
+            // 接口按 cursor/limit 分页（文档 §20.1），循环拉全量避免交付物数量被截断。
+            // 注意：Response.body() 只能读一次（OkHttp body 一次性流），必须同时取出 data 与 page。
+            val all = mutableListOf<DeliveryItemDto>()
+            var nextCursor = cursor
+            do {
+                val resp = service.getDeliveryItems(projectId, type, groupId, createdBy, repositoryId, nextCursor, limit)
+                if (!resp.isSuccessful) resp.toDataOrThrow()  // 非 2xx：抛错走统一错误处理
+                val body = resp.body() ?: throw com.example.qgent.data.model.ApiException(
+                    "EMPTY_RESPONSE", "响应为空", null
+                )
+                body.error?.let {
+                    throw com.example.qgent.data.model.ApiException(it.code, it.message, body.requestId, it.details)
+                }
+                all += body.data.orEmpty()
+                val page = body.page
+                nextCursor = page?.nextCursor?.takeIf { page.hasMore }
+            } while (nextCursor != null)
+            all
+        }
 
     override suspend fun getMergeRequestChecks(projectId: String, mergeRequestId: String): Result<List<MergeRequestCheckDto>> =
         apiCall { service.getMergeRequestChecks(projectId, mergeRequestId).toDataOrThrow() }
@@ -116,6 +146,27 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
 
     override suspend fun syncMergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit> =
         apiCall { service.syncMergeRequest(projectId, mergeRequestId, idempotencyKey, EmptyBody()).toUnitOrThrow() }
+
+    override suspend fun createMergeRequest(
+        projectId: String,
+        taskId: String,
+        repositoryId: String,
+        targetBranch: String,
+        title: String,
+        idempotencyKey: String
+    ): Result<CreateMergeRequestResponse> =
+        apiCall {
+            service.createMergeRequest(
+                projectId, idempotencyKey,
+                CreateMergeRequestRequest(taskId, repositoryId, targetBranch, title)
+            ).toDataOrThrow()
+        }
+
+    override suspend fun getPreflight(projectId: String, taskId: String, repositoryId: String, targetBranch: String?): Result<PreflightDto> =
+        apiCall { service.getPreflight(projectId, taskId, repositoryId, targetBranch).toDataOrThrow() }
+
+    override suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit> =
+        apiCall { service.dryRunCqApprove(projectId, dryRunId, idempotencyKey, CqActionRequest(reason)).toUnitOrThrow() }
 
     override suspend fun getDiffFiles(projectId: String, diffId: String): Result<List<DiffFileResponseDto>> =
         apiCall { service.getDiffFiles(projectId, diffId).toDataOrThrow() }

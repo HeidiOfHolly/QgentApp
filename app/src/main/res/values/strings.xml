@@ -81,6 +81,11 @@
     <string name="start_task_repo_load_failed">仓库加载失败，请检查网络后重试</string>
     <string name="start_task_success">任务已创建，Agent 开始执行</string>
     <string name="start_task_failed">创建任务失败</string>
+    <string name="start_task_group_label">分支群</string>
+    <string name="start_task_group_empty">暂无已加入的需求群，请先在群聊中创建需求群</string>
+    <string name="start_task_group_required">请选择分支群</string>
+    <string name="start_task_quoting_diff_hint">将复用源工作区，无需选择仓库</string>
+    <string name="task_realtime_preview">🛠 实时预览</string>
     <string name="view_task_run_logs">查看执行日志</string>
     <string name="task_run_logs_title">执行日志</string>
     <string name="task_run_logs_empty">暂无日志</string>

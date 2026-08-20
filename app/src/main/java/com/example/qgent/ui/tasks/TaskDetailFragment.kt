@@ -247,10 +247,10 @@ class TaskDetailFragment : Fragment() {
         if (projectId.isEmpty() || taskId.isEmpty()) return
         viewLifecycleOwner.lifecycleScope.launch {
             taskRepository.getWorkspaceDiffPreview(projectId, taskId)
-                .onSuccess { preview ->
+                .onSuccess {
+                    // 控件表面只展示功能名称；具体改动（文件/增删行）点击后弹窗展示
                     binding.tvPreviewEntry.isVisible = true
-                    binding.tvPreviewEntry.text =
-                        "🛠 实时预览：${preview.filesChanged} 个文件 · +${preview.additions} / -${preview.deletions} · rev ${preview.revision}"
+                    binding.tvPreviewEntry.text = getString(R.string.task_realtime_preview)
                     binding.tvPreviewEntry.setOnClickListener { showPreviewFilesDialog() }
                 }
                 .onFailure {
@@ -413,10 +413,18 @@ class TaskDetailFragment : Fragment() {
         lastDetail = detail
         binding.tvTitle.text = detail.title
         binding.tvStatus.text = statusLabel(detail.status)
+        // 状态标签背景色随任务状态变化（与任务卡片状态色一致：失败红/完成teal/取消灰/其余黄）；
+        // 文字保持白色，背景 tint 保留 bg_status_tag 圆角
+        binding.tvStatus.backgroundTintList = android.content.res.ColorStateList.valueOf(
+            requireContext().getColor(taskStatusColorRes(detail.status))
+        )
         binding.tvRequirement.text = detail.requirement ?: detail.requirementSummary ?: "暂无需求描述"
+        // 仓库：任务详情在 workspace.repositories（§16.2），顶层 repositories 仅列表项有；
+        // 兼容两种情况，任一非空即展示
+        val repos = (detail.workspace?.repositories ?: detail.repositories).orEmpty()
         binding.tvRepo.text = getString(
             R.string.task_detail_repo,
-            detail.repositories?.joinToString { it.fullName.ifEmpty { it.name } }.orEmpty()
+            repos.joinToString { it.fullName.ifEmpty { it.name } }
         )
         // 取消按钮：能力位 canCancel 优先；缺省按终态状态隐藏（终态不可取消，避免"取消失败"）
         val cancellable = detail.capabilities?.canCancel ?: (detail.status !in TERMINAL_STATUSES)
@@ -457,20 +465,27 @@ class TaskDetailFragment : Fragment() {
         val diffSummary = detail.diffReviewSummary
         val deliveryStatus = extractStringField(diffSummary, "deliveryStatus")
 
-        // 交付模式：MR_FIRST=⚡自动交付 / DIFF_FIRST=📦代码交付，deliveryReason 作为副文案（§15）
+        // 无代码变更任务（FINAL_DIFF_EMPTY）：无 Diff Review 可确认（§15.6.4/§20.3）。
+        // 判定：收到过 diff-review.skipped SSE（内存）OR 任务成功但无可用 Diff 批次
+        // （diffReviewSummary.available != true，冷启动/重进详情页也能正确识别，不依赖 SSE）。
+        val hasReviewBatch = diffSummary?.isJsonObject == true &&
+            diffSummary.asJsonObject.get("available")?.takeIf { it.isJsonPrimitive }?.asBoolean == true
+        val noCode = mainViewModel.isNoCodeChangeTask(taskId) ||
+            (detail.status == "SUCCEEDED" && !hasReviewBatch)
+
+        // 交付模式：MR_FIRST=⚡自动交付 / DIFF_FIRST=📦代码交付，deliveryReason 作为副文案（§15）。
+        // 无代码任务不显示「代码交付」标签（未实际交付代码，只展示"无代码变更"空态）
         val mrFirst = DiffReviewRules.isMrFirst(detail.deliveryMode)
-        binding.tvDeliveryMode.isVisible = mrFirst || detail.deliveryMode == "DIFF_FIRST"
+        val showDeliveryMode = mrFirst || (detail.deliveryMode == "DIFF_FIRST" && !noCode)
+        binding.tvDeliveryMode.isVisible = showDeliveryMode
         binding.tvDeliveryMode.text = when {
             mrFirst -> getString(R.string.task_delivery_auto)
-            detail.deliveryMode == "DIFF_FIRST" -> getString(R.string.task_delivery_code)
+            detail.deliveryMode == "DIFF_FIRST" && !noCode -> getString(R.string.task_delivery_code)
             else -> ""
         }
         if (mrFirst && !detail.deliveryReason.isNullOrBlank()) {
             binding.tvDeliveryMode.text = "${binding.tvDeliveryMode.text}（${detail.deliveryReason}）"
         }
-        // 无代码变更任务（FINAL_DIFF_EMPTY）：无 Diff Review 可确认（§15.6.4/§20.3），
-        // 抑制确认/拒绝/重试/审核入口；仅任务已完成时展示"无代码变更"空态
-        val noCode = mainViewModel.isNoCodeChangeTask(taskId)
         binding.tvNoCodeChange.isVisible = noCode && detail.status == "SUCCEEDED"
 
         // 批次级交付状态总览（稳定文案；失败状态交给 tvDeliveryError 行展示）

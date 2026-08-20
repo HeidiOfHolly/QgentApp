@@ -6,7 +6,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
@@ -17,15 +16,12 @@ import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.MergeRequestDto
-import com.example.qgent.data.model.toDiffFile
 import com.example.qgent.data.repository.DiffRepository
 import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.databinding.FragmentDeliveryCenterBinding
 import com.example.qgent.viewmodel.MainViewModel
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.util.UUID
 
 /**
  * 交付中心（CODE 交付物 + MR，diff 审核之后的交付流程入口）。
@@ -47,6 +43,11 @@ class DeliveryCenterFragment : Fragment() {
 
     private var eventStreamJob: Job? = null
 
+    /** 交付物操作（查看 Diff / 确认 / 拒绝 / 重试），成功后刷新本页交付物列表 */
+    private val deliveryActions by lazy {
+        DeliveryItemActions(this, mainViewModel, diffRepo) { loadDeliveries() }
+    }
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentDeliveryCenterBinding.inflate(inflater, container, false)
         return binding.root
@@ -57,6 +58,9 @@ class DeliveryCenterFragment : Fragment() {
         binding.swipeRefresh.setOnRefreshListener { refreshAll() }
         binding.tvMRMore.setOnClickListener {
             findNavController().navigate(R.id.action_deliveryCenter_to_mrList)
+        }
+        binding.tvDeliveriesMore.setOnClickListener {
+            findNavController().navigate(R.id.action_deliveryCenter_to_deliveryItemList)
         }
         refreshAll()
     }
@@ -110,7 +114,7 @@ class DeliveryCenterFragment : Fragment() {
             }.getOrNull()
             if (items == null) {
                 binding.tvDeliveriesEmpty.isVisible = true
-                binding.tvDeliveriesEmpty.text = "交付物暂不可用"
+                binding.tvDeliveriesEmpty.text = "交付物功能暂不可用"
             } else {
                 binding.tvDeliveriesEmpty.isVisible = items.isEmpty()
                 fillDeliveries(items)
@@ -134,155 +138,26 @@ class DeliveryCenterFragment : Fragment() {
         }
     }
 
-    // ── 交付物卡片（代码构建，简化） ──
+    // ── 交付物卡片（共享构建器，交付中心最多展示 5 条，完整列表走「更多交付物」） ──
 
     private fun fillDeliveries(items: List<DeliveryItemDto>) {
         binding.rvDeliveries.removeAllViews()
-        items.forEach { item -> binding.rvDeliveries.addView(deliveryCard(item)) }
-    }
-
-    private fun deliveryCard(item: DeliveryItemDto): View {
-        val card = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            setBackgroundResource(R.drawable.bg_card)
-        }
-        val lp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(10) }
-        card.layoutParams = lp
-
-        // 标题：任务展示码 + 标题
-        val title = item.source?.taskDisplayCode?.let { "($it) " }.orEmpty() + item.title
-        card.addView(sectionText(title, 15f, bold = true))
-
-        // 仓库/分支
-        val repos = item.repositories?.joinToString("、") { "${it.name} / ${it.branch}" }.orEmpty()
-        if (repos.isNotBlank()) card.addView(sectionText("📦 $repos", 13f))
-
-        // Diff 统计
-        card.addView(sectionText("Diff ${item.filesChanged} 个文件 · +${item.additions} / -${item.deletions}", 13f))
-
-        // Review / Delivery 状态
-        val review = item.reviewStatus ?: "-"
-        val delivery = item.deliveryStatus ?: "-"
-        card.addView(sectionText("Review $review · Delivery $delivery", 13f))
-
-        // 逐仓库交付状态
-        item.repositoryDeliveries?.forEach { rd ->
-            val status = rd.deliveryStatus ?: "-"
-            val reason = rd.failureReason?.takeIf { it.isNotBlank() }?.let { "（$it）" }.orEmpty()
-            card.addView(sectionText("• ${rd.repositoryName ?: rd.repositoryId ?: "仓库"}：$status$reason", 12f))
-        }
-
-        // MR 链接
-        item.mergeRequest?.let { mr ->
-            card.addView(sectionText("🔀 MR #${mr.number} ${mr.title.orEmpty()}", 12f))
-        }
-
-        // 操作行
-        val caps = item.capabilities
-        val actions = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-        fun actionButton(text: String, onClick: () -> Unit): TextView =
-            TextView(requireContext()).apply {
-                this.text = text
-                setTextColor(requireContext().getColor(R.color.primary))
-                textSize = 13f
-                setPadding(dp(10), dp(6), dp(10), dp(6))
-                setOnClickListener { onClick() }
-            }
-        if (caps?.canOpenResource == true && !item.diffId.isNullOrBlank()) {
-            actions.addView(actionButton("查看 Diff") { showDiffFiles(item.diffId!!) })
-        }
-        if (caps?.canApprove == true && !item.source?.taskId.isNullOrBlank()) {
-            actions.addView(actionButton("确认交付") { confirmDelivery(item) })
-        }
-        if (caps?.canReject == true && !item.source?.taskId.isNullOrBlank()) {
-            actions.addView(actionButton("拒绝") { showRejectDialog(item) })
-        }
-        if (caps?.canRetryDelivery == true && !item.source?.taskId.isNullOrBlank()) {
-            actions.addView(actionButton("重试交付") { retryDelivery(item) })
-        }
-        if (actions.childCount > 0) card.addView(actions)
-
-        return card
-    }
-
-    private fun sectionText(text: String, size: Float, bold: Boolean = false): TextView =
-        TextView(requireContext()).apply {
-            this.text = text
-            textSize = size
-            setTextColor(requireContext().getColor(R.color.text_primary))
-            if (bold) setTypeface(null, android.graphics.Typeface.BOLD)
-            setPadding(0, dp(2), 0, dp(2))
-        }
-
-    /** 查看 Diff：拉取文件列表弹窗（仅文件名 + 增删统计） */
-    private fun showDiffFiles(diffId: String) {
-        val projectId = mainViewModel.currentProjectId() ?: return
-        viewLifecycleOwner.lifecycleScope.launch {
-            val files = diffRepo.getDiffFiles(projectId, diffId).getOrNull().orEmpty()
-            val sb = StringBuilder()
-            files.forEach { f ->
-                sb.append("📄 ").append(f.fileName ?: f.path)
-                    .append("  +${f.additions} -${f.deletions}").append("\n")
-            }
-            if (sb.isBlank()) sb.append("（该 Diff 无文件内容）")
-            MaterialAlertDialogBuilder(requireContext())
-                .setTitle("实时/交付 Diff")
-                .setMessage(sb.toString())
-                .setPositiveButton("关闭", null)
-                .show()
+        val showMore = items.size > MAX_DELIVERIES
+        // 交付物区标题行右侧「更多交付物 ›」（>5 条才显示），点击跳转全量列表页
+        binding.tvDeliveriesMore.isVisible = showMore
+        items.take(MAX_DELIVERIES).forEach { item ->
+            binding.rvDeliveries.addView(
+                DeliveryItemCardBuilder.build(requireContext(), item, deliveryActions, ::openTaskDetail)
+            )
         }
     }
 
-    /** 确认交付（MR_FIRST 已自动授权；DIFF_FIRST 手动确认后进入交付） */
-    private fun confirmDelivery(item: DeliveryItemDto) {
-        val projectId = mainViewModel.currentProjectId() ?: return
-        val taskId = item.source?.taskId ?: return
-        viewLifecycleOwner.lifecycleScope.launch {
-            diffRepo.confirmDiffReview(projectId, taskId, UUID.randomUUID().toString())
-                .onSuccess { toast("已确认交付") }
-                .onFailure { e -> toast("确认失败：${e.message}") }
-            loadDeliveries()
-        }
-    }
-
-    /** 拒绝交付（可填原因） */
-    private fun showRejectDialog(item: DeliveryItemDto) {
-        val input = android.widget.EditText(requireContext()).apply { hint = "拒绝原因（可选）" }
-        MaterialAlertDialogBuilder(requireContext())
-            .setTitle("拒绝交付")
-            .setView(input)
-            .setNegativeButton("取消", null)
-            .setPositiveButton("确认拒绝") { _, _ ->
-                val projectId = mainViewModel.currentProjectId() ?: return@setPositiveButton
-                val taskId = item.source?.taskId ?: return@setPositiveButton
-                viewLifecycleOwner.lifecycleScope.launch {
-                    diffRepo.rejectDiffReview(
-                        projectId, taskId,
-                        input.text?.toString()?.trim()?.ifEmpty { null },
-                        UUID.randomUUID().toString()
-                    ).onSuccess { toast("已拒绝交付") }
-                        .onFailure { e -> toast("拒绝失败：${e.message}") }
-                    loadDeliveries()
-                }
-            }
-            .show()
-    }
-
-    /** 重试交付（部分失败/失败后） */
-    private fun retryDelivery(item: DeliveryItemDto) {
-        val projectId = mainViewModel.currentProjectId() ?: return
-        val taskId = item.source?.taskId ?: return
-        viewLifecycleOwner.lifecycleScope.launch {
-            diffRepo.retryDiffDelivery(projectId, taskId, UUID.randomUUID().toString())
-                .onSuccess { toast("已重新发起交付") }
-                .onFailure { e -> toast("重试失败：${e.message}") }
-            loadDeliveries()
-        }
+    /** 交付物卡片点击 → 交付物详情页（含逐仓库进度 + MR/任务入口） */
+    private fun openTaskDetail(item: DeliveryItemDto) {
+        findNavController().navigate(
+            R.id.action_deliveryCenter_to_deliveryItemDetail,
+            bundleOf(DeliveryItemDetailFragment.ARG_ITEM_JSON to DeliveryItemDetailFragment.toJson(item))
+        )
     }
 
     // ── MR 区 ──
@@ -338,12 +213,15 @@ class DeliveryCenterFragment : Fragment() {
         else -> status
     }
 
-    private fun toast(msg: String) = Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
-
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    companion object {
+        /** 交付中心展示交付物数量上限，超出走「更多交付物」全量列表页 */
+        const val MAX_DELIVERIES = 5
     }
 }

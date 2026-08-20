@@ -58,8 +58,15 @@ class FallbackTaskRepository(
     override suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String) =
         fb.call { getMergeRequestDetail(projectId, mergeRequestId) }
 
-    override suspend fun getDeliveryItems(projectId: String, type: String?, cursor: String?, limit: Int) =
-        fb.call { getDeliveryItems(projectId, type, cursor, limit) }
+    override suspend fun getDeliveryItems(
+        projectId: String,
+        type: String?,
+        groupId: String?,
+        createdBy: String?,
+        repositoryId: String?,
+        cursor: String?,
+        limit: Int
+    ) = fb.call { getDeliveryItems(projectId, type, groupId, createdBy, repositoryId, cursor, limit) }
 
     override suspend fun getMergeRequestChecks(projectId: String, mergeRequestId: String) =
         fb.call { getMergeRequestChecks(projectId, mergeRequestId) }
@@ -78,6 +85,21 @@ class FallbackTaskRepository(
 
     override suspend fun syncMergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String) =
         fb.call { syncMergeRequest(projectId, mergeRequestId, idempotencyKey) }
+
+    override suspend fun createMergeRequest(
+        projectId: String,
+        taskId: String,
+        repositoryId: String,
+        targetBranch: String,
+        title: String,
+        idempotencyKey: String
+    ) = fb.call { createMergeRequest(projectId, taskId, repositoryId, targetBranch, title, idempotencyKey) }
+
+    override suspend fun getPreflight(projectId: String, taskId: String, repositoryId: String, targetBranch: String?) =
+        fb.call { getPreflight(projectId, taskId, repositoryId, targetBranch) }
+
+    override suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String) =
+        fb.call { dryRunCqApprove(projectId, dryRunId, reason, idempotencyKey) }
 
     override suspend fun getDiffFiles(projectId: String, diffId: String) =
         fb.call { getDiffFiles(projectId, diffId) }

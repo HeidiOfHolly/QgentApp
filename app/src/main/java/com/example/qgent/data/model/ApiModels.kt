@@ -841,6 +841,13 @@ data class TaskRepositoryDto(
     @SerializedName("headCommit") val headCommit: String?
 )
 
+/** 任务详情 Workspace（§16.2）：仓库列表在 workspace.repositories，顶层 repositories 为空 */
+data class TaskWorkspaceDto(
+    val id: String,
+    val status: String?,
+    @SerializedName("repositories") val repositories: List<TaskRepositoryDto>?
+)
+
 /** 执行进度摘要（任务列表项的 executionSummary 字段，§16.1） */
 data class TaskExecutionSummaryDto(
     @SerializedName("totalSteps") val totalSteps: Int,
@@ -907,7 +914,10 @@ data class TaskDetailDto(
     @SerializedName("deliveryReason") val deliveryReason: String? = null,
     @SerializedName("requirementGroup") val requirementGroup: TaskRequirementGroupDto?,
     @SerializedName("createdByUser") val createdByUser: TaskUserSummaryDto?,
+    /** 任务详情仓库在 workspace 内（§16.2 workspace.repositories）；顶层 repositories 为列表项字段，详情可能为空 */
     val repositories: List<TaskRepositoryDto>?,
+    /** 任务详情 Workspace：含真实仓库列表（§16.2） */
+    @SerializedName("workspace") val workspace: TaskWorkspaceDto?,
     @SerializedName("executionSummary") val executionSummary: TaskExecutionSummaryDto?,
     /** diffReviewSummary 后端结构可能变化，用 JsonElement 兼容（解析见 ChatDetailFragment） */
     @SerializedName("diffReviewSummary") val diffReviewSummary: com.google.gson.JsonElement?,
@@ -1256,6 +1266,56 @@ data class CqActionRequest(val reason: String? = null)
 
 /** 空请求体（merge / sync 等无 body 的 POST） */
 class EmptyBody
+
+// ── MR 创建与 preflight（§27.10 MR_FIRST 预检；v2.0.3） ──
+
+/** 创建 MR 请求（§13：基于已接受 Diff 创建；服务端从 Task 取得源分支/SHA） */
+data class CreateMergeRequestRequest(
+    @SerializedName("taskId") val taskId: String,
+    @SerializedName("repositoryId") val repositoryId: String,
+    @SerializedName("targetBranch") val targetBranch: String,
+    val title: String
+)
+
+/** 创建 MR 响应（§13；返回 MergeRequestDto 摘要） */
+data class CreateMergeRequestResponse(
+    val id: String,
+    val number: Int?,
+    val title: String?,
+    val status: String?
+)
+
+/** MR 创建前预检（v2.0.3 §2：GET .../tasks/{taskId}/repositories/{repositoryId}/preflight） */
+data class PreflightDto(
+    @SerializedName("taskId") val taskId: String,
+    @SerializedName("repositoryId") val repositoryId: String,
+    @SerializedName("sourceCommit") val sourceCommit: String?,
+    @SerializedName("targetBranch") val targetBranch: String?,
+    @SerializedName("targetCommit") val targetCommit: String?,
+    /** PENDING / PASSED / FAILED */
+    val status: String,
+    /** 常用：DRY_RUN_MISSING / DRY_RUN_FAILED / CQ_PLUS_ONE_MISSING / CQ_PLUS_ONE_REJECTED 等 */
+    val blockers: List<String>?,
+    @SerializedName("dryRun") val dryRun: PreflightDryRunDto?,
+    @SerializedName("cqPlusOne") val cqPlusOne: PreflightCqPlusOneDto?
+)
+
+/** preflight.dryRun：Dry Run 预检摘要 */
+data class PreflightDryRunDto(
+    val id: String,
+    val status: String,
+    @SerializedName("sourceCommit") val sourceCommit: String?,
+    @SerializedName("targetCommit") val targetCommit: String?,
+    @SerializedName("completedAt") val completedAt: String?
+)
+
+/** preflight.cqPlusOne：独立成员 CQ+1 决定 */
+data class PreflightCqPlusOneDto(
+    val status: String,
+    @SerializedName("reviewerUserId") val reviewerUserId: String?,
+    val reason: String?,
+    @SerializedName("reviewedAt") val reviewedAt: String?
+)
 
 // ── 项目级 TaskRun（§20.6） ──
 

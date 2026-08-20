@@ -146,7 +146,7 @@
                     android:paddingTop="6dp"
                     android:paddingEnd="8dp"
                     android:paddingBottom="6dp"
-                    android:text="🛠 实时预览"
+                    android:text="@string/task_realtime_preview"
                     android:textColor="@color/white"
                     android:textSize="13sp"
                     android:visibility="gone" />
