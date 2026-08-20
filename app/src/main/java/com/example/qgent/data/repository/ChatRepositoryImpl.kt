@@ -64,10 +64,9 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
     }
 
     override suspend fun getMembers(projectId: String, groupId: String): Result<List<GroupMemberDto>> = apiCall {
-        val resp = service.getGroupMembers(projectId, groupId)
-        // 诊断日志：群友头像不显示时核对后端成员响应的实际字段名（avatar / avatarUrl / …）
-        android.util.Log.d("MemberRaw", "getMembers($groupId): ${resp.body()?.let { com.google.gson.Gson().toJson(it) }}")
-        resp.toDataOrThrow()
+        // 注意：不要在 getMembers 里对整个响应体做 Gson().toJson 打日志——loadGroups 对每群并发调
+        // getMembers（N+1），整响应体序列化日志在群多时开销明显，且已被 BASIC 请求日志覆盖诊断需要
+        service.getGroupMembers(projectId, groupId).toDataOrThrow()
     }
 
     override suspend fun leaveGroup(projectId: String, groupId: String, idempotencyKey: String): Result<Unit> = apiCall {

@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
+import com.example.qgent.data.DndStore
 import com.example.qgent.data.SessionExpiryNotifier
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.ws.RealtimeFrame
@@ -38,6 +39,7 @@ class QgentApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         SessionStore.init(this)
+        DndStore.init(this)
         NotificationHelper.ensureChannel(this)
 
         // WS 常驻连接（Application 级）：进程活着就一直连着，登录后 token 生效自动连上；
@@ -90,6 +92,8 @@ class QgentApp : Application() {
     private suspend fun notifyMessageCreated(frame: RealtimeFrame) {
         val projectId = frame.projectId ?: return
         val groupId = frame.groupId ?: return
+        // 群免打扰（本地）：该群后台不弹系统通知，未读红点照常累计
+        if (DndStore.isMuted(groupId)) return
         val myId = SessionStore.user()?.id
         val repo = container.chatRepository
         // 群名 + 未读数：群列表里找（找不到兜底「群聊」/无未读数）
