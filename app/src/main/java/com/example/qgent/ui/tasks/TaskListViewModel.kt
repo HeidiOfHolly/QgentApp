@@ -21,7 +21,7 @@ class TaskListViewModel(
 
     /** 任务页「我的任务」最多展示条数 */
     companion object {
-        const val MAX_MY_TASKS = 2
+        const val MAX_MY_TASKS = 5
         const val MAX_AGENT_ACTIVITIES = 5
         const val MAX_MR = 2
 
@@ -61,7 +61,6 @@ class TaskListViewModel(
         val loading: Boolean = false,
         val tasks: List<TaskListItemDto> = emptyList(),
         val agentRuns: List<AgentRun> = emptyList(),
-        val activitiesLoading: Boolean = false,
         val mergeRequests: List<MergeRequestDto> = emptyList(),
         val filter: TaskFilter = TaskFilter(),
         val error: String? = null
@@ -108,39 +107,30 @@ class TaskListViewModel(
 
     /** 加载最近被调用的 Agent 及任务：遍历项目内 Agent，逐个查 task-runs（§20.6），
      *  按 createdAt 倒序取最新 MAX_AGENT_ACTIVITIES 条。单个 Agent 查询失败静默跳过。
-     *  仅当列表为空（首次加载 / 暂无数据）时显示加载指示，已有内容刷新时静默更新避免轮询闪现；
-     *  finally 保证 activitiesLoading 无论成功/失败/取消都复位，避免 ProgressBar 卡死。 */
+     *  新查询前取消上一次：轮询每 3 秒触发，多 agent 串行查询慢，不取消会导致旧协程晚到覆盖新结果。 */
     fun loadActivities(projectId: String?, agents: List<Agent>) {
         if (projectId == null) return
-        // 新查询前取消上一次：轮询每 3 秒触发，多 agent 串行查询慢，不取消会导致旧协程晚到覆盖新结果
         activitiesJob?.cancel()
-        _uiState.value = _uiState.value.copy(
-            activitiesLoading = _uiState.value.agentRuns.isEmpty()
-        )
         activitiesJob = viewModelScope.launch {
-            try {
-                val all = mutableListOf<AgentRun>()
-                agents.forEach { agent ->
-                    repo.getTaskRuns(projectId, agent.id)
-                        .getOrElse { emptyList() }
-                        .forEach { run ->
-                            all.add(
-                                AgentRun(
-                                    agentName = agent.name,
-                                    taskTitle = run.taskTitle ?: "执行任务",
-                                    createdAt = run.createdAt
-                                )
+            val all = mutableListOf<AgentRun>()
+            agents.forEach { agent ->
+                repo.getTaskRuns(projectId, agent.id)
+                    .getOrElse { emptyList() }
+                    .forEach { run ->
+                        all.add(
+                            AgentRun(
+                                agentName = agent.name,
+                                taskTitle = run.taskTitle ?: "执行任务",
+                                createdAt = run.createdAt
                             )
-                        }
-                }
-                android.util.Log.d("Activities", "loadActivities agents=${agents.size} runs=${all.size} " +
-                    "top=${all.sortedWith(compareByDescending { it.createdAt }).take(MAX_AGENT_ACTIVITIES).map { "${it.agentName}:${it.taskTitle}" }}")
-                _uiState.value = _uiState.value.copy(
-                    agentRuns = all.sortedWith(compareByDescending { it.createdAt }).take(MAX_AGENT_ACTIVITIES)
-                )
-            } finally {
-                _uiState.value = _uiState.value.copy(activitiesLoading = false)
+                        )
+                    }
             }
+            android.util.Log.d("Activities", "loadActivities agents=${agents.size} runs=${all.size} " +
+                "top=${all.sortedWith(compareByDescending { it.createdAt }).take(MAX_AGENT_ACTIVITIES).map { "${it.agentName}:${it.taskTitle}" }}")
+            _uiState.value = _uiState.value.copy(
+                agentRuns = all.sortedWith(compareByDescending { it.createdAt }).take(MAX_AGENT_ACTIVITIES)
+            )
         }
     }
 

@@ -12,7 +12,11 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.repository.ChatRepository
+import com.example.qgent.data.repository.GitHubRepository
+import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.databinding.FragmentTasksBinding
+import com.example.qgent.ui.common.CreateTaskDialog
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -29,6 +33,12 @@ class TasksFragment : Fragment() {
     private val taskListViewModel: TaskListViewModel by activityViewModels {
         (requireActivity().application as QgentApp).container.taskListViewModelFactory
     }
+    private val chatRepository: ChatRepository
+        get() = (requireActivity().application as QgentApp).container.chatRepository
+    private val githubRepository: GitHubRepository
+        get() = (requireActivity().application as QgentApp).container.githubRepository
+    private val taskRepository: TaskRepository
+        get() = (requireActivity().application as QgentApp).container.taskRepository
 
     private val taskAdapter = TaskCardAdapter { task ->
         findNavController().navigate(
@@ -42,6 +52,8 @@ class TasksFragment : Fragment() {
     private val activityAdapter = ActivityAdapter()
 
     private var pollingJob: Job? = null
+    /** 新建任务弹窗正在加载（拉群）中：防止连点触发多次加载/弹窗 */
+    private var isNewTaskDialogLoading = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -57,6 +69,11 @@ class TasksFragment : Fragment() {
         // 铃铛 → 消息列表
         binding.btnNotification.setOnClickListener {
             findNavController().navigate(R.id.taskMessageListFragment)
+        }
+
+        // 新建任务 → 弹「新建任务」（与群聊一致，但可选分支群）
+        binding.btnNewTask.setOnClickListener {
+            showNewTaskDialog()
         }
 
         // 更多任务 → 任务卡片列表
@@ -83,6 +100,12 @@ class TasksFragment : Fragment() {
         }
         mainViewModel.currentProject.observe(viewLifecycleOwner) { project ->
             binding.tvProjectName.text = project.ifEmpty { getString(R.string.short_test) }
+            // 切项目立即按新项目重新加载任务与最近动态（轮询每次也现取项目 id，双保险防串项目）
+            if (project.isNotEmpty()) {
+                val projectId = mainViewModel.currentProjectId()
+                taskListViewModel.loadTasks(projectId)
+                taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
+            }
         }
         // Agent 名单变化时触发最近动态；agents 为空时也会清空旧动态，避免串项目
         mainViewModel.agents.observe(viewLifecycleOwner) { agents ->
@@ -91,19 +114,56 @@ class TasksFragment : Fragment() {
 
         // 两列表数据
         taskListViewModel.uiState.observe(viewLifecycleOwner) { state ->
-            // 任务页仅展示最新 MAX_MY_TASKS 条（完整列表走「更多任务」）
-            taskAdapter.submitList(state.tasks.take(TaskListViewModel.MAX_MY_TASKS))
+            // 任务页仅展示最近 MAX_MY_TASKS 条（按 updatedAt 倒序取最新；完整列表走「更多任务」）
+            taskAdapter.submitList(
+                state.tasks.sortedByDescending { it.updatedAt }.take(TaskListViewModel.MAX_MY_TASKS)
+            )
             activityAdapter.submitList(state.agentRuns)
             // 空状态：列表为空时展示提示，非空时隐藏
             binding.tvTaskEmpty.isVisible = state.tasks.isEmpty()
-            // 最近动态：加载中显示 ProgressBar，空态隐藏；完成后据列表是否为空切换空态提示
-            binding.pbActivitiesLoading.isVisible = state.activitiesLoading
-            binding.tvAgentEmpty.isVisible = !state.activitiesLoading && state.agentRuns.isEmpty()
+            // 最近动态：未加载出来前/无数据时统一显示空态提示
+            binding.tvAgentEmpty.isVisible = state.agentRuns.isEmpty()
             state.error?.let {
                 taskListViewModel.consumeError()
             }
             // 刷新完成 → 收起下拉刷新动画（uiState 更新即视为刷新结束）
             binding.swipeRefresh.isRefreshing = false
+        }
+    }
+
+    /** 新建任务：加载当前项目已加入的需求群（ACTIVE REQUIREMENT），弹窗中选分支群后创建。
+     *  弹窗加载（拉群）完成前重复点击直接忽略，只加载/弹窗一次。 */
+    private fun showNewTaskDialog() {
+        if (isNewTaskDialogLoading) return
+        val projectId = mainViewModel.currentProjectId() ?: return
+        isNewTaskDialogLoading = true
+        viewLifecycleOwner.lifecycleScope.launch {
+            val groups = chatRepository.getGroups(projectId).getOrNull().orEmpty()
+                .filter { it.type == "REQUIREMENT" && it.status == "ACTIVE" }
+            CreateTaskDialog(
+                context = requireContext(),
+                projectId = projectId,
+                taskRepo = taskRepository,
+                githubRepo = githubRepository,
+                scope = viewLifecycleOwner.lifecycleScope,
+                candidateGroups = groups,
+                initialGroupId = null,
+                showGroupSelector = true,
+                onSubmit = { pid, groupId, title, requirement, repoIds, baseRef ->
+                    CreateTaskDialog.create(
+                        taskRepo = taskRepository,
+                        scope = viewLifecycleOwner.lifecycleScope,
+                        projectId = pid,
+                        groupId = groupId,
+                        title = title,
+                        requirement = requirement,
+                        repoIds = repoIds,
+                        baseRef = baseRef,
+                        context = requireContext()
+                    )
+                }
+            ).show()
+            isNewTaskDialogLoading = false
         }
     }
 
@@ -129,13 +189,15 @@ class TasksFragment : Fragment() {
         stopPolling()
     }
 
-    /** 轮询：任务页 Tab 停留时每 3 秒刷新任务/最近动态（后端任务执行进度实时可见） */
+    /** 轮询：任务页 Tab 停留时每 3 秒刷新任务/最近动态（后端任务执行进度实时可见）。
+     *  每次现取当前项目 id，切项目后轮询自动跟随新项目，避免捕获旧 projectId 导致跨项目串数据。 */
     private fun startPolling() {
         if (pollingJob?.isActive == true) return
-        val projectId = mainViewModel.currentProjectId() ?: return
         pollingJob = viewLifecycleOwner.lifecycleScope.launch {
             while (true) {
                 delay(POLL_INTERVAL_MS)
+                val projectId = mainViewModel.currentProjectId()
+                if (projectId == null) continue
                 taskListViewModel.loadTasks(projectId)
                 taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
             }

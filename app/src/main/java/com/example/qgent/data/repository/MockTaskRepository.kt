@@ -1,12 +1,14 @@
 package com.example.qgent.data.repository
 
 import com.example.qgent.data.model.ActivityDto
+import com.example.qgent.data.model.CreateMergeRequestResponse
 import com.example.qgent.data.model.DiffFileResponseDto
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestReviewDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
+import com.example.qgent.data.model.PreflightDto
 import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.WorkspaceDiffPreviewDto
@@ -93,7 +95,15 @@ class MockTaskRepository : TaskRepository {
     override suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String): Result<MergeRequestDetailDto> =
         Result.failure(UnsupportedOperationException("mock 不支持合并请求详情"))
 
-    override suspend fun getDeliveryItems(projectId: String, type: String?, cursor: String?, limit: Int): Result<List<DeliveryItemDto>> =
+    override suspend fun getDeliveryItems(
+        projectId: String,
+        type: String?,
+        groupId: String?,
+        createdBy: String?,
+        repositoryId: String?,
+        cursor: String?,
+        limit: Int
+    ): Result<List<DeliveryItemDto>> =
         Result.success(emptyList())
 
     override suspend fun getMergeRequestChecks(projectId: String, mergeRequestId: String): Result<List<MergeRequestCheckDto>> =
@@ -113,6 +123,22 @@ class MockTaskRepository : TaskRepository {
 
     override suspend fun syncMergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit> =
         Result.success(Unit)
+
+    override suspend fun createMergeRequest(
+        projectId: String,
+        taskId: String,
+        repositoryId: String,
+        targetBranch: String,
+        title: String,
+        idempotencyKey: String
+    ): Result<CreateMergeRequestResponse> =
+        Result.failure(UnsupportedOperationException("mock 不支持创建 MR"))
+
+    override suspend fun getPreflight(projectId: String, taskId: String, repositoryId: String, targetBranch: String?): Result<PreflightDto> =
+        Result.failure(UnsupportedOperationException("mock 不支持 preflight"))
+
+    override suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit> =
+        Result.failure(UnsupportedOperationException("mock 不支持 DryRun CQ+1"))
 
     override suspend fun getDiffFiles(projectId: String, diffId: String): Result<List<DiffFileResponseDto>> =
         Result.failure(UnsupportedOperationException("mock 不支持 diff"))

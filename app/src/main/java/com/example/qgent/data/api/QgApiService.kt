@@ -63,9 +63,12 @@ import com.example.qgent.data.model.TaskRunListItemDto
 import com.example.qgent.data.model.TaskRunLogEntryDto
 import com.example.qgent.data.model.TaskStepListItemDto
 import com.example.qgent.data.model.CqActionRequest
+import com.example.qgent.data.model.CreateMergeRequestRequest
+import com.example.qgent.data.model.CreateMergeRequestResponse
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.EmptyBody
 import com.example.qgent.data.model.MergeRequestCheckDto
+import com.example.qgent.data.model.PreflightDto
 import com.example.qgent.data.model.MergeRequestReviewDto
 import com.example.qgent.data.model.WorkspaceDiffPreviewDto
 import com.example.qgent.data.model.WorkspaceDiffPreviewFileDto
@@ -723,8 +726,11 @@ interface QgApiService {
     suspend fun getDeliveryItems(
         @Path("projectId") projectId: String,
         @Query("type") type: String? = null,
+        @Query("groupId") groupId: String? = null,
+        @Query("createdBy") createdBy: String? = null,
+        @Query("repositoryId") repositoryId: String? = null,
         @Query("cursor") cursor: String? = null,
-        @Query("limit") limit: Int = 20
+        @Query("limit") limit: Int = 100
     ): Response<ApiResponse<List<DeliveryItemDto>>>
 
     /** MR 门禁检查（§21.2 Q1；type=TESTSET/AI_REVIEW/DRY_RUN/CQ_PLUS_ONE） */
@@ -775,6 +781,32 @@ interface QgApiService {
         @Path("mergeRequestId") mergeRequestId: String,
         @Header("Idempotency-Key") idempotencyKey: String,
         @Body body: EmptyBody
+    ): Response<ApiResponse<Unit>>
+
+    /** 创建 MR（§13：基于已接受 Diff；DIFF_FIRST 手动创建 / MR_FIRST 幂等补偿） */
+    @POST("projects/{projectId}/merge-requests")
+    suspend fun createMergeRequest(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CreateMergeRequestRequest
+    ): Response<ApiResponse<CreateMergeRequestResponse>>
+
+    /** MR 创建前预检（v2.0.3 §2：查 Dry Run + CQ+1 状态，拿 dryRunId） */
+    @GET("projects/{projectId}/tasks/{taskId}/repositories/{repositoryId}/preflight")
+    suspend fun getPreflight(
+        @Path("projectId") projectId: String,
+        @Path("taskId") taskId: String,
+        @Path("repositoryId") repositoryId: String,
+        @Query("targetBranch") targetBranch: String?
+    ): Response<ApiResponse<PreflightDto>>
+
+    /** Dry Run 预检 CQ+1（§27.10：通过后触发自动创建 MR） */
+    @POST("projects/{projectId}/dry-runs/{dryRunId}/cq-approvals")
+    suspend fun dryRunCqApprove(
+        @Path("projectId") projectId: String,
+        @Path("dryRunId") dryRunId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CqActionRequest
     ): Response<ApiResponse<Unit>>
 
     @GET("projects/{projectId}/diffs/{diffId}/files")

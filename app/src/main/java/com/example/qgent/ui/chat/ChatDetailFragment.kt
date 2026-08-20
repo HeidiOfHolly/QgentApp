@@ -56,6 +56,7 @@ import com.example.qgent.data.model.toGroupMember
 import com.example.qgent.data.repository.AttachmentUploader
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.sse.ProjectEventStream
+import com.example.qgent.ui.common.CreateTaskDialog
 import com.example.qgent.data.sse.SseEventType
 import com.example.qgent.databinding.BottomSheetMentionMemberBinding
 import com.example.qgent.databinding.DialogImagePreviewBinding
@@ -865,91 +866,27 @@ class ChatDetailFragment : Fragment() {
         val groupId = arguments?.getString("groupId").orEmpty()
         if (groupId.isEmpty()) return
 
-        val container = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 16, 48, 8)
-        }
-        val etTitle = EditText(requireContext()).apply {
-            hint = getString(R.string.start_task_name_hint)
-            textSize = 14f
-            setText(prefillTitle)
-        }
-        val etRequirement = EditText(requireContext()).apply {
-            hint = getString(R.string.start_task_requirement_hint)
-            textSize = 14f
-            minLines = 3
-            gravity = android.view.Gravity.TOP
-            setText(prefillRequirement)
-        }
-        // 引用 DIFF 卡：展示续作提示，不提供仓库多选（服务端复用源 Workspace）
-        val tvRepoLabel = TextView(requireContext()).apply {
-            text = if (quotingDiff) "将复用源工作区，无需选择仓库" else getString(R.string.manage_repositories)
-            textSize = 14f
-        }
-        val repoChecks = mutableListOf<android.widget.CheckBox>()
-
-        container.addView(etTitle)
-        container.addView(etRequirement)
-        container.addView(tvRepoLabel)
-
-        // 加载项目绑定仓库（文档 §6 ProjectRepository），失败时提示
-        // repositoryIds 必须用 getProjectRepositories 返回的 id（project_repositories.id，清单二）
-        // 续作引用时不加载仓库（C2：不得传 repositoryIds，否则 409 WORKSPACE_CONTINUATION_REPOSITORIES_FORBIDDEN）
-        val repoBranchMap = mutableMapOf<String, String>()   // repoId -> defaultBranch
-        val dialog = MaterialAlertDialogBuilder(requireContext())
-            .setTitle(R.string.start_task_title)
-            .setView(container)
-            .setNegativeButton(R.string.cancel, null)
-            .setPositiveButton(R.string.confirm) { _, _ ->
-                val title = etTitle.text.toString().trim()
-                val requirement = etRequirement.text.toString().trim()
-                val repoIds = repoChecks.filter { it.isChecked }.map { it.tag as String }
-                // baseRef 取仓库默认分支（清单二：不要写死或留空）
-                val baseRef = repoIds.firstOrNull()?.let { repoBranchMap[it] }
-                when {
-                    title.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_name_required, Toast.LENGTH_SHORT).show()
-                    // 续作允许纯引用不填文本（B3：服务端用群描述兜底）
-                    !quotingDiff && requirement.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_requirement_required, Toast.LENGTH_SHORT).show()
-                    !quotingDiff && repoIds.isEmpty() -> Toast.makeText(requireContext(), R.string.start_task_repo_required, Toast.LENGTH_SHORT).show()
-                    messageId != null -> triggerTaskFromMessage(projectId, groupId, messageId, title, requirement, repoIds, baseRef)
-                    else -> createTask(projectId, groupId, title, requirement, repoIds, baseRef)
+        CreateTaskDialog(
+            context = requireContext(),
+            projectId = projectId,
+            taskRepo = taskRepo(),
+            githubRepo = githubRepo(),
+            scope = viewLifecycleOwner.lifecycleScope,
+            // 群聊固定当前群，不显示分支群选择器
+            candidateGroups = emptyList(),
+            initialGroupId = groupId,
+            showGroupSelector = false,
+            prefillTitle = prefillTitle,
+            prefillRequirement = prefillRequirement,
+            quotingDiff = quotingDiff,
+            onSubmit = { pid, gid, title, requirement, repoIds, baseRef ->
+                if (messageId != null) {
+                    triggerTaskFromMessage(pid, gid, messageId, title, requirement, repoIds, baseRef)
+                } else {
+                    createTask(pid, gid, title, requirement, repoIds, baseRef)
                 }
             }
-            .create()
-        // 非续作需加载仓库：加载完成前禁用确认，避免空 CheckBox 假提交；失败 toast 真实原因（不再静默吞错）。
-        // 注意：AppCompat AlertDialog 的按钮在 show() 时才创建（create() 后 getButton 为 null），
-        // 必须在 OnShowListener 里取按钮并启动加载，否则弹窗弹出即 NPE 闪退。
-        if (!quotingDiff) {
-            dialog.setOnShowListener {
-                dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                viewLifecycleOwner.lifecycleScope.launch {
-                    githubRepo().getProjectRepositories(projectId)
-                        .onSuccess { repos ->
-                            if (repos.isEmpty()) {
-                                tvRepoLabel.text = getString(R.string.start_task_repo_required)
-                            } else {
-                                repos.forEach { repo ->
-                                    val cb = android.widget.CheckBox(requireContext()).apply {
-                                        text = repo.displayName
-                                        textSize = 14f
-                                        tag = repo.id
-                                        isChecked = repos.size == 1
-                                    }
-                                    repoBranchMap[repo.id] = repo.defaultBranch
-                                    repoChecks.add(cb)
-                                    container.addView(cb)
-                                }
-                            }
-                            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled = repos.isNotEmpty()
-                        }
-                        .onFailure { e ->
-                            tvRepoLabel.text = getString(R.string.start_task_repo_load_failed)
-                            Toast.makeText(requireContext(), "加载仓库失败：${e.message}", Toast.LENGTH_LONG).show()
-                        }
-                }
-            }
-        }
-        dialog.show()
+        ).show()
     }
 
     private fun createTask(

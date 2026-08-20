@@ -63,7 +63,31 @@
             android:id="@+id/action_deliveryCenter_to_mrDetail"
             app:destination="@id/mergeRequestDetailFragment" />
         <action
-            android:id="@+id/action_deliveryCenter_to_taskDetail"
+            android:id="@+id/action_deliveryCenter_to_deliveryItemList"
+            app:destination="@id/deliveryItemListFragment" />
+        <action
+            android:id="@+id/action_deliveryCenter_to_deliveryItemDetail"
+            app:destination="@id/deliveryItemDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/deliveryItemListFragment"
+        android:name="com.example.qgent.ui.delivery.DeliveryItemListFragment"
+        android:label="交付物列表"
+        tools:layout="@layout/fragment_delivery_item_list">
+        <action
+            android:id="@+id/action_deliveryItemList_to_deliveryItemDetail"
+            app:destination="@id/deliveryItemDetailFragment" />
+    </fragment>
+
+    <!-- 交付物详情：交付物信息 + 逐仓库进度 + MR/任务入口（从 MR 详情交付流程抽离） -->
+    <fragment
+        android:id="@+id/deliveryItemDetailFragment"
+        android:name="com.example.qgent.ui.delivery.DeliveryItemDetailFragment"
+        android:label="交付物详情"
+        tools:layout="@layout/fragment_delivery_item_detail">
+        <action
+            android:id="@+id/action_deliveryItemDetail_to_taskDetail"
             app:destination="@id/taskDetailFragment" />
     </fragment>
 

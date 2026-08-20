@@ -2,12 +2,15 @@ package com.example.qgent.data.repository
 
 import com.example.qgent.data.model.ActivityDto
 import com.example.qgent.data.model.CqActionRequest
+import com.example.qgent.data.model.CreateMergeRequestRequest
+import com.example.qgent.data.model.CreateMergeRequestResponse
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.DiffFileResponseDto
 import com.example.qgent.data.model.EmptyBody
 import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
+import com.example.qgent.data.model.PreflightDto
 import com.example.qgent.data.model.MergeRequestReviewDto
 import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskDetailDto
@@ -92,8 +95,16 @@ interface TaskRepository {
     /** MR 详情（§13，含 diffId） */
     suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String): Result<MergeRequestDetailDto>
 
-    /** 交付中心：CODE 交付物列表（GET /delivery-items） */
-    suspend fun getDeliveryItems(projectId: String, type: String? = null, cursor: String? = null, limit: Int = 20): Result<List<DeliveryItemDto>>
+    /** 交付中心：CODE 交付物列表（GET /delivery-items；支持需求群/发起人/仓库筛选，§20.1） */
+    suspend fun getDeliveryItems(
+        projectId: String,
+        type: String? = null,
+        groupId: String? = null,
+        createdBy: String? = null,
+        repositoryId: String? = null,
+        cursor: String? = null,
+        limit: Int = 100
+    ): Result<List<DeliveryItemDto>>
 
     /** MR 门禁检查（TESTSET/AI_REVIEW/DRY_RUN/CQ_PLUS_ONE） */
     suspend fun getMergeRequestChecks(projectId: String, mergeRequestId: String): Result<List<MergeRequestCheckDto>>
@@ -112,6 +123,22 @@ interface TaskRepository {
 
     /** 触发从 GitHub 同步 MR 状态 */
     suspend fun syncMergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit>
+
+    /** 创建 MR（§13：基于已接受 Diff；DIFF_FIRST 手动 / MR_FIRST 幂等补偿） */
+    suspend fun createMergeRequest(
+        projectId: String,
+        taskId: String,
+        repositoryId: String,
+        targetBranch: String,
+        title: String,
+        idempotencyKey: String
+    ): Result<CreateMergeRequestResponse>
+
+    /** MR 创建前预检（v2.0.3 §2：查 Dry Run + CQ+1 状态，拿 dryRunId） */
+    suspend fun getPreflight(projectId: String, taskId: String, repositoryId: String, targetBranch: String?): Result<PreflightDto>
+
+    /** Dry Run 预检 CQ+1（§27.10：通过后触发自动创建 MR） */
+    suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit>
 
     /** 读取 Diff 文件与代码行（§12.3） */
     suspend fun getDiffFiles(projectId: String, diffId: String): Result<List<DiffFileResponseDto>>
