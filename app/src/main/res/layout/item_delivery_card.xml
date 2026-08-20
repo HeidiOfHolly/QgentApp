@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 交付物卡片（交付中心 / 交付物列表共用）：标题 + 仓库 + Diff 统计 + Review/Delivery + 逐仓库进度 + 操作行 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="15dp"
+    android:background="@drawable/bg_card"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <!-- 标题：任务展示码 + 标题 -->
+    <TextView
+        android:id="@+id/tvTitle"
+
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxLines="1"
+        android:textColor="@color/text_primary"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        tools:text="(T-76) 实现邮箱登录" />
+
+    <!-- 仓库 / 分支 -->
+    <TextView
+        android:id="@+id/tvRepos"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/slate_gray"
+        android:textSize="15sp"
+        tools:text="📦 qgents-web / feat/login" />
+
+    <!-- Review / Delivery 状态 -->
+    <TextView
+        android:id="@+id/tvReviewDelivery"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_primary"
+        android:textSize="14sp"
+        tools:text="Review ACCEPTED · Delivery DELIVERED" />
+
+    <!-- 逐仓库交付状态（动态填充） -->
+    <LinearLayout
+        android:id="@+id/containerRepos"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+    <!-- 操作行（动态填充：查看 Diff / 确认交付 / 拒绝 / 重试） -->
+    <LinearLayout
+        android:id="@+id/containerActions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:orientation="horizontal" />
+</LinearLayout>
