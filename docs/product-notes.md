@@ -441,3 +441,58 @@
 - `GET /projects/{projectId}/members`：分页返回 ProjectMemberResponse 列表（userId + role），
   选人界面显示名字时需用团队成员的 displayName 按 userId 关联。
 - 均需 `Idempotency-Key` 头，Bearer 鉴权。
+
+## 加载性能优化（2026-08-20，用户反馈「项目/群聊加载慢」）
+
+- **A1 日志降级**：`RetrofitClient` Http 日志 `BODY` → debug `BASIC` / release `NONE`（BODY 级会让 OkHttp 先整读大响应体再交 Gson 解析，高频轮询/事件下拖慢所有请求）；
+  删除 `getMembers` 的 `MemberRaw`（整响应体 Gson 序列化）与 `loadGroups` 的 `GroupBadge` 逐群诊断日志。
+- **A2 抽屉红点节流**：`refreshDrawerUnread(force=false)` 默认先延后 800ms（让 loadGroups 等主链路请求先发出，
+  不抢同一 host 的 5 并发名额）且 3s 窗口合并（事件风暴首尾各算一次）；`markGroupRead` 与 `openDrawer` 走
+  `force=true` 即时算。**当前项目群列表实时性不受影响**（消息事件仍立即 refreshGroups，红点只降「其他团队/项目」的频）。
+- **C1 群列表先显示后过滤**：`loadGroups` 拿到群列表立即渲染，每群 `getMembers` 成员校验改后台异步（校验完剔除不在的群），
+  列表不再等 N 个成员请求；`visible.size != dtos.size` 时才二次发数据。
+- **C3 切项目红点延后**：切团队/项目/冷启动的红点遍历走节流默认（延后 800ms），不与 loadGroups 抢并发。
+- **A3 排序接口（未动）**：`GET /teams/by-last-activity`、`GET /teams/{id}/projects/by-last-activity` 保持
+  「排序优先 + 失败回退普通列表」；后端是否已实现这两个接口待确认（文档 v2.0.8 无对应条目）。
+
+## @我（MESSAGE_MENTION）通知中心（2026-08-20 完成）
+
+- 跳转链路原本已就绪（BaseMessageListFragment 点击 → ChatDetailFragment `targetMessageId` 滚动高亮 +
+  `fromMention` 兜底滚到最上面 @ 消息），缺口只是两个通知列表 filter 都排除了 MESSAGE_MENTION。
+- **抽屉铃铛 = 个人通知中心**：`MessageListFragment` filter 改 `INVITED || MESSAGE_MENTION`；
+  `MainViewModel.refreshUnreadInvitations` 红点统计同步覆盖 @我；`refreshUnreadTaskNotifications` 排除
+  MESSAGE_MENTION（修复任务铃铛幽灵红点：此前 @我 未读点亮任务铃铛但列表不展示）。
+
+## 群免打扰（2026-08-20 完成，本地实现 + 预留后端同步）
+
+- 语义（微信式）：免打扰群后台不弹系统通知（`QgentApp.notifyMessageCreated` 拦截），未读红点/角标照常累计。
+- `data/DndStore.kt`：SharedPreferences 存免打扰 groupId 集合（仅本机）；群设置页「功能入口」卡片加 Switch。
+- **不需要后端接口**：免打扰是纯本地行为；后端偏好接口只在「多端同步设置」时才需要，届时按 DndStore 注释替换读写即可。
+
+## 应用图标（2026-08-20 更换）
+
+- 素材：`C:\Users\24772\Pictures\qgents_2.png`（455×440，米白底 #FDFBFA + 深色 #25303A Logo）。
+- 结构：`drawable-nodpi/ic_launcher_foreground_img.png`（432×432，Logo 缩到 **48%** 居中——自适应图标前景不会被系统缩放，
+  整图铺满会被圆形遮罩裁剪，必须把主体预缩到安全区内）；背景米白纯色 vector；旧系统各密度 PNG 替换默认 webp。
+- 通知栏小图标 `ic_bell` 独立，未换。
+
+## Testset / Dry Run：方案 A 定稿（2026-08-20）
+
+- **Testset 概念**：项目自建可复用的测试配置（command/timeoutSeconds/passRule/acceptanceNotes，绑定仓库，
+  Project Admin 管理，本期只管理配置不负责执行；§10）。
+- **移动端只读，管理归 web**：移动端唯一用到 testset/dry-run 的地方 = MR 详情门禁区只读展示
+  TESTSET / DRY_RUN / AI_REVIEW / CQ_PLUS_ONE 状态（已实现，零改动）。
+- **自动路径已闭环**：移动端创建任务 → 后端编排 → Diff 确认/MR_FIRST 自动交付 → **后端自动跑必选 Testset + DryRun** →
+  结果回写 MR checks → 移动端看状态 → CQ+1 → Admin 合并。移动端不做任何执行操作。
+- **不做**：手动触发 test-runs/dry-runs 按钮（web 端职责）；A+ 增强（FAILED 时反查测试集名/命令）暂缓，需要时再加。
+
+## 任务失败原因展示统一（2026-08-20，后端 45 节适配）
+
+- 后端：任务详情接口与诊断接口统一 TaskStatusReasonFactory 组装（code=EXECUTION_FAILED / STARTUP_FAILED /
+  DELIVERY_FAILED；summary 优先持久化脱敏 failureReason → 稳定码受控文案 → 通用兜底）。
+- **移动端统一失败展示**：`TaskDetailFragment.updateFailureReason` 覆盖 FAILED + DELIVERY_FAILED，
+  优先读 `TaskDetailDto.statusReason.summary`（后端统一组装），旧后端缺失时回退 diffReviewSummary 猜字段（兼容）；
+  标题按状态动态（任务执行失败/交付失败）；**移除 bindDelivery 的 tvDeliveryError 行**（消除两链路矛盾）。
+- **GIT_BRANCH_NOT_FOUND 特例**：失败区显示「重新发起任务」按钮 → 跳需求群群聊（requirementGroup.id/name）。
+- 质量循环耗尽（TASK_QUALITY_LOOPS_EXHAUSTED 非白名单）：后端 code=EXECUTION_FAILED + summary 真实文案，移动端无特判直接展示。
+- 聊天页 Diff Review 对话框失败原因同样优先 statusReason.summary（与详情页同一来源）。

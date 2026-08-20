@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
+import com.example.qgent.data.DndStore
 import com.example.qgent.data.SessionExpiryNotifier
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.ws.RealtimeFrame
@@ -12,6 +13,7 @@ import com.example.qgent.di.AppContainer
 import com.example.qgent.ui.auth.LoginActivity
 import com.example.qgent.ui.notify.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.filter
@@ -20,8 +22,16 @@ import java.lang.ref.WeakReference
 
 class QgentApp : Application() {
 
-    lateinit var container: AppContainer
-        private set
+    /**
+     * AppContainer（后台装配，见 [containerReady]）。
+     * 未就绪时同步访问会抛异常——所有入口 Activity 必须经 [containerReady] 等待后再访问。
+     */
+    val container: AppContainer
+        get() = containerDeferred.getCompleted()
+
+    private val containerDeferred = CompletableDeferred<AppContainer>()
+    private val containerLock = Any()
+    private var containerAssemblyStarted = false
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -34,22 +44,39 @@ class QgentApp : Application() {
     /** 前台 Activity 计数（onActivityStarted/Stopped 维护），决定后台是否弹通知 */
     private var startedActivities = 0
 
-    override fun onCreate() {
-        super.onCreate()
-        container = AppContainer(this)
-        SessionStore.init(this)
-        NotificationHelper.ensureChannel(this)
+    /**
+     * 等待 AppContainer 装配完成（只装配一次，多调用方共享同一实例）。
+     * 装配在后台线程执行（Room 建库 / Retrofit / OkHttp / WS 客户端及全部依赖类的 JIT 校验），
+     * 避免慢设备（模拟器等）主线程被占满导致启动 ANR「已停止运行」/ 长时间假死；
+     * 等待期间导航图正常显示 SplashFragment，主线程保持响应。
+     */
+    suspend fun containerReady(): AppContainer {
+        startContainerAssembly()
+        return containerDeferred.await()
+    }
 
-        // WS 常驻连接（Application 级）：进程活着就一直连着，登录后 token 生效自动连上；
-        // 后台收到 message.created 事件直接弹通知（事件驱动，不依赖协程轮询，App Standby 冻结不到）
-        container.realtimeClient.start()
-        appScope.launch {
-            container.realtimeClient.events.collect { frame ->
-                if (frame.type == "message.created" && !NotificationHelper.isAppForeground) {
-                    notifyMessageCreated(frame)
+    private fun startContainerAssembly() {
+        synchronized(containerLock) {
+            if (containerAssemblyStarted) return
+            containerAssemblyStarted = true
+            CoroutineScope(Dispatchers.Default + SupervisorJob()).launch {
+                try {
+                    val created = AppContainer(applicationContext)
+                    // WS 常驻连接（Application 级）：进程活着就一直连着，登录后 token 生效自动连上
+                    created.realtimeClient.start()
+                    containerDeferred.complete(created)
+                } catch (e: Throwable) {
+                    containerDeferred.completeExceptionally(e)
                 }
             }
         }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        SessionStore.init(this)
+        DndStore.init(this)
+        NotificationHelper.ensureChannel(this)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
@@ -78,10 +105,20 @@ class QgentApp : Application() {
             override fun onActivitySaveInstanceState(activity: Activity, outState: android.os.Bundle) {}
         })
 
-        // 会话过期 → 自动退出登录：清空会话、弹提示、回登录页
+        // AppContainer 后台装配；依赖它的常驻逻辑（WS 通知广播 / 会话过期登出）就绪后启动
         appScope.launch {
-            SessionExpiryNotifier.expired.filter { it }.collect {
-                forceLogout()
+            val container = containerReady()
+            appScope.launch {
+                container.realtimeClient.events.collect { frame ->
+                    if (frame.type == "message.created" && !NotificationHelper.isAppForeground) {
+                        notifyMessageCreated(frame)
+                    }
+                }
+            }
+            appScope.launch {
+                SessionExpiryNotifier.expired.filter { it }.collect {
+                    forceLogout()
+                }
             }
         }
     }
@@ -90,6 +127,8 @@ class QgentApp : Application() {
     private suspend fun notifyMessageCreated(frame: RealtimeFrame) {
         val projectId = frame.projectId ?: return
         val groupId = frame.groupId ?: return
+        // 群免打扰（本地）：该群后台不弹系统通知，未读红点照常累计
+        if (DndStore.isMuted(groupId)) return
         val myId = SessionStore.user()?.id
         val repo = container.chatRepository
         // 群名 + 未读数：群列表里找（找不到兜底「群聊」/无未读数）

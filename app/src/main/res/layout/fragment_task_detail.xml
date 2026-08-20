@@ -170,18 +170,6 @@
                     android:visibility="gone" />
             </LinearLayout>
 
-            <!-- 交付失败原因（DELIVERY_FAILED 时展示，便于定位交付失败） -->
-            <TextView
-                android:id="@+id/tvDeliveryError"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:lineSpacingExtra="4dp"
-                android:textColor="@color/exit_red"
-                android:textSize="14sp"
-                android:visibility="gone"
-                tools:text="交付失败：GitHub 推送被拒绝" />
-
             <!-- 重试交付（交付失败后重试） -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnRetryDelivery"
@@ -237,7 +225,8 @@
                 android:textSize="15sp"
                 tools:text="前后端都要支持，并完成测试。" />
 
-            <!-- 任务失败原因（Agent 任务执行失败时展示，位于需求与任务步骤之间） -->
+            <!-- 任务失败原因（FAILED / DELIVERY_FAILED 统一展示，后端按 45 节统一组装 code+summary；
+                 位于需求与任务步骤之间） -->
             <LinearLayout
                 android:id="@+id/layoutFailureReason"
                 android:layout_width="match_parent"
@@ -246,6 +235,7 @@
                 android:visibility="gone">
 
                 <TextView
+                    android:id="@+id/tvFailureTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
@@ -263,6 +253,22 @@
                     android:textColor="@color/text_primary"
                     android:textSize="15sp"
                     tools:text="Agent 执行登录接口开发失败：依赖服务启动超时" />
+
+                <!-- 重新发起任务（GIT_BRANCH_NOT_FOUND：基线分支不存在，跳需求群重新发起） -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnRestartTask"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:minHeight="36dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:text="@string/restart_task"
+                    android:textColor="@color/white"
+                    android:textSize="14sp"
+                    android:visibility="gone"
+                    app:backgroundTint="@color/navy"
+                    app:cornerRadius="18dp" />
             </LinearLayout>
 
             <View

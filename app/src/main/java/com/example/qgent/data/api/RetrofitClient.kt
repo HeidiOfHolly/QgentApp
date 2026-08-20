@@ -1,5 +1,6 @@
 package com.example.qgent.data.api
 
+import com.example.qgent.BuildConfig
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.model.RefreshRequest
 import com.example.qgent.data.model.toDataOrThrow
@@ -14,8 +15,11 @@ object RetrofitClient {
     // Retrofit 要求 baseUrl 以 "/" 结尾（否则启动抛 IllegalArgumentException）
     const val BASE_URL = "https://api.qgents.dpdns.org/api/v1/"
 
+    // 请求日志：debug 只打请求行/响应行（BASIC），不再完整记录响应体——
+    // BODY 级会让 OkHttp 先把大响应体（群列表/消息列表）完整读一遍再交给 Gson 解析，
+    // 高频轮询/事件下拖慢所有请求处理；release 完全关闭。
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
+        level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
     }
 
     // 刷新令牌专用 client：不带鉴权拦截器与 Authenticator，避免刷新请求触发递归

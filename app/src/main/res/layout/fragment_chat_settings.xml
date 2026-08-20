@@ -199,6 +199,32 @@
                             app:tint="@color/charcoal"
                             android:src="@drawable/ic_chevron_right" />
                     </LinearLayout>
+
+                    <!-- 消息免打扰（本地存储）：该群后台不弹系统通知，未读红点照常累计 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?attr/selectableItemBackground"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="16dp"
+                        android:paddingTop="4dp"
+                        android:paddingBottom="4dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/dnd_mute_group"
+                            android:textColor="@color/text_primary"
+                            android:textSize="18sp" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/swDnd"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

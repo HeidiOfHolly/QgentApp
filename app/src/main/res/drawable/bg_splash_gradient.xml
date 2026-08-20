@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 启动页背景：偏白色渐变（上白 → 下浅蓝灰），呼应品牌米白 Logo -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="270"
+        android:startColor="#FFFFFF"
+        android:centerColor="#FDFBFA"
+        android:endColor="#EEF1F6" />
+</shape>

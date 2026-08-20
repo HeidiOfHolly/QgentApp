@@ -6,11 +6,13 @@ import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.doAfterTextChanged
+import androidx.lifecycle.lifecycleScope
 import com.example.qgent.MainActivity
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.SessionStore
 import com.example.qgent.databinding.ActivityLoginBinding
+import kotlinx.coroutines.launch
 import java.util.regex.Pattern
 
 class LoginActivity : AppCompatActivity() {
@@ -32,37 +34,43 @@ class LoginActivity : AppCompatActivity() {
         }
         SessionStore.rememberedPassword()?.let { binding.etPassword.setText(it) }
 
-        binding.etEmail.doAfterTextChanged {
-            if (binding.emailLayout.error != null) binding.emailLayout.error = null
-        }
-        binding.etPassword.doAfterTextChanged {
-            if (binding.passwordLayout.error != null) binding.passwordLayout.error = null
-        }
+        // viewModel 依赖 AppContainer（后台装配），等就绪后再绑定监听与观察，
+        // 避免慢设备上装配未完成时同步访问 container 崩溃/ANR
+        lifecycleScope.launch {
+            (application as QgentApp).containerReady()
 
-        binding.btnLogin.setOnClickListener {
-            if (validate()) {
-                viewModel.login(
-                    binding.etEmail.text.toString(),
-                    binding.etPassword.text.toString()
-                )
+            binding.etEmail.doAfterTextChanged {
+                if (binding.emailLayout.error != null) binding.emailLayout.error = null
             }
-        }
+            binding.etPassword.doAfterTextChanged {
+                if (binding.passwordLayout.error != null) binding.passwordLayout.error = null
+            }
 
-        binding.tvRegister.setOnClickListener {
-            supportFragmentManager.beginTransaction()
-                .add(R.id.register_container, RegisterFragment())
-                .addToBackStack("register")
-                .commit()
-        }
+            binding.btnLogin.setOnClickListener {
+                if (validate()) {
+                    viewModel.login(
+                        binding.etEmail.text.toString(),
+                        binding.etPassword.text.toString()
+                    )
+                }
+            }
 
-        binding.tvForgotPassword.setOnClickListener {
-            supportFragmentManager.beginTransaction()
-                .add(R.id.register_container, ForgotPasswordFragment())
-                .addToBackStack("forgot_password")
-                .commit()
-        }
+            binding.tvRegister.setOnClickListener {
+                supportFragmentManager.beginTransaction()
+                    .add(R.id.register_container, RegisterFragment())
+                    .addToBackStack("register")
+                    .commit()
+            }
 
-        observeViewModel()
+            binding.tvForgotPassword.setOnClickListener {
+                supportFragmentManager.beginTransaction()
+                    .add(R.id.register_container, ForgotPasswordFragment())
+                    .addToBackStack("forgot_password")
+                    .commit()
+            }
+
+            observeViewModel()
+        }
     }
 
     private fun observeViewModel() {

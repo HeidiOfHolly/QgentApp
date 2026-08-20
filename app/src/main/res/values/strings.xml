@@ -371,7 +371,15 @@
     <string name="group_member_count">群成员 (%d)</string>
     <string name="manage_group">管理群</string>
     <string name="view_chat_history">查看聊天记录</string>
+    <string name="dnd_mute_group">消息免打扰</string>
+    <string name="dnd_muted_on">已开启消息免打扰（后台不弹通知）</string>
+    <string name="dnd_muted_off">已关闭消息免打扰</string>
     <string name="exit_group">退出群聊</string>
+    <string name="restart_task">重新发起任务</string>
+    <string name="task_failure_title">任务执行失败</string>
+    <string name="task_delivery_failed_title">交付失败</string>
+    <string name="task_failure_generic">任务执行失败，请查看执行记录</string>
+    <string name="app_logo">qgents Logo</string>
     <string name="exit_group_placeholder">退出群聊（待接入后端）</string>
     <string name="action_enter">进入</string>
     <string name="avatar">头像</string>

@@ -28,6 +28,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -111,6 +112,12 @@ class MainViewModel(
     private var loadGroupsJob: Job? = null
     private var loadAgentsJob: Job? = null
 
+    // ── 抽屉红点刷新节流：事件风暴时 3s 合并只算一次；默认先延后 800ms 再算，
+    //    让 loadGroups 等主链路请求先发出（同一 host OkHttp 默认并发只有 5，避免抢名额拖慢群列表） ──
+
+    private var drawerUnreadJob: Job? = null
+    private var drawerUnreadPending = false
+
     // ── 冷启动初始数据就绪信号：teams + 首个团队 projects + 首个项目群聊都就绪后置 true，供 MainActivity 路由 ──
 
     private val _initialDataLoaded = MutableStateFlow(false)
@@ -179,18 +186,21 @@ class MainViewModel(
         refreshUnreadTaskNotifications()
     }
 
-    /** 拉取通知列表，统计未读的团队邀请（INVITED）；失败时保持现状不打扰用户 */
+    /** 拉取通知列表，统计未读的个人通知（团队邀请 INVITED 或 有人@我 MESSAGE_MENTION）；
+     *  与抽屉铃铛列表过滤条件（MessageListFragment）保持一致；失败时保持现状不打扰用户 */
     fun refreshUnreadInvitations() {
         viewModelScope.launch {
             userRepo.getNotifications().onSuccess { list ->
-                _unreadInvitations.value = list.any { it.kind == "INVITED" && !it.isRead }
+                _unreadInvitations.value = list.any {
+                    (it.kind == "INVITED" || it.kind == "MESSAGE_MENTION") && !it.isRead
+                }
             }
         }
     }
 
     /**
-     * 拉取通知列表，统计「当前项目」下未读的任务类通知（除 INVITED 外），
-     * 与任务铃铛列表过滤条件（TaskMessageListFragment）保持一致，
+     * 拉取通知列表，统计「当前项目」下未读的任务类通知（除 INVITED 与 MESSAGE_MENTION 外，
+     * @我 归抽屉铃铛，不点亮任务铃铛红点），与任务铃铛列表过滤条件（TaskMessageListFragment）保持一致，
      * 避免其他项目/历史遗留的未读通知点亮当前任务页红点；失败时保持现状不打扰用户。
      */
     fun refreshUnreadTaskNotifications() {
@@ -198,7 +208,8 @@ class MainViewModel(
             userRepo.getNotifications().onSuccess { list ->
                 val projectId = currentProjectId()
                 _unreadTaskNotifications.value = list.any {
-                    it.kind != "INVITED" && !it.isRead && projectId != null && it.projectId == projectId
+                    it.kind != "INVITED" && it.kind != "MESSAGE_MENTION" && !it.isRead &&
+                        projectId != null && it.projectId == projectId
                 }
             }
         }
@@ -215,58 +226,81 @@ class MainViewModel(
      *
      * 性能：团队/项目/群拉取并行（async），避免串行 N+1 拖慢红点刷新；
      * 当前项目用本地 _groups 缓存判断未读（markGroupRead 已本地清零），红点消除即时生效，不依赖已读接口在途返回。
+     * [force] 红点刷新节流：默认先延后 [DRAWER_UNREAD_DEFER_MS] 再算（让 loadGroups 等主链路请求先发出，
+     * 不抢同一 host 的并发名额），且 [DRAWER_UNREAD_DEBOUNCE_MS] 窗口内合并只算一次；
+     * 事件风暴只算首尾各一次。force=true（用户主动点已读 / 打开抽屉）取消在途节流立即算。
      */
-    fun refreshDrawerUnread() {
-        viewModelScope.launch {
-            val notificationUnreadByProject = userRepo.getNotifications().getOrNull().orEmpty()
-                .filter { it.kind != "INVITED" && !it.isRead && it.projectId != null }
-                .mapNotNull { it.projectId }
-                .toSet()
-            val currentTeamId = teamNameToId[_currentTeam.value]
-            val currentProjectId = currentProjectId()
-            // 当前项目群聊未读：直接用本地 _groups 缓存（markGroupRead 已本地清零，避免等已读接口在途返回）
-            val localGroupUnread = if (currentProjectId != null) {
-                _groups.value.any { it.unread > 0 }
-            } else {
-                false
+    fun refreshDrawerUnread(force: Boolean = false) {
+        if (force) {
+            drawerUnreadJob?.cancel()
+            drawerUnreadPending = false
+            viewModelScope.launch { runDrawerUnread() }
+            return
+        }
+        if (drawerUnreadJob?.isActive == true) {
+            drawerUnreadPending = true
+            return
+        }
+        drawerUnreadJob = viewModelScope.launch {
+            delay(DRAWER_UNREAD_DEFER_MS)
+            runDrawerUnread()
+            if (drawerUnreadPending) {
+                drawerUnreadPending = false
+                delay(DRAWER_UNREAD_DEBOUNCE_MS)
+                runDrawerUnread()
             }
-            val results = coroutineScope {
-                // 每个团队并行拉项目；同团队项目并行拉群列表
-                teamNameToId.entries.map { (teamName, teamId) ->
-                    async {
-                        val projects = userRepo.getProjects(teamId).getOrNull().orEmpty()
-                        val projectUnread = projects.map { project ->
-                            async {
-                                val groupUnread = if (project.id == currentProjectId) {
-                                    localGroupUnread
-                                } else {
-                                    chatRepo.getGroups(project.id).getOrNull().orEmpty()
-                                        .any { (it.unreadCount ?: 0) > 0 }
-                                }
-                                val unread = groupUnread || project.id in notificationUnreadByProject
-                                ProjectUnread(project, unread, teamId == currentTeamId, project.id == currentProjectId)
+        }
+    }
+
+    private suspend fun runDrawerUnread() {
+        val notificationUnreadByProject = userRepo.getNotifications().getOrNull().orEmpty()
+            .filter { it.kind != "INVITED" && !it.isRead && it.projectId != null }
+            .mapNotNull { it.projectId }
+            .toSet()
+        val currentTeamId = teamNameToId[_currentTeam.value]
+        val currentProjectId = currentProjectId()
+        // 当前项目群聊未读：直接用本地 _groups 缓存（markGroupRead 已本地清零，避免等已读接口在途返回）
+        val localGroupUnread = if (currentProjectId != null) {
+            _groups.value.any { it.unread > 0 }
+        } else {
+            false
+        }
+        val results = coroutineScope {
+            // 每个团队并行拉项目；同团队项目并行拉群列表
+            teamNameToId.entries.map { (teamName, teamId) ->
+                async {
+                    val projects = userRepo.getProjects(teamId).getOrNull().orEmpty()
+                    val projectUnread = projects.map { project ->
+                        async {
+                            val groupUnread = if (project.id == currentProjectId) {
+                                localGroupUnread
+                            } else {
+                                chatRepo.getGroups(project.id).getOrNull().orEmpty()
+                                    .any { (it.unreadCount ?: 0) > 0 }
                             }
-                        }.awaitAll()
-                        TeamUnreadResult(teamName, projectUnread.any { it.unread }, projectUnread)
-                    }
-                }.awaitAll()
-            }
-            val unreadTeamNames = mutableSetOf<String>()
-            val unreadProjectNames = mutableSetOf<String>()
-            var hasUnreadElsewhere = false
-            results.forEach { teamResult ->
-                if (teamResult.teamHasUnread) unreadTeamNames.add(teamResult.teamName)
-                teamResult.projects.forEach { pu ->
-                    if (pu.unread) {
-                        if (pu.isCurrentTeamProject) unreadProjectNames.add(pu.project.name)
-                        if (!pu.isCurrentProject) hasUnreadElsewhere = true
-                    }
+                            val unread = groupUnread || project.id in notificationUnreadByProject
+                            ProjectUnread(project, unread, teamId == currentTeamId, project.id == currentProjectId)
+                        }
+                    }.awaitAll()
+                    TeamUnreadResult(teamName, projectUnread.any { it.unread }, projectUnread)
+                }
+            }.awaitAll()
+        }
+        val unreadTeamNames = mutableSetOf<String>()
+        val unreadProjectNames = mutableSetOf<String>()
+        var hasUnreadElsewhere = false
+        results.forEach { teamResult ->
+            if (teamResult.teamHasUnread) unreadTeamNames.add(teamResult.teamName)
+            teamResult.projects.forEach { pu ->
+                if (pu.unread) {
+                    if (pu.isCurrentTeamProject) unreadProjectNames.add(pu.project.name)
+                    if (!pu.isCurrentProject) hasUnreadElsewhere = true
                 }
             }
-            _unreadTeamNames.value = unreadTeamNames
-            _unreadProjectNames.value = unreadProjectNames
-            _hasUnreadBadge.value = hasUnreadElsewhere
         }
+        _unreadTeamNames.value = unreadTeamNames
+        _unreadProjectNames.value = unreadProjectNames
+        _hasUnreadBadge.value = hasUnreadElsewhere
     }
 
     private data class ProjectUnread(
@@ -296,7 +330,8 @@ class MainViewModel(
         if (team.isNotEmpty()) {
             setCurrentTeam(team, force = true, autoSelectProject = false)
         }
-        refreshDrawerUnread()
+        // 打开抽屉 = 用户要看最新红点，绕过节流立即算
+        refreshDrawerUnread(force = true)
     }
 
     /** 当前团队是否可新建项目：仅 TEAM_OWNER（文档 §5.2）；角色未知时放行交给后端判定 */
@@ -374,7 +409,8 @@ class MainViewModel(
         _groups.value = _groups.value.map {
             if (it.id == groupId) it.copy(unread = 0, mentionedMe = false) else it
         }
-        refreshDrawerUnread()
+        // 用户主动点已读 → 红点即时反馈，绕过节流
+        refreshDrawerUnread(force = true)
         viewModelScope.launch {
             chatRepo.markGroupRead(projectId, groupId, UUID.randomUUID().toString())
                 .onSuccess { resp ->
@@ -493,23 +529,22 @@ class MainViewModel(
         loadGroupsJob = viewModelScope.launch {
             try {
                 val dtos = chatRepo.getGroups(projectId).getOrNull() ?: emptyList()
-                // 诊断：核对后端 mentionedUnread / latestMessage 是否随群列表返回（角标与摘要依赖）
-                dtos.forEach { dto ->
-                    Log.d("GroupBadge", "group=${dto.title} type=${dto.type} unread=${dto.unreadCount} mentioned=${dto.mentionedUnread} latest=${dto.latestMessage?.text}")
-                }
                 val myId = SessionStore.user()?.id
-                val visible = if (myId == null) {
-                    dtos
-                } else {
-                    // 并发校验成员身份：避免对每个群串行 getMembers 拖慢整个 loadGroups
+                // C1：先立即渲染后端返回的群列表（含可能不在的群），列表不再等每群 getMembers 返回；
+                // 成员校验后台异步进行，校验完剔除不在的群（通常全部在群，visible 与 dtos 一致 → 不发第二次）
+                _groups.value = toChatGroups(dtos)
+                if (myId != null) {
                     coroutineScope {
                         dtos.map { dto ->
                             async { dto.type == "PROJECT_MAIN" || isGroupMember(projectId, dto.id, myId) }
                         }.awaitAll().zip(dtos) { ok, dto -> if (ok) dto else null }
-                    }.filterNotNull()
+                    }.filterNotNull().let { visible ->
+                        if (visible.size != dtos.size) {
+                            // v2.0.6 §1.1：未读/@我 直接用后端权威值（unreadCount / mentionedUnread）
+                            _groups.value = toChatGroups(visible)
+                        }
+                    }
                 }
-                // v2.0.6 §1.1：未读/@我 直接用后端权威值（unreadCount / mentionedUnread）
-                _groups.value = toChatGroups(visible)
             } catch (e: Exception) {
                 Log.e("Groups", "loadGroups FAILED: ${e::class.simpleName}: ${e.message}", e)
             }
@@ -704,6 +739,14 @@ class MainViewModel(
                 }
             }
         }
+    }
+
+    companion object {
+        /** 抽屉红点刷新：默认先延后这么久再算，让 loadGroups 等主链路请求先发出（不抢同一 host 并发名额） */
+        private const val DRAWER_UNREAD_DEFER_MS = 800L
+
+        /** 抽屉红点刷新合并窗口：窗口内多次触发只算一次，风暴尾部补算一次 */
+        private const val DRAWER_UNREAD_DEBOUNCE_MS = 3_000L
     }
 }
 

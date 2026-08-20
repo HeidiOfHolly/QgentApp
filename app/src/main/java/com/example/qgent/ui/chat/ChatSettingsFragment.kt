@@ -26,6 +26,7 @@ import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.DndStore
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.model.GroupMemberDto
@@ -82,6 +83,18 @@ class ChatSettingsFragment : Fragment() {
 
         // 查看聊天记录：弹出搜索弹窗，按关键词过滤消息
         binding.btnViewHistory.setOnClickListener { showSearchDialog() }
+
+        // 消息免打扰（本地存储，仅本机生效）：该群后台不弹系统通知，未读红点照常累计
+        val dndGroupId = arguments?.getString("groupId").orEmpty()
+        binding.swDnd.isChecked = DndStore.isMuted(dndGroupId)
+        binding.swDnd.setOnCheckedChangeListener { _, checked ->
+            DndStore.setMuted(dndGroupId, checked)
+            Toast.makeText(
+                requireContext(),
+                if (checked) R.string.dnd_muted_on else R.string.dnd_muted_off,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
 
         // 退出群聊：先弹确认，确认后调接口
         binding.btnExitGroup.setOnClickListener { confirmExitGroup() }

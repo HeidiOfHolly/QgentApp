@@ -1256,7 +1256,11 @@ class ChatDetailFragment : Fragment() {
         val reviewStatus = extractStringField(diffSummary, "reviewStatus")
         val confirmationSource = extractStringField(diffSummary, "confirmationSource")
         val deliveryStatus = extractStringField(diffSummary, "deliveryStatus")
-        val deliveryFailedReason = extractDeliveryFailedReason(diffSummary)
+        // 45 节：任务级失败原因统一走后端 statusReason（summary 优先，含持久化脱敏 failureReason），
+        // 与任务详情页同一来源避免矛盾；旧后端 statusReason 缺失时回退 diffReviewSummary 解析（兼容）
+        val deliveryFailedReason = detail.statusReason?.summary
+            ?: detail.statusReason?.title
+            ?: extractDeliveryFailedReason(diffSummary)
         // 按钮规则（MR_FIRST B 方案）：仅 PENDING_CONFIRMATION 且非 SYSTEM 显示确认/拒绝；
         // Diff 审核仅任务发起人或 Project Admin 可确认/拒绝（后端能力位派生，§16.2；缺省按 true 兜底）。
         // PARTIALLY_DELIVERED / FAILED 或任务 DELIVERY_FAILED 才显示重试（能力位优先）
