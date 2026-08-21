@@ -30,6 +30,7 @@ import com.example.qgent.data.repository.UserRepositoryImpl
 import com.example.qgent.data.sse.ProjectEventStream
 import com.example.qgent.ui.auth.AuthViewModel
 import com.example.qgent.ui.github.GithubViewModel
+import com.example.qgent.ui.github.PersonalGithubOAuthViewModel
 import com.example.qgent.ui.tasks.TaskListViewModel
 import com.example.qgent.viewmodel.MainViewModel
 import com.example.qgent.viewmodel.NewProjectViewModel
@@ -75,7 +76,7 @@ class AppContainer(context: Context) {
      * 项目级 SSE 事件流（文档 §12.1）。
      * 复用带鉴权 + Token 自动刷新的 httpClient；连接生命周期由使用方（Fragment）控制。
      */
-    val projectEventStream = ProjectEventStream(RetrofitClient.httpClient, RetrofitClient.BASE_URL)
+    val projectEventStream = ProjectEventStream(RetrofitClient.httpClient, RetrofitClient.BASE_URL, context)
 
     /**
      * WebSocket 实时通道（后端 2026-08-17 新增：单连接用户级聚合，SSE 保留兼容）。
@@ -102,6 +103,10 @@ class AppContainer(context: Context) {
 
     val githubViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer { GithubViewModel(githubRepository) }
+    }
+
+    val personalGithubOAuthViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
+        initializer { PersonalGithubOAuthViewModel(githubRepository) }
     }
 
     val taskListViewModelFactory: ViewModelProvider.Factory = viewModelFactory {

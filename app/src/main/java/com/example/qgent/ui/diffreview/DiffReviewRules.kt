@@ -9,7 +9,7 @@ import com.example.qgent.data.model.RepositoryDeliveryMergeRequestDto
  *
  * 核心规则：
  * - 只有 reviewStatus=PENDING_CONFIRMATION 且 confirmationSource 非 SYSTEM 时显示「确认交付/拒绝交付」；
- * - ACCEPTED+USER 展示「已由用户确认」；ACCEPTED+SYSTEM 展示「自动交付」，均无确认/拒绝按钮；
+ * - ACCEPTED+USER 展示「已由用户确认」；ACCEPTED+SYSTEM 展示「已自动确认」（MR_FIRST 自动授权，不代表交付已完成），均无确认/拒绝按钮；
  * - PARTIALLY_DELIVERED / FAILED（交付状态）或任务 DELIVERY_FAILED 时按权限显示「重试交付」。
  */
 object DiffReviewRules {
@@ -17,6 +17,14 @@ object DiffReviewRules {
     /** 是否显示「确认交付 / 拒绝交付」按钮（confirmationSource 缺省按 USER 兜底，保证 DIFF_FIRST 回归） */
     fun canConfirmOrReject(reviewStatus: String?, confirmationSource: String?): Boolean =
         reviewStatus == "PENDING_CONFIRMATION" && confirmationSource != "SYSTEM"
+
+    /** 旧批次已被同一 Workspace 的后续修改取代，只读且不可重试。 */
+    fun isSuperseded(reviewStatus: String?): Boolean = reviewStatus == "SUPERSEDED"
+
+    fun reviewStatusCaption(reviewStatus: String?): String? = when (reviewStatus) {
+        "SUPERSEDED" -> "已被后续修改取代"
+        else -> null
+    }
 
     /** ACCEPTED 状态下的展示文案：SYSTEM → 已自动确认（MR_FIRST 自动授权，不代表交付已完成）；USER → 已由用户确认；缺省兜底已确认 */
     fun acceptedCaption(confirmationSource: String?): String = when (confirmationSource) {
@@ -102,7 +110,8 @@ object DiffReviewRules {
         "DIFF_BATCH_REVIEW_REQUIRED",   // 批次内单 Diff 确认/拒绝 → 409
         "TASK_NOT_CANCELLABLE",         // 终态操作 → 409
         "DELIVERY_STATE_CONFLICT",      // 交付状态冲突
-        "DIFF_REVIEW_STATE_CONFLICT"    // 批次状态冲突（已确认/已拒绝再操作）
+        "DIFF_REVIEW_STATE_CONFLICT",   // 批次状态冲突（已确认/已拒绝再操作）
+        "DIFF_REVIEW_SUPERSEDED"        // 旧批次已被后续修改取代
     )
 
     /** 是否冲突类错误（409）：刷新 Task 与 DiffReview 后再决定按钮状态 */

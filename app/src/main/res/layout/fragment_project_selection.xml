@@ -41,7 +41,8 @@
             tools:text="邀请成员" />
     </LinearLayout>
 
-    <!-- 自动新建仓库（仅 repos 模式显示）：可添加多个仓库名，与勾选已有仓库二选一 -->
+    <!-- 自动新建仓库（仅 repos 模式显示）：可添加多个仓库名，与勾选已有仓库二选一；
+         个人建仓受个人 GitHub OAuth 状态控制（§50.4）：未授权/非 READY 时置灰并引导去绑定 -->
     <LinearLayout
         android:id="@+id/autoCreateSection"
         android:layout_width="match_parent"
@@ -50,9 +51,34 @@
         android:padding="16dp"
         android:visibility="gone">
 
+        <!-- OAuth 未就绪：置灰提示 + 去绑定入口（READY 时隐藏） -->
+        <TextView
+            android:id="@+id/tvOauthHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:lineSpacingExtra="3dp"
+            android:text="@string/auto_create_repo_oauth_locked"
+            android:textColor="@color/red_danger"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/bnBindGithub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="0dp"
+            android:text="@string/auto_create_repo_bind"
+            android:textSize="14sp"
+            android:visibility="gone"
+            app:backgroundTint="@color/navy_light"
+            app:cornerRadius="8dp" />
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
             android:text="@string/auto_create_repo_title"
             android:textColor="@color/charcoal"
             android:textSize="16sp"
@@ -65,6 +91,29 @@
             android:text="@string/auto_create_repo_subtitle"
             android:textColor="@color/gray"
             android:textSize="13sp" />
+
+        <!-- 仓库可见性：默认私有（§50.4 canCreatePrivatePersonalRepository 控制；scope 不足时置灰提示） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/auto_create_repo_visibility_label"
+                android:textColor="@color/charcoal"
+                android:textSize="14sp" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/swPrivate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true" />
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"

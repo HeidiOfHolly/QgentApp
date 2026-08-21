@@ -18,15 +18,22 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-/** AgentDto → UI Agent。description 后端返回（v2.0.4 起），缺失时用能力标签拼接兜底。 */
+/** AgentDto → UI Agent。description 后端返回（v2.0.4 起），缺失时用能力标签拼接兜底。
+ *  role 枚举只收敛 4 种执行角色，ORCHESTRATOR/GENERAL 等兜底 DEVELOPER；roleWire 保留后端原值供展示。 */
 fun AgentDto.toAgent(): Agent = Agent(
     id = id,
     name = name,
     description = description?.takeIf { it.isNotBlank() } ?: capabilities?.joinToString(", ").orEmpty(),
     role = runCatching { AgentRole.valueOf(role) }.getOrDefault(AgentRole.DEVELOPER),
+    roleWire = role,
     capabilities = capabilities ?: emptyList(),
     status = if (status == "ARCHIVED") AgentStatus.ARCHIVED else AgentStatus.ACTIVE,
-    visibility = if (visibility == "PRIVATE") AgentVisibility.PRIVATE else AgentVisibility.TEAM_SHARED,
+    visibility = when (visibility) {
+        "PRIVATE" -> AgentVisibility.PRIVATE
+        "PENDING" -> AgentVisibility.PENDING
+        "TEAM", "TEAM_SHARED" -> AgentVisibility.TEAM
+        else -> AgentVisibility.TEAM
+    },
     avatar = avatar,
     createdBy = createdBy
 )
@@ -97,7 +104,13 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
         // §7.1 MESSAGE_MENTION 通知直达：记录 @ 提及 id，resourceId 缺失时兜底定位「最上面一条被 @ 的消息」
         mentionIds = mentions?.mapNotNull { it.id },
         // 幂等键回显：重发时复用同一 clientMessageId，后端按幂等返回原消息
-        clientMessageId = clientMessageId
+        clientMessageId = clientMessageId,
+        // 附件内联预览（契约 v0.1）：IMAGE/FILE 消息的 attachmentId 必填；预览字段由后端回填（§7）或前端按需调 preview-url
+        attachmentId = if (parsedType == MessageType.IMAGE || parsedType == MessageType.FILE) content?.attachmentId else null,
+        previewable = content?.previewable,
+        previewType = if (parsedType == MessageType.IMAGE || parsedType == MessageType.FILE) content?.previewType else null,
+        previewUrl = if (parsedType == MessageType.IMAGE || parsedType == MessageType.FILE) content?.previewUrl else null,
+        downloadUrl = if (parsedType == MessageType.IMAGE || parsedType == MessageType.FILE) content?.downloadUrl else null
     )
 }
 

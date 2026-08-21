@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Diff Review 确认弹窗内容：批次摘要（固定）+ 文件区（加载中转圈，完成后放整页横滚 Diff） -->
+<!-- Diff Review 确认弹窗内容：批次摘要（固定）+ 可滚动文件变更统计（不展示完整代码） -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -19,5 +19,5 @@
     <FrameLayout
         android:id="@+id/codeBlockContainer"
         android:layout_width="match_parent"
-        android:layout_height="520dp" />
+        android:layout_height="240dp" />
 </LinearLayout>

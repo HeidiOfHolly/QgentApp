@@ -49,6 +49,7 @@ import com.example.qgent.data.SessionStore
 import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.local.MessageCache
 import com.example.qgent.data.model.ApiException
+import com.example.qgent.data.model.AttachmentPreviewDto
 import com.example.qgent.data.model.CreateMemoryRequest
 import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
@@ -58,6 +59,7 @@ import com.example.qgent.data.model.TaskTriggerRequest
 import com.example.qgent.data.model.toChatMessage
 import com.example.qgent.data.model.toDiffFile
 import com.example.qgent.data.model.toGroupMember
+import com.example.qgent.data.model.parseRfc3339
 import com.example.qgent.data.repository.AttachmentUploader
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.sse.ProjectEventStream
@@ -123,6 +125,10 @@ class ChatDetailFragment : Fragment() {
     private var pollingJob: Job? = null
     private var eventStreamJob: Job? = null
     private var wsJob: Job? = null
+    private var syncingIncrementalMessages = false
+
+    /** 附件预览信息内存缓存（attachmentId → (过期毫秒, dto)）；含 token 的 previewUrl 不落盘（契约 §2.2） */
+    private val previewCache = mutableMapOf<String, Pair<Long, AttachmentPreviewDto>>()
 
     /** 消息分页（上滑加载更早消息）：下一页游标 / 是否还有更多 / 是否正在加载 */
     private var nextCursor: String? = null
@@ -266,7 +272,7 @@ class ChatDetailFragment : Fragment() {
             onSendFailedClick = { message -> showResendDialog(message) },
             onTaskStatusClick = { message -> onTaskStatusCardClick(message) },
             onDiffCardClick = { message -> onDiffCardClick(message) },
-            onViewFullDiff = { message -> onViewFullDiffClick(message) }
+            onViewFullDiff = { message, selectedFile -> onViewFullDiffClick(message, selectedFile) }
         )
         binding.rvMessages.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMessages.adapter = adapter
@@ -454,13 +460,15 @@ class ChatDetailFragment : Fragment() {
             val size = if (meta.sizeBytes > 0) meta.sizeBytes else bytes.size.toLong()
 
             attachmentUploader.upload(projectId, meta.fileName, meta.mimeType, size, bytes)
-                .onSuccess { url ->
+                .onSuccess { uploaded ->
+                    // 契约 v0.1 §6.2：IMAGE/FILE content 必填 attachmentId（多模态输入依赖），url 兼容存量
                     val content = if (type == "IMAGE") {
-                        MessageContentDto(text = null, url = url)
+                        MessageContentDto(text = null, url = uploaded.contentUrl, attachmentId = uploaded.attachmentId)
                     } else {
                         MessageContentDto(
-                            text = null, url = url,
-                            name = meta.fileName, size = size, mimeType = meta.mimeType
+                            text = null, url = uploaded.contentUrl,
+                            name = meta.fileName, size = size, mimeType = meta.mimeType,
+                            attachmentId = uploaded.attachmentId
                         )
                     }
                     // 串行发送：与文本消息共用发送锁，避免同群并发 POST 被后端拒绝
@@ -695,16 +703,21 @@ class ChatDetailFragment : Fragment() {
         )
         val loading = previewBinding.pbPreviewLoading
         loading.isVisible = true
-        val loader = if (uri.startsWith("content://") || uri.startsWith("file://")) {
+        val loader = when {
             // 本地 content:// URI（发送中的乐观占位图）直接加载，无需鉴权头
-            Glide.with(previewBinding.ivPreview).load(uri)
-        } else {
-            val token = SessionStore.accessToken()
-            val headers = LazyHeaders.Builder().apply {
-                if (!token.isNullOrEmpty()) addHeader("Authorization", "Bearer $token")
-            }.build()
-            Glide.with(previewBinding.ivPreview)
-                .load(GlideUrl(RetrofitClient.resolveMediaUrl(uri), headers))
+            uri.startsWith("content://") || uri.startsWith("file://") ->
+                Glide.with(previewBinding.ivPreview).load(uri)
+            // 签名预览 URL（契约 v0.1：/preview + 短期 token 在 query）无头直连
+            uri.contains("/preview") || uri.contains("token=") ->
+                Glide.with(previewBinding.ivPreview).load(RetrofitClient.resolveMediaUrl(uri))
+            else -> {
+                val token = SessionStore.accessToken()
+                val headers = LazyHeaders.Builder().apply {
+                    if (!token.isNullOrEmpty()) addHeader("Authorization", "Bearer $token")
+                }.build()
+                Glide.with(previewBinding.ivPreview)
+                    .load(GlideUrl(RetrofitClient.resolveMediaUrl(uri), headers))
+            }
         }
         loader.placeholder(android.R.color.transparent).into(object : CustomTarget<Drawable>() {
             override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
@@ -734,8 +747,78 @@ class ChatDetailFragment : Fragment() {
         }
         val fileName = message.fileName ?: "file"
         val mimeType = inferMimeType(fileName)
+        val projectId = mainViewModel.currentProjectId()
+        if (projectId == null) {
+            Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
+            return
+        }
         viewLifecycleOwner.lifecycleScope.launch {
             Toast.makeText(requireContext(), "正在打开…", Toast.LENGTH_SHORT).show()
+            // 契约 v0.1 §8：按 previewType 分流——IMAGE 全屏 / PDF 系统打开 / TEXT·CODE 内置预览 / UNSUPPORTED 下载
+            val preview = resolvePreviewInfo(projectId, message)
+            when (preview?.previewType) {
+                "IMAGE" -> preview.previewUrl?.let { showImagePreview(it) } ?: fallbackOpenFile(message)
+                "PDF" -> preview.previewUrl?.let { openUrlWithSystemApp(it) } ?: fallbackOpenFile(message)
+                "TEXT", "CODE" -> openTextPreview(message, preview.previewUrl)
+                else -> fallbackOpenFile(message)
+            }
+        }
+    }
+
+    /**
+     * 附件预览信息：优先用消息回填的 previewUrl（后端 §7 回填），否则按 attachmentId 调
+     * preview-url（内存缓存，按 expiresAt/固定 TTL 过期）；全失败返回 null（调用方回退下载）。
+     * 含 token 的 previewUrl 只在内存停留，不落 Room/磁盘（契约 §2.2）。
+     */
+    private suspend fun resolvePreviewInfo(projectId: String, message: ChatMessage): AttachmentPreviewDto? {
+        if (!message.previewUrl.isNullOrBlank()) {
+            return AttachmentPreviewDto(
+                attachmentId = message.attachmentId.orEmpty(),
+                fileName = message.fileName,
+                sizeBytes = message.fileSize,
+                previewable = message.previewable ?: true,
+                previewType = message.previewType,
+                previewUrl = message.previewUrl,
+                downloadUrl = message.downloadUrl
+            )
+        }
+        val attachmentId = message.attachmentId ?: return null
+        previewCache[attachmentId]?.let { (expireAt, dto) ->
+            if (System.currentTimeMillis() < expireAt) return dto
+            previewCache.remove(attachmentId)
+        }
+        val dto = chatRepo.getAttachmentPreview(projectId, attachmentId).getOrNull() ?: return null
+        val expireAt = dto.expiresAt?.let { parseRfc3339(it) }
+            ?.takeIf { it > System.currentTimeMillis() }
+            ?: (System.currentTimeMillis() + PREVIEW_CACHE_TTL_MS)
+        previewCache[attachmentId] = expireAt to dto
+        return dto
+    }
+
+    /** TEXT/CODE 预览：previewUrl?raw=1 下载 UTF-8 文本 → 内置预览（无 previewUrl 回退 content.url） */
+    private suspend fun openTextPreview(message: ChatMessage, previewUrl: String?) {
+        val fileName = message.fileName ?: "file"
+        val source = previewUrl?.takeIf { it.isNotBlank() }
+            ?.let { if (it.contains("?")) "$it&raw=1" else "$it?raw=1" }
+            ?: message.content
+        val file = downloadFile(source, fileName, requireContext().cacheDir)
+        if (file == null) {
+            Toast.makeText(requireContext(), "下载失败", Toast.LENGTH_SHORT).show()
+            return
+        }
+        showTextPreview(fileName, readTextContent(file))
+    }
+
+    /** PDF/UNSUPPORTED 回退下载后调系统应用打开（老逻辑） */
+    private fun fallbackOpenFile(message: ChatMessage) {
+        val url = message.content
+        if (url.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.todo_placeholder, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val fileName = message.fileName ?: "file"
+        val mimeType = inferMimeType(fileName)
+        viewLifecycleOwner.lifecycleScope.launch {
             val file = downloadFile(url, fileName, requireContext().cacheDir)
             if (file == null) {
                 Toast.makeText(requireContext(), "下载失败", Toast.LENGTH_SHORT).show()
@@ -746,6 +829,20 @@ class ChatDetailFragment : Fragment() {
             } else {
                 openWithSystemApp(file, mimeType)
             }
+        }
+    }
+
+    /** 用系统浏览器/应用打开内联预览 URL（PDF：token 在 query，无需下载；不记录含 token 的 URL 日志） */
+    private fun openUrlWithSystemApp(url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(RetrofitClient.resolveMediaUrl(url)))
+            if (intent.resolveActivity(requireContext().packageManager) == null) {
+                Toast.makeText(requireContext(), "未找到可打开此文件的应用", Toast.LENGTH_SHORT).show()
+                return
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "打开失败：${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1134,13 +1231,15 @@ class ChatDetailFragment : Fragment() {
             }
             val size = if (meta.sizeBytes > 0) meta.sizeBytes else bytes.size.toLong()
             attachmentUploader.upload(projectId, meta.fileName, meta.mimeType, size, bytes)
-                .onSuccess { url ->
+                .onSuccess { uploaded ->
+                    // 契约 v0.1 §6.2：重发同样带 attachmentId
                     val content = if (message.type == MessageType.IMAGE) {
-                        MessageContentDto(text = null, url = url)
+                        MessageContentDto(text = null, url = uploaded.contentUrl, attachmentId = uploaded.attachmentId)
                     } else {
                         MessageContentDto(
-                            text = null, url = url,
-                            name = meta.fileName, size = size, mimeType = meta.mimeType
+                            text = null, url = uploaded.contentUrl,
+                            name = meta.fileName, size = size, mimeType = meta.mimeType,
+                            attachmentId = uploaded.attachmentId
                         )
                     }
                     sendMutex.withLock {
@@ -1247,7 +1346,9 @@ class ChatDetailFragment : Fragment() {
         val canDecide = DiffReviewRules.canConfirmOrReject(reviewStatus, confirmationSource)
         val canConfirm = canDecide && (caps?.canConfirmDiffReview ?: true)
         val canReject = canDecide && (caps?.canRejectDiffReview ?: true)
-        val canRetry = DiffReviewRules.canRetryDelivery(deliveryStatus, detail.status, caps?.canRetryDelivery)
+        val canRetry = !DiffReviewRules.isSuperseded(reviewStatus) && DiffReviewRules.canRetryDelivery(
+            deliveryStatus, detail.status, caps?.canRetryDelivery
+        )
         showDiffConfirmDialog(
             projectId, taskId, diffId, detail.title, detail.status,
             reviewStatus = reviewStatus,
@@ -1332,15 +1433,18 @@ class ChatDetailFragment : Fragment() {
         // 弹窗内容：批次摘要（固定头部） + 文件区（整页横向滚动：长行不换行、短行留白，文件按序排列）
         val contentView = com.example.qgent.databinding.DialogDiffReviewBinding.inflate(layoutInflater)
         val summaryTv = contentView.summaryTv
-        val codeBlockContainer = contentView.codeBlockContainer
+        val fileSummaryContainer = contentView.codeBlockContainer
         // 文件区：加载完成前转圈，完成后放入整页横向滚动的 Diff 代码块
-        codeBlockContainer.addView(ProgressBar(requireContext()).apply {
+        fileSummaryContainer.addView(ProgressBar(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER)
         })
 
         // 拉取批次摘要 + Diff 文件内容（DTO → UI DiffFile 再渲染）
         viewLifecycleOwner.lifecycleScope.launch {
             val sb = StringBuilder("任务状态：").append(taskStatus).append("\n\n")
+            DiffReviewRules.reviewStatusCaption(reviewStatus)?.let {
+                sb.append("审核状态：").append(it).append("\n")
+            }
             when {
                 // 部分失败/失败：展示稳定文案 + 失败原因（后端脱敏文本）
                 deliveryStatus == "PARTIALLY_DELIVERED" || deliveryStatus == "FAILED" || deliveryStatus == "DELIVERY_FAILED" ->
@@ -1394,21 +1498,21 @@ class ChatDetailFragment : Fragment() {
             summaryTv.text = if (sb.isBlank()) "暂无 Diff 内容" else sb.toString()
 
             // 文件区：整页横向滚动查看（长行不换行、短行留白）
-            codeBlockContainer.removeAllViews()
+            fileSummaryContainer.removeAllViews()
             if (!diffId.isNullOrBlank()) {
                 val files = diffRepo.getDiffFiles(projectId, diffId).getOrNull().orEmpty().map { it.toDiffFile() }
                 if (files.isNotEmpty()) {
-                    codeBlockContainer.addView(buildDiffCodeBlock(files))
+                    fileSummaryContainer.addView(buildDiffFileSummaryBlock(files))
                 } else {
                     summaryTv.append("\n\n（该 Diff 无文件内容）")
-                    codeBlockContainer.addView(TextView(requireContext()).apply {
+                    fileSummaryContainer.addView(TextView(requireContext()).apply {
                         text = "（该 Diff 无文件内容）"
                         textSize = 13f
                         gravity = Gravity.CENTER
                     })
                 }
             } else {
-                codeBlockContainer.addView(TextView(requireContext()).apply {
+                fileSummaryContainer.addView(TextView(requireContext()).apply {
                     text = "（无文件内容）"
                     textSize = 13f
                     gravity = Gravity.CENTER
@@ -1418,6 +1522,7 @@ class ChatDetailFragment : Fragment() {
 
         val title = when {
             canConfirm || canReject -> "待确认 Diff · $taskTitle"
+            DiffReviewRules.isSuperseded(reviewStatus) -> "已被后续修改取代 · $taskTitle"
             reviewStatus == "ACCEPTED" -> "${DiffReviewRules.acceptedCaption(confirmationSource)} · $taskTitle"
             else -> "Diff · $taskTitle"
         }
@@ -1438,6 +1543,32 @@ class ChatDetailFragment : Fragment() {
             dialogBuilder.setNeutralButton(R.string.retry_delivery) { _, _ -> retryDiffDelivery(projectId, taskId) }
         }
         dialogBuilder.show()
+    }
+
+    /** Diff 审核弹窗文件区：只显示文件路径和增删行数，避免完整代码撑满弹窗。 */
+    private fun buildDiffFileSummaryBlock(files: List<DiffFile>): View {
+        return ScrollView(requireContext()).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            addView(LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.VERTICAL
+                files.forEach { file ->
+                    addView(TextView(requireContext()).apply {
+                        text = "${file.fileName}\n+${file.additions} -${file.deletions}"
+                        setTextColor(requireContext().getColor(R.color.text_primary))
+                        setBackgroundColor(requireContext().getColor(R.color.diff_header_bg))
+                        setPadding(dp(12), dp(8), dp(12), dp(8))
+                        textSize = 13f
+                        setLineSpacing(dp(2).toFloat(), 1f)
+                    }, LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(6) })
+                }
+            })
+        }
     }
 
     /** 确认整个最终 Diff 批次（POST .../tasks/{taskId}/diff-review/confirm，§12.3；Idempotency-Key 必填） */
@@ -1544,9 +1675,13 @@ class ChatDetailFragment : Fragment() {
         }
     }
 
-    /** DIFF 卡「完整 Diff」：全屏查看所有文件代码；diffId 缺失时用 taskId 拉任务详情解析兜底 */
-    private fun onViewFullDiffClick(message: ChatMessage) {
+    /** DIFF 卡「完整 Diff」：优先显示卡片当前选中的文件；未加载时回退全量 Diff。 */
+    private fun onViewFullDiffClick(message: ChatMessage, selectedFile: DiffFile?) {
         val projectId = mainViewModel.currentProjectId() ?: return
+        if (selectedFile != null) {
+            showDiffFilesDialog(message.diffTitle ?: selectedFile.fileName, listOf(selectedFile))
+            return
+        }
         val diffId = message.diffId
         if (!diffId.isNullOrBlank()) {
             showDiffFilesDialog(projectId, diffId, message.diffTitle)
@@ -1599,6 +1734,17 @@ class ChatDetailFragment : Fragment() {
                 container.addView(buildDiffCodeBlock(files))
             }
         }
+    }
+
+    /** 已在 DIFF 卡加载的当前文件不再重复请求，直接打开对应文件的完整代码视图。 */
+    private fun showDiffFilesDialog(title: String, files: List<DiffFile>) {
+        val dialogBinding = com.example.qgent.databinding.DialogDiffFilesBinding.inflate(layoutInflater)
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(title)
+            .setView(dialogBinding.root)
+            .setPositiveButton(R.string.close, null)
+            .show()
+        dialogBinding.container.addView(buildDiffCodeBlock(files))
     }
 
     /** dp 转 px（弹窗内代码行布局用） */
@@ -1890,9 +2036,10 @@ class ChatDetailFragment : Fragment() {
             emptyList()
         } else {
             // 群里只合并一个 Agent（取团队第一个 ACTIVE；角色已收敛为 4 种执行角色，@ 触发任务逻辑不变）
+            // 显示名统一为「编排助手」（与后端编排回复方 senderName 对齐），id/头像仍指向该 Agent
             mainViewModel.agents.value.orEmpty()
                 .firstOrNull { it.status.name != "ARCHIVED" }
-                ?.let { listOf(GroupMember(id = it.id, name = it.name, type = MemberType.AGENT)) }
+                ?.let { listOf(GroupMember(id = it.id, name = getString(R.string.chat_group_agent_name), type = MemberType.AGENT)) }
                 .orEmpty()
         }
         val agentIds = teamAgents.map { it.id }.toSet()
@@ -1964,6 +2111,68 @@ class ChatDetailFragment : Fragment() {
                 setMessages(merged)
                 messageCache.save(groupId, merged.filterNot { it.id.startsWith(LOCAL_ID_PREFIX) })
             }
+        }
+    }
+
+    /** Fetches every page newer than the newest loaded sequence after a realtime create event. */
+    private suspend fun syncMessagesIncrementally(projectId: String, groupId: String) {
+        if (syncingIncrementalMessages) return
+        val afterSequence: Long = messages.maxOfOrNull { it.sequence }?.takeIf { it > 0L } ?: run {
+            pollMessages(projectId, groupId)
+            return
+        }
+
+        syncingIncrementalMessages = true
+        try {
+            var cursor: Long = afterSequence
+            var hasMore: Boolean
+            do {
+                val result = chatRepo.getMessagesIncrementalPage(projectId, groupId, cursor)
+                var shouldContinue = false
+                result.onSuccess { page ->
+                    val incoming = page.messages.map {
+                        it.toChatMessage(SessionStore.user()?.id, memberNamesById)
+                    }
+                    if (incoming.isNotEmpty()) {
+                        val merged = mergeWithNetwork(incoming, keepLocal = true)
+                        if (merged != messages) {
+                            setMessages(merged)
+                            messageCache.save(groupId, merged.filterNot { it.id.startsWith(LOCAL_ID_PREFIX) })
+                        }
+                    }
+                    val next = page.nextSequence
+                    shouldContinue = page.hasMore && next != null && next > cursor
+                    if (page.hasMore && !shouldContinue) {
+                        Log.w("ChatSync", "Incremental page has no advancing cursor for group=$groupId")
+                    }
+                    cursor = next ?: cursor
+                }.onFailure { error ->
+                    Log.w("ChatSync", "Incremental message sync failed: ${error.message}")
+                }
+                hasMore = shouldContinue
+            } while (hasMore)
+        } finally {
+            syncingIncrementalMessages = false
+        }
+    }
+
+    private suspend fun refreshUpdatedMessage(projectId: String, groupId: String, data: String?) {
+        val messageId = data?.let(::parseMessageId)
+        if (messageId == null) {
+            pollMessages(projectId, groupId)
+            return
+        }
+        chatRepo.getMessage(projectId, groupId, messageId).onSuccess { dto ->
+            val merged = mergeWithNetwork(
+                listOf(dto.toChatMessage(SessionStore.user()?.id, memberNamesById)),
+                keepLocal = true
+            )
+            if (merged != messages) {
+                setMessages(merged)
+                messageCache.save(groupId, merged.filterNot { it.id.startsWith(LOCAL_ID_PREFIX) })
+            }
+        }.onFailure { error ->
+            Log.w("ChatSync", "Updated message refresh failed: ${error.message}")
         }
     }
 
@@ -2093,7 +2302,11 @@ class ChatDetailFragment : Fragment() {
                             val targetGroup = parseGroupId(event.data)
                             Log.d("ChatSSE", "${event.type.wire} payload=${event.data} targetGroup=$targetGroup currentGroup=$groupId")
                             if (targetGroup == null || targetGroup == groupId) {
-                                pollMessages(projectId, groupId)
+                                if (event.type == SseEventType.MESSAGE_CREATED) {
+                                    syncMessagesIncrementally(projectId, groupId)
+                                } else {
+                                    refreshUpdatedMessage(projectId, groupId, event.data)
+                                }
                             }
                         }
                         // 群成员变动（成员进群/退群）：后端会推送 SYSTEM 消息（"XXX 加入群聊"）——
@@ -2117,6 +2330,7 @@ class ChatDetailFragment : Fragment() {
                             }.getOrNull()
                             if (!taskIdFromEvent.isNullOrBlank()) mainViewModel.recordNoCodeChangeTask(taskIdFromEvent)
                         }
+                        SseEventType.DIFF_REVIEW_SUPERSEDED -> pollMessages(projectId, groupId)
                         // delivery.started（MR_FIRST）：以 taskId+operationId 去重，重复/乱序/晚到只刷一次消息，
                         // 让 TASK_STATUS 卡片状态同步；真实状态以查询接口为准
                         SseEventType.DELIVERY_STARTED -> {
@@ -2143,7 +2357,11 @@ class ChatDetailFragment : Fragment() {
                             val targetGroup = frame.groupId
                             Log.d("ChatSSE", "ws ${frame.type} groupId=$targetGroup currentGroup=$groupId")
                             if (targetGroup == null || targetGroup == groupId) {
-                                pollMessages(projectId, groupId)
+                                if (frame.type == "message.created") {
+                                    syncMessagesIncrementally(projectId, groupId)
+                                } else {
+                                    refreshUpdatedMessage(projectId, groupId, frame.payload)
+                                }
                             }
                         }
                         "group.member.updated" -> {
@@ -2153,6 +2371,7 @@ class ChatDetailFragment : Fragment() {
                         "diff.created", "diff-review.created", "task.awaiting-diff-confirmation" -> {
                             frame.payload?.let { cacheTaskDiffId(it) }
                         }
+                        "diff-review.superseded" -> pollMessages(projectId, groupId)
                         "delivery.started" -> {
                             val key = frame.payload?.let { DiffReviewRules.deliveryStartedKeyFromPayload(it) }
                             if (key == null || deliveryStartedSeen.add(key)) {
@@ -2188,6 +2407,11 @@ class ChatDetailFragment : Fragment() {
             org.json.JSONObject(data).optString("groupId").takeIf { it.isNotBlank() }
         }.getOrNull()
 
+    private fun parseMessageId(data: String): String? =
+        runCatching {
+            org.json.JSONObject(data).optString("messageId").takeIf { it.isNotBlank() }
+        }.getOrNull()
+
     private fun stopEventStream() {
         eventStreamJob?.cancel()
         eventStreamJob = null
@@ -2206,6 +2430,9 @@ class ChatDetailFragment : Fragment() {
         private const val TIME_GAP_MS = 5 * 60 * 1000L
         private const val POLL_INTERVAL_MS = 3_000L
         private const val MAX_PREVIEW_CHARS = 100_000
+
+        /** 附件预览信息缓存 TTL（preview-url 未给 expiresAt 时的兜底，5 分钟） */
+        private const val PREVIEW_CACHE_TTL_MS = 5 * 60 * 1000L
 
         /** §7.1 通知直达：目标消息 id 参数（跳群后滚动高亮到该消息） */
         const val ARG_TARGET_MESSAGE_ID = "targetMessageId"

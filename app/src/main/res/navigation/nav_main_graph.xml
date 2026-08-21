@@ -297,6 +297,13 @@
         android:label="@string/github_title"
         tools:layout="@layout/fragment_github" />
 
+    <!-- 个人 GitHub OAuth 绑定页（§50）：创建项目自动建仓的前置绑定入口 -->
+    <fragment
+        android:id="@+id/personalGithubOAuthFragment"
+        android:name="com.example.qgent.ui.github.PersonalGithubOAuthFragment"
+        android:label="@string/personal_github_oauth_title"
+        tools:layout="@layout/fragment_personal_github_oauth" />
+
     <fragment
         android:id="@+id/messageListFragment"
         android:name="com.example.qgent.ui.message.MessageListFragment"

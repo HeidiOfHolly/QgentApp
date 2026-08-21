@@ -98,6 +98,12 @@ class NewProjectFragment : Fragment() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // 从 GitHub 绑定页返回后刷新个人 OAuth 状态（自动建仓可用性以此为准，§50.4）
+        newProjectViewModel.refreshOAuthStatus()
+    }
+
     private fun createProject() {
         val name = binding.etName.text?.toString()?.trim().orEmpty()
         if (name.isEmpty()) {
@@ -110,11 +116,18 @@ class NewProjectFragment : Fragment() {
 
         // 自动建仓 vs 绑定已有仓库二选一（清单一）：自动建仓支持多个仓库名，逐次创建项目
         if (draft.newRepoNames.isNotEmpty()) {
+            // §50.4：个人建仓需 OAuth 已授权且 READY，未就绪时引导去绑定（后端仍会强校验）
+            if (!newProjectViewModel.canAutoCreateRepo()) {
+                Toast.makeText(requireContext(), R.string.auto_create_repo_oauth_locked, Toast.LENGTH_SHORT).show()
+                findNavController().navigate(R.id.personalGithubOAuthFragment)
+                return
+            }
             mainViewModel.createProjectAutoRepos(
                 name = name,
                 description = description,
                 memberIds = draft.selectedMembers.map { it.userId },
-                newRepoNames = draft.newRepoNames
+                newRepoNames = draft.newRepoNames,
+                isPrivate = draft.isPrivate
             )
         } else {
             mainViewModel.createProject(

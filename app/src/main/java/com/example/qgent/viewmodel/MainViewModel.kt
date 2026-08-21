@@ -744,12 +744,15 @@ class MainViewModel(
      * 故多个仓库名逐次调用创建项目接口（每次新建一个项目并自动建仓绑定）。
      * 单个失败仅记录不中断其余仓库；全部结束后以最后一个创建的项目为成功结果，
      * 只发一次 Success 避免界面重复跳转。memberIds 添加到每个创建的项目。
+     * [isPrivate] 为仓库可见性（§50.6：个人 OAuth 建仓，scope 不足时后端返回
+     * GITHUB_OAUTH_SCOPE_INSUFFICIENT，错误码文案见 createProjectErrorMessage）。
      */
     fun createProjectAutoRepos(
         name: String,
         description: String?,
         memberIds: List<String>,
-        newRepoNames: List<String>
+        newRepoNames: List<String>,
+        isPrivate: Boolean = true
     ) {
         val teamName = _currentTeam.value
         val teamId = teamNameToId[teamName] ?: run {
@@ -766,7 +769,7 @@ class MainViewModel(
                     teamId,
                     name,
                     description,
-                    NewRepositoryRequest(name = repoName, description = description, isPrivate = true, displayName = name),
+                    NewRepositoryRequest(name = repoName, description = description, isPrivate = isPrivate, displayName = name),
                     UUID.randomUUID().toString()
                 ).fold(
                     onSuccess = { project ->
@@ -786,12 +789,33 @@ class MainViewModel(
         }
     }
 
-    /** 建仓错误文案：冲突/缺安装等按错误码给专属提示，其余回退通用文案 */
+    /** 建仓错误文案：冲突/缺安装/个人 OAuth 相关（§50.7）等按错误码给专属提示，其余回退通用文案 */
     private fun createProjectErrorMessage(e: Throwable?): String = when {
         e is ApiException && e.code == "GITHUB_REPOSITORY_CREATE_CONFLICT" ->
             "仓库名已存在或不合规，请修改仓库名后重试"
         e is ApiException && e.code == "GITHUB_INSTALLATION_REQUIRED" ->
             "团队有多个 GitHub 安装，自动建仓需指定安装"
+        e is ApiException && e.code == "GITHUB_INSTALLATION_NOT_ACTIVE" ->
+            "GitHub App 安装不可用，请检查安装状态后重试"
+        // ── §50.7 个人 GitHub OAuth 错误码 ──
+        e is ApiException && e.code == "GITHUB_PERSONAL_REPOSITORY_CREATE_FORBIDDEN" ->
+            "当前用户无权创建个人仓库"
+        e is ApiException && e.code == "GITHUB_PERSONAL_REPOSITORY_CREATE_REJECTED" ->
+            "GitHub 拒绝创建仓库，请稍后重试"
+        e is ApiException && e.code == "GITHUB_PERSONAL_REPOSITORY_CREATION_NOT_SUPPORTED" ->
+            "当前部署未配置个人 GitHub OAuth，无法自动建仓"
+        e is ApiException && e.code == "GITHUB_OAUTH_SCOPE_INSUFFICIENT" ->
+            "GitHub 授权 scope 不足，无法创建该类型的仓库，请到 GitHub 绑定页重新授权"
+        e is ApiException && e.code == "GITHUB_OAUTH_REVOKED" ->
+            "GitHub 授权已撤销，请重新绑定后重试"
+        e is ApiException && e.code == "GITHUB_OAUTH_TOKEN_INVALID" ->
+            "GitHub 授权已失效，请重新绑定后重试"
+        e is ApiException && e.code == "GITHUB_OAUTH_ACCOUNT_MISMATCH" ->
+            "GitHub 账号与安装账号不一致，请重新绑定（用与安装一致的账号）"
+        e is ApiException && e.code == "GITHUB_OAUTH_UPSTREAM_UNAVAILABLE" ->
+            "GitHub 服务暂不可用，请稍后重试"
+        e is ApiException && e.code == "GITHUB_REPOSITORY_NOT_AUTHORIZED" ->
+            "仓库未被团队 GitHub App 授权，请先在 GitHub App 设置中授权个人账号的仓库访问范围后重新提交自动建仓（无需重新绑定 OAuth）"
         else -> e?.message ?: "创建项目失败"
     }
 

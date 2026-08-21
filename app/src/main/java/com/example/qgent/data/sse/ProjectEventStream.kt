@@ -1,6 +1,8 @@
 package com.example.qgent.data.sse
 
+import android.content.Context
 import android.util.Log
+import com.example.qgent.data.SessionStore
 import com.example.qgent.data.SessionExpiryNotifier
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -40,8 +42,14 @@ import okhttp3.Request
  */
 class ProjectEventStream(
     httpClient: OkHttpClient,
-    private val baseUrl: String
+    private val baseUrl: String,
+    context: Context
 ) {
+
+    private val cursorPrefs = context.applicationContext.getSharedPreferences(
+        CURSOR_PREFS_NAME,
+        Context.MODE_PRIVATE
+    )
 
     private val sseClient: OkHttpClient = httpClient.newBuilder()
         // SSE 长连接：不设 readTimeout（对齐浏览器语义，避免后端心跳缺失/间隔超长时
@@ -79,8 +87,29 @@ class ProjectEventStream(
             connectJobs.keys.toList().forEach { stop(it) }
         } else {
             connectJobs.remove(streamKey)?.cancel()
-            lastEventIdByStream.remove(streamKey)
         }
+    }
+
+    private fun cursorKey(streamKey: String): String =
+        "${SessionStore.user()?.id ?: ANONYMOUS_USER}:$streamKey"
+
+    private fun lastEventId(streamKey: String): String? {
+        val key = cursorKey(streamKey)
+        return lastEventIdByStream[key] ?: cursorPrefs.getString(key, null)?.also {
+            lastEventIdByStream[key] = it
+        }
+    }
+
+    private fun saveLastEventId(streamKey: String, eventId: String) {
+        val key = cursorKey(streamKey)
+        lastEventIdByStream[key] = eventId
+        cursorPrefs.edit().putString(key, eventId).apply()
+    }
+
+    private fun clearLastEventId(streamKey: String) {
+        val key = cursorKey(streamKey)
+        lastEventIdByStream.remove(key)
+        cursorPrefs.edit().remove(key).apply()
     }
 
     private fun start(streamKey: String, pathBuilder: () -> String) {
@@ -127,7 +156,7 @@ class ProjectEventStream(
             val builder = Request.Builder()
                 .url(url)
                 .header("Accept", "text/event-stream")
-            lastEventIdByStream[streamKey]?.let { builder.header("Last-Event-ID", it) }
+            lastEventId(streamKey)?.let { builder.header("Last-Event-ID", it) }
 
             try {
                 sseClient.newCall(builder.build()).execute().use { response ->
@@ -135,7 +164,7 @@ class ProjectEventStream(
                         response.code == 409 -> {
                             // EVENT_CURSOR_EXPIRED：续传点已过期（事件保留 24h），清游标从最新重连
                             Log.w(TAG, "sse 409 cursor expired, reset cursor: $streamKey")
-                            lastEventIdByStream.remove(streamKey)
+                            clearLastEventId(streamKey)
                             Outcome.CURSOR_EXPIRED
                         }
                         response.code == 401 -> {
@@ -169,7 +198,7 @@ class ProjectEventStream(
                                         val name = eventName
                                         if (name != null) {
                                             SseEventType.fromWire(name)?.let { type ->
-                                                id?.let { lastEventIdByStream[streamKey] = it }
+                                                id?.let { saveLastEventId(streamKey, it) }
                                                 // 诊断日志：记录流上收到的每个事件（名称 + id + 原始 payload）
                                                 Log.d(TAG, "sse event: $name id=$id data=${dataLines}")
                                                 _events.tryEmit(SseEvent(id, type, dataLines.toString()))
@@ -196,6 +225,8 @@ class ProjectEventStream(
 
     companion object {
         private const val TAG = "ProjectEventStream"
+        private const val CURSOR_PREFS_NAME = "qgent_sse_cursors"
+        private const val ANONYMOUS_USER = "anonymous"
         private const val INITIAL_BACKOFF_MS = 1_000L
         private const val MAX_BACKOFF_MS = 30_000L
     }

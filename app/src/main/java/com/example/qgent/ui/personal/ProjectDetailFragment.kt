@@ -22,11 +22,14 @@ import com.example.qgent.R
 import com.example.qgent.data.SessionStore
 import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.BindProjectRepositoryRequest
+import com.example.qgent.data.model.CreateProjectRepositoryRequest
+import com.example.qgent.data.model.GitHubInstallationDto
 import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.model.ProjectMemberDto
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.databinding.BottomSheetCreateGroupBinding
+import com.example.qgent.databinding.DialogCreateProjectRepositoryBinding
 import com.example.qgent.databinding.FragmentProjectDetailBinding
 import com.example.qgent.databinding.ItemChatMemberBinding
 import com.example.qgent.databinding.ItemRepositoryBinding
@@ -64,6 +67,8 @@ class ProjectDetailFragment : Fragment() {
 
     /** 当前用户是否为项目管理员（决定管理入口显隐） */
     private var isAdmin = false
+    /** 仅 Team Owner 可在已有项目内新建并绑定仓库（接口 §44.2）。 */
+    private var isTeamOwner = false
 
     /** 当前项目绑定的仓库数量：仅剩 1 个时禁止解绑（项目至少保留一个仓库） */
     private var boundRepoCount = 0
@@ -95,7 +100,7 @@ class ProjectDetailFragment : Fragment() {
 
         // 管理员管理入口
         binding.ivMembersMenu.setOnClickListener { showMembersMenu() }
-        binding.tvAddRepository.setOnClickListener { showBindRepoDialog() }
+        binding.tvAddRepository.setOnClickListener { showRepositoryActions() }
         // 退出项目（仅普通成员可见）
         binding.tvExitProject.setOnClickListener { confirmExitProject() }
 
@@ -193,15 +198,15 @@ class ProjectDetailFragment : Fragment() {
     private fun loadMembers(projectId: String) {
         val teamId = mainViewModel.currentTeamId()
         viewLifecycleOwner.lifecycleScope.launch {
-            memberNameById = if (teamId != null) {
+            val teamMembers = if (teamId != null) {
                 userRepository.getTeamMembers(teamId).getOrNull().orEmpty()
-                    .associate { it.userId to it.displayName }
-            } else emptyMap()
-            memberAvatarById = if (teamId != null) {
-                userRepository.getTeamMembers(teamId).getOrNull().orEmpty()
-                    .mapNotNull { it.avatarUrl?.takeIf { u -> u.isNotBlank() }?.let { u -> it.userId to u } }
-                    .toMap()
-            } else emptyMap()
+            } else emptyList()
+            memberNameById = teamMembers.associate { it.userId to it.displayName }
+            memberAvatarById = teamMembers
+                .mapNotNull { it.avatarUrl?.takeIf { u -> u.isNotBlank() }?.let { u -> it.userId to u } }
+                .toMap()
+            val myId = SessionStore.user()?.id
+            isTeamOwner = myId != null && teamMembers.any { it.userId == myId && it.role == "TEAM_OWNER" }
             val members = userRepository.getProjectMembers(projectId).getOrNull().orEmpty()
             // 管理员判断以项目详情返回的当前用户有效角色为准（权限方案 v1.1）：
             // Team Owner 兜底 PROJECT_ADMIN 已由后端在 role 体现，不再从成员列表查找自己
@@ -545,6 +550,110 @@ class ProjectDetailFragment : Fragment() {
             .show()
     }
 
+    /** Existing project repository actions. Only Team Owners see the create-and-bind operation. */
+    private fun showRepositoryActions() {
+        val popup = PopupMenu(requireContext(), binding.tvAddRepository)
+        popup.menu.add(0, REPOSITORY_ACTION_BIND, 0, R.string.project_repo_action_bind)
+        if (isTeamOwner) {
+            popup.menu.add(0, REPOSITORY_ACTION_CREATE, 1, R.string.project_repo_action_create)
+        }
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                REPOSITORY_ACTION_BIND -> showBindRepoDialog()
+                REPOSITORY_ACTION_CREATE -> showCreateAndBindRepoDialog()
+            }
+            true
+        }
+        popup.show()
+    }
+
+    private fun showCreateAndBindRepoDialog() {
+        if (!isTeamOwner) return
+        val teamId = mainViewModel.currentTeamId() ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val installations = githubRepository.getInstallations(teamId).getOrNull()
+                ?.filter { it.status == "ACTIVE" }
+                .orEmpty()
+            when (installations.size) {
+                0 -> Toast.makeText(requireContext(), "当前团队没有可用的 GitHub Installation", Toast.LENGTH_LONG).show()
+                1 -> showCreateAndBindRepoForm(installations.single())
+                else -> showInstallationPicker(installations)
+            }
+        }
+    }
+
+    private fun showInstallationPicker(installations: List<GitHubInstallationDto>) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("选择 GitHub Installation")
+            .setItems(installations.map { it.accountLogin }.toTypedArray()) { _, which ->
+                showCreateAndBindRepoForm(installations[which])
+            }
+            .show()
+    }
+
+    private fun showCreateAndBindRepoForm(installation: GitHubInstallationDto) {
+        val projectId = mainViewModel.currentProjectId() ?: return
+        val form = DialogCreateProjectRepositoryBinding.inflate(layoutInflater)
+        val dialog = MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.project_repo_create_title)
+            .setView(form.root)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.project_repo_create_confirm, null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val name = form.etRepositoryName.text?.toString()?.trim().orEmpty()
+                val description = form.etRepositoryDescription.text?.toString()?.trim().orEmpty()
+                val displayName = form.etDisplayName.text?.toString()?.trim().orEmpty()
+                form.nameInputLayout.error = when {
+                    name.isEmpty() -> getString(R.string.new_repo_name_required)
+                    name.length > MAX_REPOSITORY_NAME_LENGTH -> getString(R.string.project_repo_name_too_long)
+                    else -> null
+                }
+                form.descriptionInputLayout.error = if (description.length > MAX_REPOSITORY_DESCRIPTION_LENGTH) {
+                    getString(R.string.project_repo_description_too_long)
+                } else {
+                    null
+                }
+                if (form.nameInputLayout.error != null || form.descriptionInputLayout.error != null) return@setOnClickListener
+
+                dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                viewLifecycleOwner.lifecycleScope.launch {
+                    githubRepository.createAndBindProjectRepository(
+                        projectId = projectId,
+                        idempotencyKey = UUID.randomUUID().toString(),
+                        body = CreateProjectRepositoryRequest(
+                            name = name,
+                            description = description.ifBlank { null },
+                            isPrivate = form.swPrivate.isChecked,
+                            installationId = installation.id,
+                            displayName = displayName.ifBlank { null }
+                        )
+                    ).onSuccess { repository ->
+                        dialog.dismiss()
+                        Toast.makeText(requireContext(), "已创建并绑定 ${repository.fullName}", Toast.LENGTH_SHORT).show()
+                        loadRepositories(projectId)
+                    }.onFailure { error ->
+                        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                        Toast.makeText(requireContext(), createRepositoryErrorMessage(error), Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun createRepositoryErrorMessage(error: Throwable): String = when ((error as? ApiException)?.code) {
+        "GITHUB_REPOSITORY_CREATE_CONFLICT" -> "仓库名称已存在或不符合 GitHub 规则"
+        "GITHUB_INSTALLATION_NOT_ACTIVE" -> "GitHub Installation 已不可用，请重新选择"
+        "GITHUB_INSTALLATION_REQUIRED" -> "请选择 GitHub Installation"
+        "GITHUB_REPOSITORY_ACCESS_DENIED" -> "仅 Team Owner 可以新建仓库"
+        "GITHUB_REPOSITORY_METADATA_INCOMPLETE" -> "仓库初始化未完成，请稍后重试"
+        "GITHUB_API_UNAVAILABLE" -> "GitHub 暂时不可用，请稍后重试"
+        else -> "创建仓库失败：${error.message}"
+    }
+
     /** 绑定仓库：列出团队已授权且未绑定的仓库，勾选后逐个绑定 */
     private fun showBindRepoDialog() {
         val projectId = mainViewModel.currentProjectId() ?: return
@@ -608,5 +717,9 @@ class ProjectDetailFragment : Fragment() {
 
     companion object {
         private const val AVATAR_MAX_BYTES = 5 * 1024 * 1024L
+        private const val REPOSITORY_ACTION_BIND = 1
+        private const val REPOSITORY_ACTION_CREATE = 2
+        private const val MAX_REPOSITORY_NAME_LENGTH = 100
+        private const val MAX_REPOSITORY_DESCRIPTION_LENGTH = 500
     }
 }

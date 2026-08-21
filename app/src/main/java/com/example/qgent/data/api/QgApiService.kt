@@ -7,6 +7,7 @@ import com.example.qgent.data.model.ApiResponse
 import com.example.qgent.data.model.AiMemoryDraftRequest
 import com.example.qgent.data.model.AttachmentDto
 import com.example.qgent.data.model.AttachmentConfirmDto
+import com.example.qgent.data.model.AttachmentPreviewDto
 import com.example.qgent.data.model.AvatarConfirmRequest
 import com.example.qgent.data.model.AvatarCredentialRequest
 import com.example.qgent.data.model.AvatarCredentialResponse
@@ -17,6 +18,7 @@ import com.example.qgent.data.model.CreateAgentRequest
 import com.example.qgent.data.model.CreateGroupRequest
 import com.example.qgent.data.model.CreateMemoryRequest
 import com.example.qgent.data.model.CreateProjectRequest
+import com.example.qgent.data.model.CreateProjectRepositoryRequest
 import com.example.qgent.data.model.CreateSkillRequest
 import com.example.qgent.data.model.CreateTeamRequest
 import com.example.qgent.data.model.DiffDecisionRequest
@@ -26,7 +28,9 @@ import com.example.qgent.data.model.DiffReviewConfirmRequest
 import com.example.qgent.data.model.DiffReviewRejectRequest
 import com.example.qgent.data.model.GitHubInstallationDto
 import com.example.qgent.data.model.GitHubInstallationUrlDto
+import com.example.qgent.data.model.GitHubOAuthStartResponse
 import com.example.qgent.data.model.GitHubRepositoryDto
+import com.example.qgent.data.model.PersonalGithubOAuthDto
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
 import com.example.qgent.data.model.InviteTeamMemberRequest
@@ -408,6 +412,14 @@ interface QgApiService {
         @Query("limit") limit: Int = 30
     ): Response<ApiResponse<List<GroupMessageDto>>>
 
+    @GET("projects/{projectId}/groups/{groupId}/messages/incremental")
+    suspend fun getMessagesIncremental(
+        @Path("projectId") projectId: String,
+        @Path("groupId") groupId: String,
+        @Query("afterSequence") afterSequence: Long,
+        @Query("limit") limit: Int = 100
+    ): Response<ApiResponse<List<GroupMessageDto>>>
+
     /** v2.0.6 §1.3：按消息 ID 拉取单条群消息（通知直达被 @ 消息定位用） */
     @GET("projects/{projectId}/groups/{groupId}/messages/{messageId}")
     suspend fun getMessage(
@@ -473,6 +485,13 @@ interface QgApiService {
         @Path("attachmentId") attachmentId: String,
         @Header("Idempotency-Key") idempotencyKey: String
     ): Response<ApiResponse<AttachmentConfirmDto>>
+
+    /** 附件内联预览元数据 + 签名预览 URL（契约 v0.1 §4：Authorization 头鉴权；previewUrl 带短期 token） */
+    @GET("projects/{projectId}/attachments/{attachmentId}/preview-url")
+    suspend fun getAttachmentPreview(
+        @Path("projectId") projectId: String,
+        @Path("attachmentId") attachmentId: String
+    ): Response<ApiResponse<AttachmentPreviewDto>>
 
     // ── Agent（§11）──
 
@@ -593,10 +612,37 @@ interface QgApiService {
         @Body body: BindProjectRepositoryRequest
     ): Response<ApiResponse<ProjectRepositoryDto>>
 
+    @POST("projects/{projectId}/repositories/new")
+    suspend fun createAndBindProjectRepository(
+        @Path("projectId") projectId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CreateProjectRepositoryRequest
+    ): Response<ApiResponse<ProjectRepositoryDto>>
+
     @DELETE("projects/{projectId}/repositories/{projectRepositoryId}")
     suspend fun unbindProjectRepository(
         @Path("projectId") projectId: String,
         @Path("projectRepositoryId") projectRepositoryId: String,
+        @Header("Idempotency-Key") idempotencyKey: String
+    ): Response<Unit>
+
+    // ── 个人 GitHub OAuth（§50：个人建仓授权链路） ──
+
+    /** 生成个人 GitHub OAuth 授权地址（§50.2：client 只允许 WEB/MOBILE，body 空 {}，需幂等键） */
+    @POST("me/integrations/github/oauth/start")
+    suspend fun startPersonalGithubOAuth(
+        @Query("client") client: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: EmptyBody
+    ): Response<ApiResponse<GitHubOAuthStartResponse>>
+
+    /** 查询当前用户个人 GitHub 授权状态（§50.4：不返回 Token；能力字段仅用于前端展示） */
+    @GET("me/integrations/github/oauth")
+    suspend fun getPersonalGithubOAuth(): Response<ApiResponse<PersonalGithubOAuthDto>>
+
+    /** 撤销当前用户个人 GitHub 授权（§50.5：成功后 204 No Content，需幂等键） */
+    @DELETE("me/integrations/github/oauth")
+    suspend fun revokePersonalGithubOAuth(
         @Header("Idempotency-Key") idempotencyKey: String
     ): Response<Unit>
 

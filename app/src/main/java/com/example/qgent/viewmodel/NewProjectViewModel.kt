@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.qgent.data.model.GitHubRepositoryDto
+import com.example.qgent.data.model.PersonalGithubOAuthDto
 import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.UserRepository
@@ -26,7 +27,9 @@ class NewProjectViewModel(
         val selectedMembers: List<TeamMemberDto> = emptyList(),
         val selectedRepos: List<GitHubRepositoryDto> = emptyList(),
         // 自动新建的仓库名列表（与 selectedRepos 二选一，清单一）
-        val newRepoNames: List<String> = emptyList()
+        val newRepoNames: List<String> = emptyList(),
+        // 自动建仓仓库可见性（§50：个人 OAuth 能力字段控制，默认私有）
+        val isPrivate: Boolean = true
     )
 
     private val _draft = MutableStateFlow(Draft())
@@ -41,6 +44,10 @@ class NewProjectViewModel(
     private val _loadError = MutableStateFlow<String?>(null)
     val loadError: LiveData<String?> = _loadError.asLiveData()
 
+    /** 个人 GitHub OAuth 授权状态（§50.4：控制自动建仓可用性与可见性）；null = 尚未加载 */
+    private val _oauthStatus = MutableStateFlow<PersonalGithubOAuthDto?>(null)
+    val oauthStatus: LiveData<PersonalGithubOAuthDto?> = _oauthStatus.asLiveData()
+
     private var teamId = ""
 
     fun init(teamId: String) {
@@ -48,6 +55,24 @@ class NewProjectViewModel(
         this.teamId = teamId
         loadMembers()
         loadRepos()
+        refreshOAuthStatus()
+    }
+
+    /** 重新查询个人 GitHub OAuth 状态（进入仓库选择页 / 从绑定页返回时调用） */
+    fun refreshOAuthStatus() {
+        viewModelScope.launch {
+            githubRepo.getPersonalOAuthStatus()
+                .onSuccess { _oauthStatus.value = it }
+                .onFailure {
+                    // 查询失败保持原状态（null=未加载），自动建仓区按未授权置灰处理
+                }
+        }
+    }
+
+    /** 自动建仓是否可用：已授权且 READY（§50.4，仅作前端交互控制，后端仍会强校验） */
+    fun canAutoCreateRepo(): Boolean {
+        val s = _oauthStatus.value ?: return false
+        return s.authorized && s.personalRepositorySetup == "READY"
     }
 
     /** 候选列表加载失败提示一次性事件，UI 观察后消费 */
@@ -73,6 +98,10 @@ class NewProjectViewModel(
 
     fun setNewRepoNames(list: List<String>) {
         _draft.value = _draft.value.copy(newRepoNames = list)
+    }
+
+    fun setRepoVisibility(isPrivate: Boolean) {
+        _draft.value = _draft.value.copy(isPrivate = isPrivate)
     }
 
     private fun loadMembers() {

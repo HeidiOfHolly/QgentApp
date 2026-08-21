@@ -147,6 +147,13 @@ class TaskDetailFragment : Fragment() {
                             if (taskIdFromEvent == taskId) mainViewModel.recordNoCodeChangeTask(taskId)
                             loadDetail()
                         }
+                        // 旧 Diff 被后续修改取代：只刷新对应 Task，不能标记为无代码变更。
+                        com.example.qgent.data.sse.SseEventType.DIFF_REVIEW_SUPERSEDED -> {
+                            val taskIdFromEvent = runCatching {
+                                org.json.JSONObject(event.data).optString("taskId")
+                            }.getOrNull()
+                            if (taskIdFromEvent == taskId) loadDetail()
+                        }
                         // 实时 Diff Preview 更新（Coding 写入后）：只刷新 Preview，不刷新正式 Diff
                         com.example.qgent.data.sse.SseEventType.WORKSPACE_DIFF_PREVIEW_UPDATED -> {
                             val taskIdFromEvent = runCatching {
@@ -489,12 +496,14 @@ class TaskDetailFragment : Fragment() {
     private fun bindDelivery(detail: TaskDetailDto) {
         val diffSummary = detail.diffReviewSummary
         val deliveryStatus = extractStringField(diffSummary, "deliveryStatus")
+        val reviewStatus = extractStringField(diffSummary, "reviewStatus")
+        val superseded = DiffReviewRules.isSuperseded(reviewStatus)
 
         // 无代码变更任务（FINAL_DIFF_EMPTY）：无 Diff Review 可确认（§15.6.4/§20.3）。
         // 判定：收到过 diff-review.skipped SSE（内存）OR 任务成功但无可用 Diff 批次
         // （diffReviewSummary.available != true，冷启动/重进详情页也能正确识别，不依赖 SSE）。
-        val hasReviewBatch = diffSummary?.isJsonObject == true &&
-            diffSummary.asJsonObject.get("available")?.takeIf { it.isJsonPrimitive }?.asBoolean == true
+        val hasReviewBatch = superseded || (diffSummary?.isJsonObject == true &&
+            diffSummary.asJsonObject.get("available")?.takeIf { it.isJsonPrimitive }?.asBoolean == true)
         val noCode = mainViewModel.isNoCodeChangeTask(taskId) ||
             (detail.status == "SUCCEEDED" && !hasReviewBatch)
 
@@ -532,7 +541,7 @@ class TaskDetailFragment : Fragment() {
         // tvDeliveryError 控件已随布局移除）
 
         // 重试交付：部分失败/失败（能力位 canRetryDelivery 优先）；无代码任务不提供重试（无批次可重试）
-        val canRetry = !noCode && DiffReviewRules.canRetryDelivery(
+        val canRetry = !noCode && !superseded && DiffReviewRules.canRetryDelivery(
             deliveryStatus, detail.status, detail.capabilities?.canRetryDelivery
         )
         binding.btnRetryDelivery.isVisible = canRetry
@@ -541,11 +550,15 @@ class TaskDetailFragment : Fragment() {
 
         // D3：diffReviewSummary.available=true → 渲染总 Diff 审核入口（available=false 不展示）；
         // 无代码任务即使后端残留 available=true 也不展示确认入口（§20.3）
-        val available = !noCode && diffSummary?.isJsonObject == true &&
-            diffSummary.asJsonObject.get("available")?.takeIf { it.isJsonPrimitive }?.asBoolean == true
+        val available = !noCode && hasReviewBatch
         binding.tvDiffReviewEntry.isVisible = available
         if (available) {
             val summaryDiffId = extractStringField(diffSummary, "diffId")
+            binding.tvDiffReviewEntry.text = if (superseded) {
+                getString(R.string.diff_review_superseded)
+            } else {
+                getString(R.string.task_diff_review)
+            }
             binding.tvDiffReviewEntry.setOnClickListener { showDiffReviewDialog(summaryDiffId) }
         }
 
@@ -568,8 +581,12 @@ class TaskDetailFragment : Fragment() {
                 ?: extractStringField(detail.diffReviewSummary, "confirmationSource")
             val deliveryStatus = batch?.deliveryStatus
                 ?: extractStringField(detail.diffReviewSummary, "deliveryStatus")
+            val superseded = DiffReviewRules.isSuperseded(reviewStatus)
 
             val sb = StringBuilder("任务状态：").append(statusLabel(detail.status)).append("\n\n")
+            DiffReviewRules.reviewStatusCaption(reviewStatus)?.let {
+                sb.append("审核状态：").append(it).append("\n")
+            }
             DiffReviewRules.deliveryStatusCaption(deliveryStatus)?.let {
                 sb.append("交付状态：").append(it).append("\n")
             }
@@ -605,7 +622,9 @@ class TaskDetailFragment : Fragment() {
             dialogBinding.tvContent.text = if (sb.isBlank()) "暂无 Diff 内容" else sb.toString()
 
             val builder = MaterialAlertDialogBuilder(requireContext())
-                .setTitle(if (reviewStatus == "ACCEPTED") {
+                .setTitle(if (superseded) {
+                    "${getString(R.string.diff_review_superseded)} · ${detail.title}"
+                } else if (reviewStatus == "ACCEPTED") {
                     "${DiffReviewRules.acceptedCaption(confirmationSource)} · ${detail.title}"
                 } else {
                     "Diff 审核 · ${detail.title}"
@@ -626,7 +645,9 @@ class TaskDetailFragment : Fragment() {
             } else {
                 builder.setPositiveButton(R.string.close, null)
             }
-            val canRetry = DiffReviewRules.canRetryDelivery(deliveryStatus, detail.status, detail.capabilities?.canRetryDelivery)
+            val canRetry = !superseded && DiffReviewRules.canRetryDelivery(
+                deliveryStatus, detail.status, detail.capabilities?.canRetryDelivery
+            )
             if (canRetry) {
                 builder.setNeutralButton(R.string.retry_delivery) { _, _ -> retryDiffDelivery() }
             }
