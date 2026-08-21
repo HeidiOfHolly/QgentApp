@@ -66,8 +66,13 @@ class DeliveryCenterFragment : Fragment() {
         binding.btnTestset.setOnClickListener {
             findNavController().navigate(R.id.action_deliveryCenter_to_testsetList)
         }
+        // 通知铃铛 → 管理员消息列表：仅接收当前项目的 MR 申请审批通知（MR_PENDING）
         binding.btnNotification.setOnClickListener {
-            findNavController().navigate(R.id.messageListFragment)
+            findNavController().navigate(R.id.action_deliveryCenter_to_deliveryMessageList)
+        }
+        // 未读 MR 申请审批通知 → 铃铛右上角红点
+        mainViewModel.unreadDeliveryNotifications.observe(viewLifecycleOwner) { hasUnread ->
+            binding.ivNotificationBadge.isVisible = hasUnread
         }
         loadAdminButtons()
         refreshAll()
@@ -86,6 +91,8 @@ class DeliveryCenterFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         startEventStream()
+        // 返回交付中心时刷新 MR 申请未读红点
+        mainViewModel.refreshUnreadDeliveryNotifications()
     }
 
     override fun onPause() {

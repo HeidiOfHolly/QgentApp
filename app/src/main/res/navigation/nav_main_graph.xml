@@ -71,6 +71,9 @@
         <action
             android:id="@+id/action_deliveryCenter_to_testsetList"
             app:destination="@id/testsetListFragment" />
+        <action
+            android:id="@+id/action_deliveryCenter_to_deliveryMessageList"
+            app:destination="@id/deliveryMessageListFragment" />
     </fragment>
 
     <!-- Testset 列表页（仅管理员可见入口） -->
@@ -313,6 +316,13 @@
             android:id="@+id/action_taskMessageList_to_taskDetail"
             app:destination="@id/taskDetailFragment" />
     </fragment>
+
+    <!-- 交付中心管理员消息列表：仅接收当前项目的 MR 申请审批通知（MR_PENDING） -->
+    <fragment
+        android:id="@+id/deliveryMessageListFragment"
+        android:name="com.example.qgent.ui.message.DeliveryMessageListFragment"
+        android:label="@string/message_list"
+        tools:layout="@layout/fragment_message_list" />
 
     <fragment
         android:id="@+id/newProjectFragment"

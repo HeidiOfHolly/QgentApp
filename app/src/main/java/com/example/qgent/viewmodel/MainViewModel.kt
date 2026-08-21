@@ -164,10 +164,15 @@ class MainViewModel(
     private val _unreadInvitations = MutableStateFlow(false)
     val unreadInvitations: LiveData<Boolean> = _unreadInvitations.asLiveData()
 
-    // ── 未读的任务类通知（非 INVITED 且未读），任务页铃铛 / 底部任务 tab 红点 ──
+    // ── 未读的任务类通知（非 INVITED / MESSAGE_MENTION / MR_PENDING 且未读），任务页铃铛 / 底部任务 tab 红点 ──
 
     private val _unreadTaskNotifications = MutableStateFlow(false)
     val unreadTaskNotifications: LiveData<Boolean> = _unreadTaskNotifications.asLiveData()
+
+    // ── 未读的 MR 申请审批通知（kind=MR_PENDING 且未读），交付中心管理员铃铛红点 ──
+
+    private val _unreadDeliveryNotifications = MutableStateFlow(false)
+    val unreadDeliveryNotifications: LiveData<Boolean> = _unreadDeliveryNotifications.asLiveData()
 
     // ── 抽屉未读红点：有未读的团队名集合（左栏团队红点）+ 有未读的当前团队项目名集合（右栏项目红点） ──
 
@@ -185,6 +190,7 @@ class MainViewModel(
         loadTeams()
         refreshUnreadInvitations()
         refreshUnreadTaskNotifications()
+        refreshUnreadDeliveryNotifications()
     }
 
     /** 拉取通知列表，统计未读的个人通知（团队邀请 INVITED 或 有人@我 MESSAGE_MENTION）；
@@ -200,8 +206,9 @@ class MainViewModel(
     }
 
     /**
-     * 拉取通知列表，统计「当前项目」下未读的任务类通知（除 INVITED 与 MESSAGE_MENTION 外，
-     * @我 归抽屉铃铛，不点亮任务铃铛红点），与任务铃铛列表过滤条件（TaskMessageListFragment）保持一致，
+     * 拉取通知列表，统计「当前项目」下未读的任务类通知（除 INVITED、MESSAGE_MENTION 与 MR_PENDING 外；
+     * @我 归抽屉铃铛，MR 申请归交付中心管理员铃铛，均不点亮任务铃铛红点），
+     * 与任务铃铛列表过滤条件（TaskMessageListFragment）保持一致，
      * 避免其他项目/历史遗留的未读通知点亮当前任务页红点；失败时保持现状不打扰用户。
      */
     fun refreshUnreadTaskNotifications() {
@@ -209,7 +216,24 @@ class MainViewModel(
             userRepo.getNotifications().onSuccess { list ->
                 val projectId = currentProjectId()
                 _unreadTaskNotifications.value = list.any {
-                    it.kind != "INVITED" && it.kind != "MESSAGE_MENTION" && !it.isRead &&
+                    it.kind != "INVITED" && it.kind != "MESSAGE_MENTION" && it.kind != "MR_PENDING" && !it.isRead &&
+                        projectId != null && it.projectId == projectId
+                }
+            }
+        }
+    }
+
+    /**
+     * 拉取通知列表，统计「当前项目」下未读的 MR 申请审批通知（MR_PENDING），
+     * 与交付中心管理员消息列表过滤条件（DeliveryMessageListFragment）保持一致；
+     * 失败时保持现状不打扰用户。
+     */
+    fun refreshUnreadDeliveryNotifications() {
+        viewModelScope.launch {
+            userRepo.getNotifications().onSuccess { list ->
+                val projectId = currentProjectId()
+                _unreadDeliveryNotifications.value = list.any {
+                    it.kind == "MR_PENDING" && !it.isRead &&
                         projectId != null && it.projectId == projectId
                 }
             }
@@ -363,6 +387,8 @@ class MainViewModel(
             onProjectsLoaded?.invoke(firstProject.isNotEmpty())
             // 项目上下文已定，同步刷新任务红点（限定当前项目），避免沿用上一项目的未读状态
             refreshUnreadTaskNotifications()
+            // MR 申请红点同样限定当前项目，随切团队重算
+            refreshUnreadDeliveryNotifications()
             // 切团队后重算抽屉未读红点（右栏项目集合按新团队重算）
             refreshDrawerUnread()
         }
@@ -373,6 +399,7 @@ class MainViewModel(
             _currentProject.value = project
             loadGroups(project, showLoading = true)
             refreshUnreadTaskNotifications()
+            refreshUnreadDeliveryNotifications()
             // 已切换到该有未读的项目 → 重算头像红点（当前项目未读不再点亮）
             refreshDrawerUnread()
         }

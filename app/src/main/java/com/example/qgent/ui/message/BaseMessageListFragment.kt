@@ -34,8 +34,9 @@ import java.util.UUID
  * 通知 groupId 属于当前项目时点击可进入对应群聊，否则仅标记已读。
  *
  * 子类通过 [notificationsFilter] 决定展示的通知子集：
- * - 抽屉铃铛（MessageListFragment）：仅“被邀请加入团队”的 INVITED
- * - 任务铃铛（TaskMessageListFragment）：其余所有（排除 INVITED）
+ * - 抽屉铃铛（MessageListFragment）：仅“被邀请加入团队”的 INVITED 与“有人@我”的 MESSAGE_MENTION
+ * - 任务铃铛（TaskMessageListFragment）：当前项目任务类通知（排除 INVITED / MESSAGE_MENTION / MR_PENDING）
+ * - 交付中心管理员铃铛（DeliveryMessageListFragment）：仅当前项目的 MR 申请审批 MR_PENDING
  */
 abstract class BaseMessageListFragment : Fragment() {
 
@@ -111,6 +112,7 @@ abstract class BaseMessageListFragment : Fragment() {
         // 同步刷新未读红点（可能标记的正是最后一条未读通知）
         mainViewModel.refreshUnreadInvitations()
         mainViewModel.refreshUnreadTaskNotifications()
+        mainViewModel.refreshUnreadDeliveryNotifications()
         mainViewModel.refreshDrawerUnread()
     }
 
@@ -123,11 +125,12 @@ abstract class BaseMessageListFragment : Fragment() {
         }
         mainViewModel.refreshUnreadInvitations()
         mainViewModel.refreshUnreadTaskNotifications()
+        mainViewModel.refreshUnreadDeliveryNotifications()
         mainViewModel.refreshDrawerUnread()
     }
 
     /** 通知点击：团队邀请 → 待处理则弹窗选择是否接受；TASK_FAILED → 跳任务详情；
-     *  其余 → 群聊属于当前项目时进入群聊 */
+     *  MR_PENDING → 跳 MR 详情；其余 → 群聊属于当前项目时进入群聊 */
     private fun onNotificationClick(notification: NotificationDto, position: Int) {
         markOneRead(notification, position)
         if (notification.kind == "INVITED") {
@@ -144,6 +147,21 @@ abstract class BaseMessageListFragment : Fragment() {
                     Bundle().apply {
                         putString(com.example.qgent.ui.tasks.TaskDetailFragment.ARG_TASK_ID, taskId)
                         putString(com.example.qgent.ui.tasks.TaskDetailFragment.ARG_PROJECT_ID, projectId)
+                    }
+                )
+                return
+            }
+        }
+        // MR_PENDING：resourceId = mrId，跳 MR 详情（交付中心管理员消息列表入口）
+        if (notification.kind == "MR_PENDING") {
+            val mrId = notification.resourceId.orEmpty()
+            val mrProjectId = notification.projectId.orEmpty()
+            if (mrId.isNotEmpty() && mrProjectId.isNotEmpty()) {
+                findNavController().navigate(
+                    R.id.mergeRequestDetailFragment,
+                    Bundle().apply {
+                        putString(com.example.qgent.ui.tasks.MergeRequestDetailFragment.ARG_MR_ID, mrId)
+                        putString(com.example.qgent.ui.tasks.MergeRequestDetailFragment.ARG_PROJECT_ID, mrProjectId)
                     }
                 )
                 return
