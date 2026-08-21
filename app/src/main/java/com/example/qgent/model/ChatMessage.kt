@@ -43,6 +43,14 @@ data class ChatMessage(
     /** DIFF 卡：总变更统计（content.additions / content.deletions） */
     val diffAdditions: Int? = null,
     val diffDeletions: Int? = null,
+    // ── 附件内联预览（契约 v0.1）：IMAGE/FILE 消息必填 attachmentId；预览字段由后端回填或前端按需调 preview-url ──
+    val attachmentId: String? = null,
+    val previewable: Boolean? = null,
+    val previewType: String? = null,
+    /** 签名预览 URL（相对路径，带短期 token）；不落 Room 缓存（§2.2：含 token URL 不得长期持久化），过期后重新获取 */
+    val previewUrl: String? = null,
+    /** 下载地址（附件语义）；previewUrl 过期或 UNSUPPORTED 时用 */
+    val downloadUrl: String? = null,
     /** 发送状态（仅自己发送的消息有效）：发送中 / 失败 */
     val sendState: SendState? = null,
     /** 发送失败原因（后端错误码/文案，仅 FAILED 时可能非空，用于重发弹窗展示） */

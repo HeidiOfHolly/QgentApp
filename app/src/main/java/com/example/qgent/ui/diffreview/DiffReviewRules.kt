@@ -18,6 +18,14 @@ object DiffReviewRules {
     fun canConfirmOrReject(reviewStatus: String?, confirmationSource: String?): Boolean =
         reviewStatus == "PENDING_CONFIRMATION" && confirmationSource != "SYSTEM"
 
+    /** 旧批次已被同一 Workspace 的后续修改取代，只读且不可重试。 */
+    fun isSuperseded(reviewStatus: String?): Boolean = reviewStatus == "SUPERSEDED"
+
+    fun reviewStatusCaption(reviewStatus: String?): String? = when (reviewStatus) {
+        "SUPERSEDED" -> "已被后续修改取代"
+        else -> null
+    }
+
     /** ACCEPTED 状态下的展示文案：SYSTEM → 自动交付；USER → 已由用户确认；缺省兜底已确认 */
     fun acceptedCaption(confirmationSource: String?): String = when (confirmationSource) {
         "SYSTEM" -> "自动交付"
@@ -87,7 +95,8 @@ object DiffReviewRules {
         "DIFF_BATCH_REVIEW_REQUIRED",   // 批次内单 Diff 确认/拒绝 → 409
         "TASK_NOT_CANCELLABLE",         // 终态操作 → 409
         "DELIVERY_STATE_CONFLICT",      // 交付状态冲突
-        "DIFF_REVIEW_STATE_CONFLICT"    // 批次状态冲突（已确认/已拒绝再操作）
+        "DIFF_REVIEW_STATE_CONFLICT",   // 批次状态冲突（已确认/已拒绝再操作）
+        "DIFF_REVIEW_SUPERSEDED"        // 旧批次已被后续修改取代
     )
 
     /** 是否冲突类错误（409）：刷新 Task 与 DiffReview 后再决定按钮状态 */

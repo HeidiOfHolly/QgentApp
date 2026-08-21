@@ -3,6 +3,7 @@ package com.example.qgent.data.repository
 import android.util.Log
 import com.example.qgent.data.api.QgApiService
 import com.example.qgent.data.model.AddGroupMemberRequest
+import com.example.qgent.data.model.AttachmentPreviewDto
 import com.example.qgent.data.model.CreateGroupRequest
 import com.example.qgent.data.model.GroupDto
 import com.example.qgent.data.model.GroupMemberDto
@@ -10,6 +11,7 @@ import com.example.qgent.data.model.GroupMessageDto
 import com.example.qgent.data.model.GroupReadResponse
 import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
+import com.example.qgent.data.model.MessageIncrementalPageDto
 import com.example.qgent.data.model.MessagePageDto
 import com.example.qgent.data.model.requireData
 import com.example.qgent.data.model.SendMessageRequest
@@ -108,6 +110,23 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         )
     }
 
+    override suspend fun getMessagesIncrementalPage(
+        projectId: String,
+        groupId: String,
+        afterSequence: Long,
+        limit: Int
+    ): Result<MessageIncrementalPageDto> = apiCall {
+        val resp = service.getMessagesIncremental(projectId, groupId, afterSequence, limit)
+        val body = resp.body()
+        val data = body?.requireData()
+            ?: throw com.example.qgent.data.model.ApiException("EMPTY_RESPONSE", "Response is empty")
+        MessageIncrementalPageDto(
+            messages = data,
+            nextSequence = body.page?.nextCursor?.toLongOrNull(),
+            hasMore = body.page?.hasMore ?: false
+        )
+    }
+
     override suspend fun getMessage(projectId: String, groupId: String, messageId: String): Result<GroupMessageDto> = apiCall {
         service.getMessage(projectId, groupId, messageId).toDataOrThrow()
     }
@@ -138,6 +157,10 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         // 排查「请求体格式不对」等后端校验错误时核对实际发送的 JSON
         Log.d("SendMsg", "sendMessage body: ${requestGson.toJson(body)}")
         service.sendMessage(projectId, groupId, idempotencyKey, body).toDataOrThrow()
+    }
+
+    override suspend fun getAttachmentPreview(projectId: String, attachmentId: String): Result<AttachmentPreviewDto> = apiCall {
+        service.getAttachmentPreview(projectId, attachmentId).toDataOrThrow()
     }
 
     companion object {

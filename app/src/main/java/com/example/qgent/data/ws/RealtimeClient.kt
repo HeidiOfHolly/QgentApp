@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import okhttp3.Authenticator
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -55,6 +56,11 @@ class RealtimeClient(
      *  （日志特征：Software caused connection abort，约 70s 一次） */
     private val wsClient: OkHttpClient = httpClient.newBuilder()
         .pingInterval(PING_INTERVAL_S, TimeUnit.SECONDS)
+        // WS 握手鉴权走 query token，Authenticator 改的是 Authorization 头——
+        // 若继承 REST 的 TokenAuthenticator，token 过期时会空转刷新+重试 20 次
+        // （日志 "Too many follow-up requests: 21"）仍 401；移除后 401 立即失败，
+        // 交给 onFailure 的 refreshAccessToken + 退避重连处理（该路径本就正确）
+        .authenticator(Authenticator.NONE)
         .build()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

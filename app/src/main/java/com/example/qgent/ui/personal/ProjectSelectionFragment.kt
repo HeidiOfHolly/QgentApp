@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.GitHubRepositoryDto
+import com.example.qgent.data.model.PersonalGithubOAuthDto
 import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.databinding.FragmentProjectSelectionBinding
 import com.example.qgent.viewmodel.NewProjectViewModel
@@ -24,6 +25,8 @@ import com.example.qgent.viewmodel.NewProjectViewModel
 /**
  * 新建项目共享多选页：按 mode 参数区分「邀请成员」或「绑定仓库」。
  * 选中结果写回 NewProjectViewModel，点「完成」返回表单页。
+ * 自动建仓区受个人 GitHub OAuth 状态控制（§50.4）：未授权/非 READY 置灰并引导去绑定；
+ * 仓库可见性按 canCreatePrivatePersonalRepository 控制私有开关。
  */
 class ProjectSelectionFragment : Fragment() {
 
@@ -74,12 +77,20 @@ class ProjectSelectionFragment : Fragment() {
             selectedIds.addAll(if (isMembers) draft.selectedMembers.map { it.userId } else draft.selectedRepos.map { it.id })
         }
 
-        // 自动建仓区块仅绑定仓库模式显示；从草稿恢复已添加的仓库名
+        // 自动建仓区块仅绑定仓库模式显示；从草稿恢复已添加的仓库名与可见性
         binding.autoCreateSection.isVisible = !isMembers
         if (!isMembers) {
             binding.bnAddRepo.setOnClickListener { addNewRepoName() }
+            binding.bnBindGithub.setOnClickListener {
+                findNavController().navigate(R.id.personalGithubOAuthFragment)
+            }
+            binding.swPrivate.isChecked = draft?.isPrivate ?: true
             draft?.let { newRepoNames.addAll(it.newRepoNames) }
             renderNewRepoList()
+            // 个人 OAuth 状态驱动自动建仓区可用性（§50.4）
+            newProjectViewModel.oauthStatus.observe(viewLifecycleOwner) { status ->
+                renderAutoCreateState(status)
+            }
         }
 
         if (isMembers) {
@@ -99,6 +110,40 @@ class ProjectSelectionFragment : Fragment() {
                 Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
                 newProjectViewModel.consumeLoadError()
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 从个人 GitHub 绑定页返回后重新查询状态，再决定是否解除置灰（§50.4：不依赖回跳参数/本地缓存）
+        if (mode == MODE_REPOS) {
+            newProjectViewModel.refreshOAuthStatus()
+        }
+    }
+
+    /**
+     * 按个人 GitHub OAuth 状态渲染自动建仓区（§50.4）：
+     * - 未授权/非 READY → 置灰输入与添加按钮 + 「去绑定 GitHub」入口；
+     * - READY 但 scope 不足建私有 → 私有开关置灰并提示仅可建公开。
+     */
+    private fun renderAutoCreateState(status: PersonalGithubOAuthDto?) {
+        val ready = status != null && status.authorized && status.personalRepositorySetup == "READY"
+        val canPrivate = ready && status!!.canCreatePrivatePersonalRepository
+        binding.tvOauthHint.isVisible = !ready || !canPrivate
+        binding.tvOauthHint.setText(
+            when {
+                !ready -> R.string.auto_create_repo_oauth_locked
+                else -> R.string.auto_create_repo_scope_private_hint
+            }
+        )
+        binding.bnBindGithub.isVisible = !ready
+        binding.etNewRepoName.isEnabled = ready
+        binding.bnAddRepo.isEnabled = ready
+        binding.swPrivate.isEnabled = canPrivate
+        if (!canPrivate) {
+            binding.swPrivate.isChecked = false
+        } else if (ready) {
+            binding.swPrivate.isChecked = newProjectViewModel.draft.value?.isPrivate ?: true
         }
     }
 
@@ -174,6 +219,7 @@ class ProjectSelectionFragment : Fragment() {
         } else {
             newProjectViewModel.setSelectedRepos(repoItems.filter { it.id in selectedIds })
             newProjectViewModel.setNewRepoNames(newRepoNames.toList())
+            newProjectViewModel.setRepoVisibility(binding.swPrivate.isChecked)
         }
         findNavController().navigateUp()
     }

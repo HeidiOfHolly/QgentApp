@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
 
     // Retrofit 要求 baseUrl 以 "/" 结尾（否则启动抛 IllegalArgumentException）
-    const val BASE_URL = "https://api.qgents.dpdns.org/api/v1/"
+    const val BASE_URL = "http://47.113.224.195:32500/api/v1/"
 
     // 请求日志：debug 只打请求行/响应行（BASIC），不再完整记录响应体——
     // BODY 级会让 OkHttp 先把大响应体（群列表/消息列表）完整读一遍再交给 Gson 解析，
@@ -79,6 +79,15 @@ object RetrofitClient {
             if (p.contains("/attachments/")) rebuildAttachmentPath(p) else path
         }
         else -> BASE_URL.trimEnd('/') + (if (path.startsWith("/")) path else "/$path")
+    }
+
+    /** API base origin（不含 /api/v1 路径），如 https://api.qgents.dpdns.org。
+     *  新契约 uploadUrl 为以 /api/v1/ 开头的相对路径（代理上传），须拼 origin 而非 BASE_URL+path
+     *  （后者会叠出双 /api/v1）。 */
+    fun origin(): String {
+        val u = android.net.Uri.parse(BASE_URL)
+        val port = u.port
+        return u.scheme + "://" + u.host + (if (port != -1) ":$port" else "")
     }
 
     /** 从路径提取 /projects/... 段并用本端 BASE_URL 重建（附件统一走本端后端地址） */

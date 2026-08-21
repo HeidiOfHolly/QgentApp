@@ -379,9 +379,18 @@ class ChatSettingsFragment : Fragment() {
         val allAgents = mainViewModel.agents.value.orEmpty()
         Log.d("ChatSettings", "mergeAgents: raw=${dtos.size} agents=${allAgents.size} groups=${mainViewModel.groups.value.orEmpty().size}")
         // 群里只合并一个 Agent（取团队第一个 ACTIVE；角色已收敛为 4 种执行角色）
+        // 显示名统一为「编排助手」（与后端编排回复方 senderName 对齐），id/头像仍指向该 Agent
         val teamAgents = allAgents
             .firstOrNull { it.status.name != "ARCHIVED" }
-            ?.let { listOf(GroupMemberDto(id = it.id, nickname = it.name, displayName = it.name, avatar = it.avatar, memberType = "AGENT")) }
+            ?.let {
+                listOf(GroupMemberDto(
+                    id = it.id,
+                    nickname = getString(R.string.chat_group_agent_name),
+                    displayName = getString(R.string.chat_group_agent_name),
+                    avatar = it.avatar,
+                    memberType = "AGENT"
+                ))
+            }
             .orEmpty()
         val agentIds = teamAgents.map { it.id }.toSet()
         // 后端群成员中可能含 Agent：全部过滤，只保留合并的单一 Agent（避免叠加成多个）

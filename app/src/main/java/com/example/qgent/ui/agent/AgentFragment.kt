@@ -61,7 +61,7 @@ class AgentFragment : Fragment() {
                     "agentId" to agent.id,
                     "agentName" to agent.name,
                     "agentDescription" to agent.description,
-                    "agentRole" to agent.role.name,
+                    "agentRole" to (agent.roleWire ?: agent.role.name),
                     "agentCapabilities" to agent.capabilities.joinToString(", "),
                     "agentCreatedBy" to (agent.createdBy ?: ""),
                     "agentIsDefault" to false

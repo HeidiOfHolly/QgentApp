@@ -9,6 +9,7 @@ import com.example.qgent.R
 import com.example.qgent.databinding.ItemAgentCardBinding
 import com.example.qgent.model.Agent
 import com.example.qgent.model.AgentStatus
+import com.example.qgent.model.AgentVisibility
 
 class AgentCardAdapter(
     private var items: List<Agent>,
@@ -43,7 +44,7 @@ class AgentCardAdapter(
 
         fun bind(agent: Agent) {
             binding.tvAgentName.text = agent.name
-            binding.tvAgentRole.text = agent.role.displayName()
+            binding.tvAgentRole.text = agent.roleLabel()
             // 能力标签：最多 2 个 + "…"，无能力时隐藏
             binding.tvAgentCaps.text = agent.capabilities.take(2).joinToString(" · ")
             binding.tvAgentCaps.isVisible = agent.capabilities.isNotEmpty()
@@ -51,12 +52,15 @@ class AgentCardAdapter(
             val working = agent.id in workingIds
             binding.tvAgentStatus.text = when {
                 agent.status == AgentStatus.ARCHIVED -> "已下线"
+                agent.visibility == AgentVisibility.PENDING -> "等待审核"
+                agent.visibility == AgentVisibility.TEAM -> "团队可用"
                 working -> "运行中"
                 else -> "闲置"
             }
             val ctx = binding.root.context
             val dotColor = when {
                 agent.status == AgentStatus.ARCHIVED -> R.color.gray
+                agent.visibility == AgentVisibility.PENDING -> R.color.status_yellow
                 working -> R.color.primary
                 else -> R.color.mint
             }

@@ -42,6 +42,8 @@ enum class SseEventType(val wire: String) {
     TASK_AWAITING_DIFF_CONFIRMATION("task.awaiting-diff-confirmation"),
     DIFF_REVIEW_CONFIRMED("diff-review.confirmed"),
     DIFF_REVIEW_REJECTED("diff-review.rejected"),
+    /** 当前 Diff 已被同一 Workspace 的后续修改取代，必须刷新任务详情后以新状态渲染。 */
+    DIFF_REVIEW_SUPERSEDED("diff-review.superseded"),
     /**
      * 自动交付开始（MR_FIRST B 方案，§v1.10.0）。
      * payload { projectId, taskId, reviewBatchId, deliveryMode, operationId, reason? }；

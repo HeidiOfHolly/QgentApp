@@ -26,6 +26,7 @@ import com.example.qgent.data.model.toAgent
 import com.example.qgent.data.repository.AgentRepository
 import com.example.qgent.databinding.FragmentAgentDetailBinding
 import com.example.qgent.model.Agent
+import com.example.qgent.model.mapAgentRoleDisplay
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -129,49 +130,44 @@ class AgentDetailFragment : Fragment() {
         // 编辑：仅创建者 且 非系统预置（v2.0.6 §5.1：isDefault=true 不可编辑）
         binding.tvDetailEdit.isVisible = isCreator && dto.isDefault != true
         binding.tvDetailEdit.setOnClickListener { openEdit(dto) }
-        // 发布 / 收回发布：创建者（PRIVATE→发布占位；TEAM→收回发布）
-        binding.tvDetailPublish.isVisible = isCreator
-        if (dto.visibility == "PRIVATE") {
-            binding.tvDetailPublish.text = "发布"
-            binding.tvDetailPublish.setOnClickListener { publishPlaceholder() }
-        } else {
-            binding.tvDetailPublish.text = "收回发布"
-            binding.tvDetailPublish.setOnClickListener { confirmUnpublish() }
+        val active = dto.status != "ARCHIVED"
+        binding.tvDetailPublish.isVisible = isCreator && active
+        when (dto.visibility) {
+            "PRIVATE" -> {
+                binding.tvDetailPublish.text = "发布"
+                binding.tvDetailPublish.isEnabled = true
+                binding.tvDetailPublish.setOnClickListener { publish() }
+            }
+            "PENDING" -> {
+                binding.tvDetailPublish.text = "等待审核"
+                binding.tvDetailPublish.isEnabled = false
+                binding.tvDetailPublish.setOnClickListener(null)
+            }
+            "TEAM", "TEAM_SHARED" -> {
+                binding.tvDetailPublish.text = "团队已可用"
+                binding.tvDetailPublish.isEnabled = false
+                binding.tvDetailPublish.setOnClickListener(null)
+            }
+            else -> binding.tvDetailPublish.isVisible = false
         }
-        // 下线：创建者或 Team Owner
+        binding.tvDetailArchive.isVisible = active
         binding.tvDetailArchive.setOnClickListener { confirmArchive() }
     }
 
-    /** 发布审批占位：后端审批接口未上线，仅提示（按产品决定不调直接 publish） */
-    private fun publishPlaceholder() {
-        AlertDialog.Builder(requireContext())
-            .setTitle("发布 Agent")
-            .setMessage("发布后需项目管理员审批，Agent 才会成为团队共享资源。\n\n发布审批功能开发中，待后端审批接口上线后开通。")
-            .setPositiveButton("知道了") { _, _ ->
-                Toast.makeText(requireContext(), "发布审批功能开发中", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    private fun confirmUnpublish() {
-        val dto = currentAgent ?: return
-        AlertDialog.Builder(requireContext())
-            .setTitle("收回发布")
-            .setMessage("确定将「${dto.name}」收回为私有 Agent？团队其他成员将无法使用。")
-            .setPositiveButton("收回") { _, _ -> unpublish() }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    private fun unpublish() {
+    private fun publish() {
         val teamId = mainViewModel.currentTeamId() ?: return
         viewLifecycleOwner.lifecycleScope.launch {
-            agentRepo.unpublishAgent(teamId, agentId, UUID.randomUUID().toString())
-                .onSuccess {
-                    Toast.makeText(requireContext(), "已收回为私有", Toast.LENGTH_SHORT).show()
+            agentRepo.publishAgent(teamId, agentId, UUID.randomUUID().toString())
+                .onSuccess { dto ->
+                    currentAgent = dto
+                    setupActions(teamId, dto)
+                    val message = when (dto.visibility) {
+                        "PENDING" -> "已提交发布审核"
+                        "TEAM", "TEAM_SHARED" -> "已发布为团队可用"
+                        else -> "Agent 发布状态已更新"
+                    }
+                    Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
                     mainViewModel.refreshAgents()
-                    findNavController().popBackStack()
                 }
                 .onFailure { Toast.makeText(requireContext(), "操作失败：${it.message}", Toast.LENGTH_SHORT).show() }
         }
@@ -219,7 +215,7 @@ class AgentDetailFragment : Fragment() {
     private fun renderIdentity(agent: Agent) = renderIdentity(
         name = agent.name,
         desc = agent.description,
-        role = agent.role.name,
+        role = agent.roleWire?.takeIf { it.isNotBlank() } ?: agent.role.name,
         capabilities = agent.capabilities,
         avatar = agent.avatar
     )
@@ -268,13 +264,7 @@ class AgentDetailFragment : Fragment() {
         }
     }
 
-    private fun mapRoleDisplay(role: String): String = when (role) {
-        "PLANNER" -> "规划者"
-        "DEVELOPER" -> "开发者"
-        "TESTER" -> "测试者"
-        "REVIEWER" -> "审查者"
-        else -> role
-    }
+    private fun mapRoleDisplay(role: String): String = mapAgentRoleDisplay(role)
 
     override fun onDestroyView() {
         super.onDestroyView()

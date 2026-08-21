@@ -64,11 +64,40 @@ class ProfileFragment : Fragment() {
             pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
 
+        // GitHub 绑定入口（§50）：进入个人信息页查询个人 OAuth 状态，点击进入绑定页
+        binding.layoutGithub.setOnClickListener {
+            findNavController().navigate(R.id.personalGithubOAuthFragment)
+        }
+
         // 退出登录：清空会话并回到登录页
         binding.btnLogout.setOnClickListener {
             SessionStore.clear()
             startActivity(Intent(requireContext(), LoginActivity::class.java))
             requireActivity().finish()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 从绑定页返回后重新查询状态（不依赖本地缓存，§50.4）
+        loadGithubOAuthStatus()
+    }
+
+    /** 查询个人 GitHub OAuth 授权状态，更新个人信息页入口行的绑定状态文本 */
+    private fun loadGithubOAuthStatus() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            (requireActivity().application as QgentApp).container.githubRepository
+                .getPersonalOAuthStatus()
+                .onSuccess { status ->
+                    binding.tvGithubStatus.text = if (status.authorized) {
+                        getString(R.string.profile_github_bound, status.githubLogin ?: "")
+                    } else {
+                        getString(R.string.profile_github_unbound)
+                    }
+                }
+                .onFailure {
+                    // 查询失败保持默认文本，不打断个人信息页
+                }
         }
     }
 

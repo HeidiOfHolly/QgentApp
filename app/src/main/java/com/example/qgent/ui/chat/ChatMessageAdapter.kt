@@ -53,8 +53,8 @@ class ChatMessageAdapter(
     private val onTaskStatusClick: ((ChatMessage) -> Unit)? = null,
     /** DIFF 卡点击 → 跳转 Diff 审核面板（§v1.9.4 A3） */
     private val onDiffCardClick: ((ChatMessage) -> Unit)? = null,
-    /** DIFF 卡「完整 Diff」→ 全屏查看所有文件代码 */
-    private val onViewFullDiff: ((ChatMessage) -> Unit)? = null
+    /** DIFF 卡「完整 Diff」→ 查看当前选中文件；未选中时由调用方回退完整 Diff */
+    private val onViewFullDiff: ((ChatMessage, DiffFile?) -> Unit)? = null
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     /** 多选模式下被选中的消息 id（非多选模式为空集，不参与高亮） */
@@ -264,7 +264,7 @@ class ChatMessageAdapter(
                 isImage -> {
                     // 图片消息无气泡背景
                     binding.flBubble.background = null
-                    bindImage(message.content)
+                    bindImage(message)
                 }
                 isFile -> {
                     binding.flBubble.setBackgroundResource(
@@ -318,8 +318,10 @@ class ChatMessageAdapter(
             )
         }
 
-        /** 图片消息：宽为屏幕宽度的一半，高度按宽高比自适应，完整显示；加载中显示居中加载态 */
-        private fun bindImage(uri: String) {
+        /** 图片消息：宽为屏幕宽度的一半，高度按宽高比自适应，完整显示；加载中显示居中加载态。
+         *  优先用签名预览 URL（契约 v0.1：/preview + 短期 token 在 query，无头直连）；
+         *  无 previewUrl 时回退 content.url（后端鉴权接口，Glide 带 Bearer 头）。 */
+        private fun bindImage(message: ChatMessage) {
             val view = binding.ivBubbleImage
             // 清掉复用残留的旧图
             view.setImageDrawable(null)
@@ -332,12 +334,21 @@ class ChatMessageAdapter(
             // 加载中显示居中小加载标，加载完成/失败后隐藏
             val loading = binding.pbImageLoading
             loading.isVisible = true
-            val loader = if (isLocalUri(uri)) {
-                // 本地 content:// URI（发送中的乐观占位图）直接加载，无需鉴权头
-                Glide.with(view).load(uri)
-            } else {
-                // content.url 是后端鉴权接口，Glide 需带 Bearer 头才能下载
-                Glide.with(view).load(authedGlideUrl(uri))
+            val uri = message.content
+            val previewUrl = message.previewUrl?.takeIf { it.isNotBlank() }
+            val loader = when {
+                isLocalUri(uri) -> {
+                    // 本地 content:// URI（发送中的乐观占位图）直接加载，无需鉴权头
+                    Glide.with(view).load(uri)
+                }
+                previewUrl != null -> {
+                    // 签名预览 URL：token 在 query，无需自定义头
+                    Glide.with(view).load(RetrofitClient.resolveMediaUrl(previewUrl))
+                }
+                else -> {
+                    // content.url 是后端鉴权接口，Glide 需带 Bearer 头才能下载
+                    Glide.with(view).load(authedGlideUrl(uri))
+                }
             }
             loader
                 .placeholder(R.drawable.bg_chat_image_placeholder)
@@ -352,10 +363,26 @@ class ChatMessageAdapter(
 
                     override fun onLoadFailed(errorDrawable: Drawable?) {
                         loading.isVisible = false
-                        android.util.Log.e("ChatImage", "bubble image load FAILED: ${RetrofitClient.resolveMediaUrl(uri)}")
+                        // 预览 URL 可能过期（token 15 分钟），失败回退 content.url 重试一次
+                        if (previewUrl != null) {
+                            view.setImageDrawable(null)
+                            Glide.with(view).load(authedGlideUrl(uri))
+                                .placeholder(R.drawable.bg_chat_image_placeholder)
+                                .into(object : CustomTarget<Drawable>() {
+                                    override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
+                                        view.setImageDrawable(resource)
+                                    }
+                                    override fun onLoadCleared(placeholder: Drawable?) = Unit
+                                    override fun onLoadFailed(errorDrawable: Drawable?) {
+                                        android.util.Log.e("ChatImage", "bubble image load FAILED: ${RetrofitClient.resolveMediaUrl(uri)}")
+                                    }
+                                })
+                        } else {
+                            android.util.Log.e("ChatImage", "bubble image load FAILED: ${RetrofitClient.resolveMediaUrl(uri)}")
+                        }
                     }
                 })
-            view.setOnClickListener { onImageClick?.invoke(uri) }
+            view.setOnClickListener { onImageClick?.invoke(previewUrl ?: uri) }
         }
 
         private fun dp(value: Int): Int =
@@ -378,7 +405,7 @@ class ChatMessageAdapter(
         private val onLoadDiff: ((String, (List<DiffFile>) -> Unit) -> Unit)?,
         private val onMessageLongClick: ((View, ChatMessage) -> Unit)? = null,
         private val onDiffCardClick: ((ChatMessage) -> Unit)? = null,
-        private val onViewFullDiff: ((ChatMessage) -> Unit)? = null
+        private val onViewFullDiff: ((ChatMessage, DiffFile?) -> Unit)? = null
     ) : RecyclerView.ViewHolder(binding.root) {
 
         private val pagerAdapter = DiffFilePagerAdapter()
@@ -399,11 +426,18 @@ class ChatMessageAdapter(
             } else {
                 ""
             }
+            val superseded = message.reviewStatus == "SUPERSEDED"
+            binding.tvDiffStatusLine.isVisible = superseded
+            binding.tvDiffStatusLine.text = if (superseded) {
+                binding.root.context.getString(R.string.diff_review_superseded)
+            } else {
+                ""
+            }
             // 操作行：Diff 审核（确认/拒绝/重试）/ 完整 Diff 全屏查看
             binding.tvActionReview.setOnClickListener { onDiffCardClick?.invoke(message) }
-            binding.tvActionFull.setOnClickListener { onViewFullDiff?.invoke(message) }
+            binding.tvActionFull.setOnClickListener { onViewFullDiff?.invoke(message, selectedFile()) }
             // 点击卡片 → 全屏查看完整代码（可滑动，绿加红减）
-            binding.diffCard.setOnClickListener { onViewFullDiff?.invoke(message) }
+            binding.diffCard.setOnClickListener { onViewFullDiff?.invoke(message, selectedFile()) }
             // 长按 → 引用/复制/多选（引用 DIFF 卡发起增量修改，B1）
             binding.root.setOnLongClickListener {
                 onMessageLongClick?.invoke(it, message)
@@ -471,6 +505,9 @@ class ChatMessageAdapter(
             binding.tvDiffStats.text = "+${file.additions} -${file.deletions}"
             binding.tvDiffIndicator.text = "${position + 1}/${pagerAdapter.count}"
         }
+
+        private fun selectedFile(): DiffFile? =
+            pagerAdapter.fileAt(binding.viewPagerDiff.currentItem)
 
         /** 文件名只显示 basename（去掉完整路径） */
         private fun String.basename(): String = substringAfterLast('/')

@@ -32,6 +32,13 @@ data class MessagePageDto(
     val hasMore: Boolean
 )
 
+/** Messages newer than a known group sequence, used to recover missed realtime events. */
+data class MessageIncrementalPageDto(
+    val messages: List<GroupMessageDto>,
+    val nextSequence: Long?,
+    val hasMore: Boolean
+)
+
 /** API 异常：包含服务端返回的错误码、提示与 requestId（500 等内部错误时展示 requestId 便于后端排查） */
 class ApiException(
     val code: String,
@@ -417,7 +424,15 @@ data class MessageContentDto(
     @SerializedName("additions") val additions: Int? = null,
     @SerializedName("deletions") val deletions: Int? = null,
     @SerializedName("reviewStatus") val reviewStatus: String? = null,
-    @SerializedName("deliveryStatus") val deliveryStatus: String? = null
+    @SerializedName("deliveryStatus") val deliveryStatus: String? = null,
+    // ── 附件内联预览（契约 v0.1 §6/§7）：IMAGE/FILE 消息必填 attachmentId；
+    //    previewUrl/previewable/previewType/downloadUrl 由服务端回填（§7 可选增强）或前端调 preview-url 按需获取 ──
+    @SerializedName("attachmentId") val attachmentId: String? = null,
+    @SerializedName("previewable") val previewable: Boolean? = null,
+    @SerializedName("previewType") val previewType: String? = null,
+    @SerializedName("previewUrl") val previewUrl: String? = null,
+    @SerializedName("downloadUrl") val downloadUrl: String? = null,
+    @SerializedName("expiresAt") val expiresAt: String? = null
 )
 
 /** TASK_STATUS 卡 plan 快照（v23 §23.3）：Planner 计划摘要 + TaskStep 快照列表 */
@@ -456,6 +471,24 @@ data class AttachmentDto(
 data class AttachmentConfirmDto(
     @SerializedName("attachmentId") val attachmentId: String,
     val status: String
+)
+
+/**
+ * 附件预览元数据 + 签名预览 URL（契约 v0.1 §4：GET .../attachments/{id}/preview-url）。
+ * previewUrl 为相对路径（带短期 token 查询参数），前端拼 ORIGIN 直接交给 <img>/系统查看器，无需请求头；
+ * 含 token 的完整 URL 不得写入日志、不得长期持久化缓存，过期后重新调本接口签发。
+ * previewType：IMAGE / PDF / TEXT / CODE / UNSUPPORTED（§2.1）。
+ */
+data class AttachmentPreviewDto(
+    @SerializedName("attachmentId") val attachmentId: String,
+    @SerializedName("fileName") val fileName: String? = null,
+    @SerializedName("mediaType") val mediaType: String? = null,
+    @SerializedName("sizeBytes") val sizeBytes: Long? = null,
+    val previewable: Boolean = false,
+    @SerializedName("previewType") val previewType: String? = null,
+    @SerializedName("previewUrl") val previewUrl: String? = null,
+    @SerializedName("downloadUrl") val downloadUrl: String? = null,
+    @SerializedName("expiresAt") val expiresAt: String? = null
 )
 
 // ── 请求体 ──
@@ -509,7 +542,7 @@ data class AgentDto(
     val capabilities: List<String>?,
     val prompt: String?,                // 私有提示词，仅创建者可见
     @SerializedName("description") val description: String? = null,
-    val visibility: String,             // PRIVATE / TEAM_SHARED
+    val visibility: String,             // PRIVATE / PENDING / TEAM
     val status: String,                 // ACTIVE / ARCHIVED
     /** v2.0.6 §5.1：系统预置 Agent=true（不可编辑），自定义=false */
     @SerializedName("isDefault") val isDefault: Boolean? = null,
@@ -534,6 +567,35 @@ data class UpdateAgentRequest(
 )
 
 // ── GitHub 集成（§6）──
+
+// ── 个人 GitHub OAuth（§50：个人建仓授权链路，与团队 App Installation 相互独立）──
+
+/** 发起个人 GitHub OAuth 授权（POST /me/integrations/github/oauth/start，§50.2）：
+ *  client 只允许 WEB/MOBILE；响应 authorizationUrl 为后端生成、前端只能直接跳转。 */
+data class GitHubOAuthStartResponse(
+    @SerializedName("authorizationUrl") val authorizationUrl: String,
+    @SerializedName("expiresAt") val expiresAt: String? = null
+)
+
+/**
+ * 个人 GitHub OAuth 授权状态（GET /me/integrations/github/oauth，§50.4）。
+ * 未授权时 authorized=false，GitHub 标识/scope/时间字段为 null 或空数组；响应不含任何 Token。
+ * 能力字段仅用于前端展示与交互提示（不是安全边界），scope/Installation/仓库可见性最终由项目创建接口校验。
+ * personalRepositorySetup：NOT_OWNER / NEED_INSTALLATION / NEED_OAUTH / ACCOUNT_MISMATCH / READY。
+ */
+data class PersonalGithubOAuthDto(
+    val authorized: Boolean = false,
+    val provider: String? = null,
+    @SerializedName("githubUserId") val githubUserId: Long? = null,
+    @SerializedName("githubLogin") val githubLogin: String? = null,
+    val scopes: List<String>? = null,
+    @SerializedName("authorizedAt") val authorizedAt: String? = null,
+    @SerializedName("lastValidatedAt") val lastValidatedAt: String? = null,
+    @SerializedName("canCreatePublicPersonalRepository") val canCreatePublicPersonalRepository: Boolean = false,
+    @SerializedName("canCreatePrivatePersonalRepository") val canCreatePrivatePersonalRepository: Boolean = false,
+    @SerializedName("personalRepositorySetup") val personalRepositorySetup: String? = null,
+    @SerializedName("expectedInstallationLogin") val expectedInstallationLogin: String? = null
+)
 
 /**
  * 发起安装返回的跳转链接（POST /teams/{teamId}/integrations/github/installations）
@@ -600,6 +662,15 @@ data class BindProjectRepositoryRequest(
     @SerializedName("installationId") val installationId: String,
     @SerializedName("repositoryId") val repositoryId: String,
     @SerializedName("displayName") val displayName: String
+)
+
+/** Creates a GitHub repository under a team Installation and binds it to an existing project. */
+data class CreateProjectRepositoryRequest(
+    val name: String,
+    val description: String? = null,
+    @SerializedName("isPrivate") val isPrivate: Boolean = true,
+    @SerializedName("installationId") val installationId: String? = null,
+    @SerializedName("displayName") val displayName: String? = null
 )
 
 /**
@@ -739,7 +810,7 @@ data class DiffDecisionRequest(
 data class DiffReviewBatchDto(
     val id: String? = null,
     @SerializedName("taskId") val taskId: String? = null,
-    /** PENDING_CONFIRMATION / ACCEPTED / REJECTED（校准后枚举，§v1.10.0） */
+    /** PENDING_CONFIRMATION / ACCEPTED / REJECTED / SUPERSEDED（§47：SUPERSEDED 为只读旧批次） */
     @SerializedName("reviewStatus") val reviewStatus: String? = null,
     /** NOT_STARTED / DELIVERING / DELIVERED / PARTIALLY_DELIVERED / FAILED（校准后枚举，§v1.10.0） */
     @SerializedName("deliveryStatus") val deliveryStatus: String? = null,
