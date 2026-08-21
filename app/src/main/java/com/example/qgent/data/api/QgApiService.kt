@@ -1030,7 +1030,10 @@ interface QgApiService {
         @Path("taskId") taskId: String
     ): Response<ApiResponse<List<TaskRunDetailListItemDto>>>
 
-    /** 任务运行执行日志（§12.2） */
+    /**
+     * 任务运行执行日志（§12.2/§33）：游标读取已脱敏日志，统一 cursor envelope
+     * { data, page:{nextCursor,hasMore}, requestId }；游标 = 上页最后一条的 sequence。
+     */
     @GET("projects/{projectId}/task-runs/{taskRunId}/logs")
     suspend fun getTaskRunLogs(
         @Path("projectId") projectId: String,

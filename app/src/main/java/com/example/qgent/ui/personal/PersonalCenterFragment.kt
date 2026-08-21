@@ -220,6 +220,8 @@ class PersonalCenterFragment : Fragment() {
 
     /** 收起个人中心抽屉，并跳转至主界面（群聊 / 任务 / Agent 三 Tab） */
     private fun openMainPage() {
+        // 选了团队但未选项目就退回：恢复抽屉上下文与群聊列表一致（团队与项目匹配，避免群聊被清空）
+        mainViewModel.restoreContextToCurrentProject()
         (activity as? MainActivity)?.closeDrawer()
         navController.navigate(
             R.id.chatListFragment,

@@ -189,6 +189,12 @@ fun formatGroupTime(timestamp: Long): String {
     }
 }
 
+/** 完整本地时间（执行日志等明细场景）：MM-dd HH:mm:ss；解析失败回退空串。 */
+fun formatFullTime(timestamp: Long): String {
+    if (timestamp <= 0) return ""
+    return SimpleDateFormat("MM-dd HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
+}
+
 private val WEEK_LABELS = arrayOf("", "周日", "周一", "周二", "周三", "周四", "周五", "周六")
 
 private fun dayDiff(from: Long, to: Long): Int {

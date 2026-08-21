@@ -18,9 +18,9 @@ object DiffReviewRules {
     fun canConfirmOrReject(reviewStatus: String?, confirmationSource: String?): Boolean =
         reviewStatus == "PENDING_CONFIRMATION" && confirmationSource != "SYSTEM"
 
-    /** ACCEPTED 状态下的展示文案：SYSTEM → 自动交付；USER → 已由用户确认；缺省兜底已确认 */
+    /** ACCEPTED 状态下的展示文案：SYSTEM → 已自动确认（MR_FIRST 自动授权，不代表交付已完成）；USER → 已由用户确认；缺省兜底已确认 */
     fun acceptedCaption(confirmationSource: String?): String = when (confirmationSource) {
-        "SYSTEM" -> "自动交付"
+        "SYSTEM" -> "已自动确认"
         "USER" -> "已由用户确认"
         else -> "已确认"
     }
@@ -63,14 +63,29 @@ object DiffReviewRules {
         else -> status ?: "未知"
     }
 
-    /** 交付模式文案：MR_FIRST → 自动交付；DIFF_FIRST → 人工确认 */
+    /** 交付模式文案：MR_FIRST → MR 前自动预检（仅交付路径标签，不代表已交付/已合并）；DIFF_FIRST → 人工确认 */
     fun deliveryModeCaption(mode: String?): String? = when (mode) {
-        "MR_FIRST" -> "自动交付"
+        "MR_FIRST" -> "MR 前自动预检"
         "DIFF_FIRST" -> "人工确认"
         else -> null
     }
 
     fun isMrFirst(mode: String?): Boolean = mode == "MR_FIRST"
+
+    /**
+     * MR_FIRST 交付模式标签是否展示：仅当任务真正进入交付阶段（待 Diff 确认及之后）才展示。
+     * deliveryMode 在规划阶段已持久化，任务尚未进入交付（规划中/待执行/执行中/失败/已取消）时
+     * 展示会让人误以为已自动交付成功；DIFF_FIRST 等非 MR_FIRST 模式不按状态隐藏。
+     */
+    fun showDeliveryModeLabel(mode: String?, taskStatus: String?): Boolean {
+        if (!isMrFirst(mode)) return true
+        return taskStatus != null && taskStatus !in PRE_DELIVERY_STATUSES
+    }
+
+    /** 尚未真正进入交付阶段的任务状态（deliveryMode 只是规划标签，不展示 MR 前自动预检） */
+    private val PRE_DELIVERY_STATUSES = setOf(
+        "PLANNING", "PENDING", "RUNNING", "FAILED", "CANCELLING", "CANCELLED"
+    )
 
     /**
      * MR 链接文案：mergeRequest.webUrl 为空返回 null（前端不渲染链接）；

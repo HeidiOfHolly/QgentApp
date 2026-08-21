@@ -50,6 +50,15 @@ class TasksFragment : Fragment() {
         )
     }
     private val activityAdapter = ActivityAdapter()
+    private val recentTaskAdapter = RecentTaskAdapter { task ->
+        findNavController().navigate(
+            R.id.action_tasks_to_taskDetail,
+            Bundle().apply {
+                putString(TaskDetailFragment.ARG_TASK_ID, task.id)
+                putString(TaskDetailFragment.ARG_PROJECT_ID, task.projectId)
+            }
+        )
+    }
 
     private var pollingJob: Job? = null
     private var eventStreamJob: Job? = null
@@ -90,6 +99,9 @@ class TasksFragment : Fragment() {
         binding.rvTaskList.adapter = taskAdapter
         binding.rvAgentTaskList.layoutManager = LinearLayoutManager(requireContext())
         binding.rvAgentTaskList.adapter = activityAdapter
+        // 最近任务：横向滑动（LinearLayoutManager.HORIZONTAL），复用 taskAdapter 的点击跳详情
+        binding.rvRecentTaskList.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.rvRecentTaskList.adapter = recentTaskAdapter
 
         // 下拉刷新：重新拉取任务 / MR / 最近动态
         binding.swipeRefresh.setOnRefreshListener { refreshAllData() }
@@ -121,6 +133,10 @@ class TasksFragment : Fragment() {
             // 任务页仅展示当前用户最近 MAX_MY_TASKS 条（myTasks 已按创建者过滤且不受列表页筛选影响）
             taskAdapter.submitList(state.myTasks.take(TaskListViewModel.MAX_MY_TASKS))
             activityAdapter.submitList(state.agentRuns)
+            // 最近任务：当前用户最近创建的 MAX_RECENT_TASKS 个（myTasks 未完成优先排序，此处按创建时间倒序取最近）
+            val recent = state.myTasks.sortedByDescending { it.createdAt }.take(MAX_RECENT_TASKS)
+            recentTaskAdapter.submitList(recent)
+            binding.tvRecentTaskEmpty.isVisible = recent.isEmpty()
             // 空状态：列表为空时展示提示，非空时隐藏
             binding.tvTaskEmpty.isVisible = state.myTasks.isEmpty()
             // 最近动态：未加载出来前/无数据时统一显示空态提示
@@ -258,5 +274,7 @@ class TasksFragment : Fragment() {
 
     companion object {
         private const val POLL_INTERVAL_MS = 3_000L
+        /** 最近任务：最多展示最近创建的 3 个任务 */
+        private const val MAX_RECENT_TASKS = 3
     }
 }

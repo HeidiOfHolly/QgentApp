@@ -71,6 +71,8 @@ class ChatListFragment : Fragment() {
     // 从详情页返回时刷新最新消息摘要（图片/文件显示 [图片]/[文件]）
     override fun onResume() {
         super.onResume()
+        // 抽屉选了团队但未选项目退回：恢复上下文（团队与项目匹配），避免群聊列表被清空、抽屉高亮错位
+        mainViewModel.restoreContextToCurrentProject()
         mainViewModel.refreshGroups()
         mainViewModel.refreshUnreadInvitations()
         startPolling()

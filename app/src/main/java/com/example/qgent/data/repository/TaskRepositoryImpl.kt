@@ -102,7 +102,26 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
         apiCall { service.getTaskRunsOfTask(projectId, taskId).toDataOrThrow() }
 
     override suspend fun getTaskRunLogs(projectId: String, taskRunId: String, cursor: String?, limit: Int): Result<List<TaskRunLogEntryDto>> =
-        apiCall { service.getTaskRunLogs(projectId, taskRunId, cursor, limit).toDataOrThrow() }
+        apiCall {
+            // 日志接口按 cursor/limit 分页（文档 §12.2/§33，游标=上页最后一条 sequence），
+            // 循环拉全量避免日志被截断。body() 只能读一次，必须同时取出 data 与 page。
+            val all = mutableListOf<TaskRunLogEntryDto>()
+            var nextCursor = cursor
+            do {
+                val resp = service.getTaskRunLogs(projectId, taskRunId, nextCursor, limit)
+                if (!resp.isSuccessful) resp.toDataOrThrow()
+                val body = resp.body() ?: throw com.example.qgent.data.model.ApiException(
+                    "EMPTY_RESPONSE", "响应为空", null
+                )
+                body.error?.let {
+                    throw com.example.qgent.data.model.ApiException(it.code, it.message, body.requestId, it.details)
+                }
+                all += body.data.orEmpty()
+                val page = body.page
+                nextCursor = page?.nextCursor?.takeIf { page.hasMore }
+            } while (nextCursor != null)
+            all
+        }
 
     override suspend fun getMergeRequestDetail(projectId: String, mergeRequestId: String): Result<MergeRequestDetailDto> =
         apiCall { service.getMergeRequestDetail(projectId, mergeRequestId).toDataOrThrow() }

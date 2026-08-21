@@ -35,7 +35,7 @@ class DiffReviewRulesTest {
 
     @Test
     fun acceptedCaption_neverShowsUserConfirmedForSystem() {
-        assertEquals("自动交付", DiffReviewRules.acceptedCaption("SYSTEM"))
+        assertEquals("已自动确认", DiffReviewRules.acceptedCaption("SYSTEM"))
         assertEquals("已由用户确认", DiffReviewRules.acceptedCaption("USER"))
         assertEquals("已确认", DiffReviewRules.acceptedCaption(null))
     }
@@ -84,11 +84,35 @@ class DiffReviewRulesTest {
 
     @Test
     fun deliveryModeCaption() {
-        assertEquals("自动交付", DiffReviewRules.deliveryModeCaption("MR_FIRST"))
+        assertEquals("MR 前自动预检", DiffReviewRules.deliveryModeCaption("MR_FIRST"))
         assertEquals("人工确认", DiffReviewRules.deliveryModeCaption("DIFF_FIRST"))
         assertNull(DiffReviewRules.deliveryModeCaption(null))
         assertTrue(DiffReviewRules.isMrFirst("MR_FIRST"))
         assertFalse(DiffReviewRules.isMrFirst("DIFF_FIRST"))
+    }
+
+    // ── MR_FIRST 标签展示（仅真正进入交付阶段才展示，避免误解为已自动交付） ──
+
+    @Test
+    fun showDeliveryModeLabel_mrFirstHiddenBeforeDelivery() {
+        // 进入交付阶段（待 Diff 确认及之后）：展示
+        assertTrue(DiffReviewRules.showDeliveryModeLabel("MR_FIRST", "WAITING_DIFF_CONFIRMATION"))
+        assertTrue(DiffReviewRules.showDeliveryModeLabel("MR_FIRST", "DELIVERING"))
+        assertTrue(DiffReviewRules.showDeliveryModeLabel("MR_FIRST", "SUCCEEDED"))
+        assertTrue(DiffReviewRules.showDeliveryModeLabel("MR_FIRST", "DELIVERY_FAILED"))
+        // 规划/待执行/执行中/失败/取消：deliveryMode 只是规划标签，不展示
+        assertFalse(DiffReviewRules.showDeliveryModeLabel("MR_FIRST", "PLANNING"))
+        assertFalse(DiffReviewRules.showDeliveryModeLabel("MR_FIRST", "PENDING"))
+        assertFalse(DiffReviewRules.showDeliveryModeLabel("MR_FIRST", "RUNNING"))
+        assertFalse(DiffReviewRules.showDeliveryModeLabel("MR_FIRST", "FAILED"))
+        assertFalse(DiffReviewRules.showDeliveryModeLabel("MR_FIRST", "CANCELLING"))
+        assertFalse(DiffReviewRules.showDeliveryModeLabel("MR_FIRST", "CANCELLED"))
+        // 状态缺失按不展示兜底（避免误以为已交付）
+        assertFalse(DiffReviewRules.showDeliveryModeLabel("MR_FIRST", null))
+        // 非 MR_FIRST：不受状态影响
+        assertTrue(DiffReviewRules.showDeliveryModeLabel("DIFF_FIRST", "PLANNING"))
+        assertTrue(DiffReviewRules.showDeliveryModeLabel("DIFF_FIRST", "RUNNING"))
+        assertTrue(DiffReviewRules.showDeliveryModeLabel(null, "SUCCEEDED"))
     }
 
     // ── MR 链接：webUrl 为空不渲染 ──

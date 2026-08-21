@@ -43,15 +43,17 @@ class TaskCardAdapter(
         fun bind(task: TaskListItemDto) {
             val context = binding.root.context
             binding.tvTaskName.text = task.displayCode + " " + task.title
-            // MR_FIRST（自动交付）在信息行加前缀，便于区分交付模式（文档 §15）
-            val prefix = if (task.deliveryMode == "MR_FIRST") "自动交付 · " else ""
+            // MR_FIRST（MR 前自动预检）在信息行加前缀，便于区分交付模式（文档 §15）；
+            // 仅任务真正进入交付阶段才加前缀/标签，规划/执行/失败时展示会让人误以为已自动交付
+            val mrFirst = DiffReviewRules.isMrFirst(task.deliveryMode)
+            val inDeliveryPhase = DiffReviewRules.showDeliveryModeLabel(task.deliveryMode, task.status)
+            val prefix = if (mrFirst && inDeliveryPhase) "${DiffReviewRules.deliveryModeCaption(task.deliveryMode)} · " else ""
             binding.tvTaskInformation.text = prefix + (task.requirementSummary ?: task.title)
             binding.tvTaskStatus.text = statusText(context, task.status)
             binding.tvTaskStatus.setTextColor(context.getColor(taskStatusColorRes(task.status)))
-            // 交付模式标签：MR_FIRST 显示「自动交付」（任务列表/卡片统一读取后端 deliveryMode）
-            val mrFirst = DiffReviewRules.isMrFirst(task.deliveryMode)
-            binding.tvDeliveryMode.isVisible = mrFirst
-            if (mrFirst) binding.tvDeliveryMode.text = DiffReviewRules.deliveryModeCaption(task.deliveryMode)
+            // 交付模式标签：MR_FIRST 进入交付阶段才显示（任务列表/卡片统一读取后端 deliveryMode）
+            binding.tvDeliveryMode.isVisible = mrFirst && inDeliveryPhase
+            if (mrFirst && inDeliveryPhase) binding.tvDeliveryMode.text = DiffReviewRules.deliveryModeCaption(task.deliveryMode)
             val progress = progressOf(task)
             binding.pbTask.progress = progress
             binding.tvTaskProgress.text = "$progress%"

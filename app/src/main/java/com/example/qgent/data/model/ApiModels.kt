@@ -889,9 +889,9 @@ data class TaskListItemDto(
     @SerializedName("requirementSummary") val requirementSummary: String?,
     val status: String,
     val priority: String? = null,
-    /** 交付模式：DIFF_FIRST / MR_FIRST（MR_FIRST = 自动交付，Reviewer 通过后不等待人工确认） */
+    /** 交付模式：DIFF_FIRST / MR_FIRST（MR_FIRST = MR 前自动预检：自动 commit/push → Dry Run → 等待独立 CQ+1 → 自动创建 MR；仅交付路径标签） */
     @SerializedName("deliveryMode") val deliveryMode: String,
-    /** 服务端判定的交付模式理由（MR_FIRST 时展示，如"规则命中自动交付"） */
+    /** 服务端判定的交付模式理由（MR_FIRST 时展示，如"规则命中 MR 前自动预检"） */
     @SerializedName("deliveryReason") val deliveryReason: String? = null,
     @SerializedName("requirementGroup") val requirementGroup: TaskRequirementGroupDto?,
     @SerializedName("createdByUser") val createdByUser: TaskUserSummaryDto?,
@@ -912,9 +912,9 @@ data class TaskDetailDto(
     val requirement: String?,
     @SerializedName("requirementSummary") val requirementSummary: String?,
     val status: String,
-    /** 交付模式：DIFF_FIRST / MR_FIRST（MR_FIRST = 自动交付，Reviewer 通过后不等待人工确认） */
+    /** 交付模式：DIFF_FIRST / MR_FIRST（MR_FIRST = MR 前自动预检：自动 commit/push → Dry Run → 等待独立 CQ+1 → 自动创建 MR；仅交付路径标签） */
     @SerializedName("deliveryMode") val deliveryMode: String,
-    /** 服务端判定的交付模式理由（MR_FIRST 时展示，如"规则命中自动交付"） */
+    /** 服务端判定的交付模式理由（MR_FIRST 时展示，如"规则命中 MR 前自动预检"） */
     @SerializedName("deliveryReason") val deliveryReason: String? = null,
     @SerializedName("requirementGroup") val requirementGroup: TaskRequirementGroupDto?,
     @SerializedName("createdByUser") val createdByUser: TaskUserSummaryDto?,
@@ -1085,12 +1085,18 @@ data class TaskRunDetailListItemDto(
     @SerializedName("updatedAt") val updatedAt: String
 )
 
-/** 任务运行日志条目（GET /task-runs/{taskRunId}/logs，§12.2） */
+/**
+ * 任务运行日志条目（GET /task-runs/{taskRunId}/logs，§12.2）。
+ * node：产生日志的执行节点名，单节点运行为空；
+ * entryType：EXECUTION=Agent/Worker 执行日志 / SYSTEM=TaskRun 生命周期日志 / TERMINAL=结果摘要（§33.2）。
+ */
 data class TaskRunLogEntryDto(
     val id: String,
     val sequence: Long,
+    val node: String? = null,
     val content: String,
-    val timestamp: String
+    val timestamp: String,
+    @SerializedName("entryType") val entryType: String? = null
 )
 
 // ── 团队最近动态（§19.4） ──

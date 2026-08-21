@@ -111,7 +111,50 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
+            android:paddingTop="10dp"
             android:paddingBottom="16dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+                <ImageView
+                    android:id="@+id/ivNewTask"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@drawable/ic_mr"
+                    android:layout_marginStart="20dp"
+                    android:layout_marginTop="10dp"
+                    app:tint="@color/navy_light" />
+                <TextView
+                    android:id="@+id/tvNewTask"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:text="最近任务"
+                    android:textColor="@color/text_primary"
+                    android:textSize="28sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- 最近任务：横向滑动查看最近创建的 3 个任务 -->
+            <TextView
+                android:id="@+id/tvRecentTaskEmpty"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="20dp"
+                android:layout_marginVertical="15dp"
+                android:text="📋 暂无最近任务"
+                android:textColor="@color/text_secondary"
+                android:textSize="15dp" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvRecentTaskList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipToPadding="false"
+                android:nestedScrollingEnabled="false"
+                android:paddingStart="12dp"
+                android:paddingEnd="10dp"
+                android:paddingTop="4dp" />
 
             <!-- ── 任务列表区块 ── -->
             <LinearLayout

@@ -10,7 +10,7 @@ import com.example.qgent.databinding.ItemDeliveryCardBinding
 
 /** 交付物卡片的操作回调，由使用方（交付中心 / 交付物列表页）实现 */
 interface DeliveryItemAction {
-    fun onViewDiff(diffId: String)
+    fun onViewDiff(item: DeliveryItemDto)
     fun onConfirm(item: DeliveryItemDto)
     fun onReject(item: DeliveryItemDto)
     fun onRetry(item: DeliveryItemDto)
@@ -86,7 +86,7 @@ object DeliveryItemCardBuilder {
         // 查看 Diff：同项目所有成员可见（后端 GET /diffs/{id}/files 权限=项目成员），
         // 不依赖 canOpenResource 能力位（后端对部分成员返回 null 会误隐藏查看入口）
         if (!item.diffId.isNullOrBlank()) {
-            container.addView(actionButton("查看 Diff") { action.onViewDiff(item.diffId!!) })
+            container.addView(actionButton("查看 Diff") { action.onViewDiff(item) })
         }
         if (caps?.canApprove == true && !item.source?.taskId.isNullOrBlank()) {
             container.addView(actionButton("确认交付") { action.onConfirm(item) })

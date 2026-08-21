@@ -92,10 +92,10 @@
     <string name="confirm_diff">确认 Diff</string>
     <string name="reject_diff">拒绝 Diff</string>
     <string name="retry_delivery">重试交付</string>
-    <string name="task_delivery_auto">⚡ 自动交付</string>
+    <string name="task_delivery_auto">⚡ MR 前自动预检</string>
     <string name="task_delivery_code">📦 代码交付</string>
     <string name="task_no_code_change">✅ 已完成，无代码变更（未生成 Diff / MR）</string>
-    <string name="task_delivery_auto_title">自动交付 · %1$s</string>
+    <string name="task_delivery_auto_title">MR 前自动预检 · %1$s</string>
     <string name="new_repo_create">自动新建 GitHub 仓库</string>
     <string name="new_repo_name_hint">仓库名（小写字母、数字、-、_、.）</string>
     <string name="new_repo_name_required">请输入仓库名</string>

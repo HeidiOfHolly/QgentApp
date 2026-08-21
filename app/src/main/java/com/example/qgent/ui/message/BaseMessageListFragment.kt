@@ -106,7 +106,10 @@ abstract class BaseMessageListFragment : Fragment() {
         // 先本地置已读刷新样式，再调接口；接口失败不阻断 UI
         items[position] = notification.copy(isRead = true)
         adapter.notifyItemChanged(position)
-        viewLifecycleOwner.lifecycleScope.launch {
+        // 已读接口用 fragment 级 lifecycleScope：TASK_FAILED/MR_PENDING 点击会立即跳详情，
+        // view 随导航销毁会取消 viewLifecycleOwner.lifecycleScope 中的请求，服务端未标记已读，
+        // 返回列表重新拉取后红点仍在（需点两次）。fragment 在返回栈中存活，请求能跑完。
+        lifecycleScope.launch {
             userRepository.markNotificationRead(notification.id, UUID.randomUUID().toString())
         }
         // 同步刷新未读红点（可能标记的正是最后一条未读通知）
@@ -120,7 +123,8 @@ abstract class BaseMessageListFragment : Fragment() {
         if (items.none { !it.isRead }) return
         items.replaceAll { it.copy(isRead = true) }
         adapter.notifyDataSetChanged()
-        viewLifecycleOwner.lifecycleScope.launch {
+        // 与 markOneRead 同理：用 fragment 级 lifecycleScope，避免导航销毁 view 时取消已读请求
+        lifecycleScope.launch {
             userRepository.markAllNotificationsRead(UUID.randomUUID().toString())
         }
         mainViewModel.refreshUnreadInvitations()

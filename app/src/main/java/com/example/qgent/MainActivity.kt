@@ -75,6 +75,22 @@ class MainActivity : AppCompatActivity() {
                     .commit()
             }
 
+            // 抽屉关闭（退回主界面/群聊列表）：校正团队/项目上下文。
+            // 抽屉中「选了团队但未选项目」就关闭时 _currentTeam 已切换、_currentProject 仍是旧项目的旧团队，
+            // 两者不匹配会让群聊列表被清空、抽屉高亮错位；这里恢复为当前项目所属团队，保持高亮与展示一致。
+            // 仅当回到 Tab 页（群聊/任务/交付/Agent）才恢复——跳转 GitHub/个人页等非 Tab 页时不打扰。
+            binding.drawerLayout.addDrawerListener(object : androidx.drawerlayout.widget.DrawerLayout.SimpleDrawerListener() {
+                override fun onDrawerClosed(drawerView: View) {
+                    if (!::navController.isInitialized) return
+                    val dest = navController.currentDestination?.id
+                    val isTabPage = dest == R.id.chatListFragment ||
+                        dest == R.id.tasksFragment ||
+                        dest == R.id.deliveryCenterFragment ||
+                        dest == R.id.agentFragment
+                    if (isTabPage) mainViewModel.restoreContextToCurrentProject()
+                }
+            })
+
             // NavHostFragment 的视图在 onCreate 时可能尚未创建完成，
             // 延迟到视图创建并挂载后再绑定导航，避免 "does not have a NavController set"。
             binding.root.post {

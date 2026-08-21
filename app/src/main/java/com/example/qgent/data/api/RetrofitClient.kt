@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
 
     // Retrofit 要求 baseUrl 以 "/" 结尾（否则启动抛 IllegalArgumentException）
-    const val BASE_URL = "https://api.qgents.dpdns.org/api/v1/"
+    const val BASE_URL = "http://47.113.224.195:32500/api/v1/"
 
     // 请求日志：debug 只打请求行/响应行（BASIC），不再完整记录响应体——
     // BODY 级会让 OkHttp 先把大响应体（群列表/消息列表）完整读一遍再交给 Gson 解析，
@@ -72,13 +72,15 @@ object RetrofitClient {
      * （如 web 开发环境存的 http://localhost:8080/...），也提取路径段用本端 BASE_URL 重建，
      * 保证「发送方环境地址」对接收方可访问；其余完整 URL（头像 OSS 直链等）原样返回。
      */
-    fun resolveMediaUrl(path: String): String = when {
-        path.startsWith("content://") || path.startsWith("file://") -> path
-        path.startsWith("http://") || path.startsWith("https://") -> {
-            val p = runCatching { android.net.Uri.parse(path).path }.getOrNull() ?: return path
-            if (p.contains("/attachments/")) rebuildAttachmentPath(p) else path
+    fun resolveMediaUrl(path: String): String {
+        return when {
+            path.startsWith("content://") || path.startsWith("file://") -> path
+            path.startsWith("http://") || path.startsWith("https://") -> {
+                val p = runCatching { android.net.Uri.parse(path).path }.getOrNull() ?: return path
+                if (p.contains("/attachments/")) rebuildAttachmentPath(p) else path
+            }
+            else -> BASE_URL.trimEnd('/') + (if (path.startsWith("/")) path else "/$path")
         }
-        else -> BASE_URL.trimEnd('/') + (if (path.startsWith("/")) path else "/$path")
     }
 
     /** 从路径提取 /projects/... 段并用本端 BASE_URL 重建（附件统一走本端后端地址） */

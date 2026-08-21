@@ -23,14 +23,15 @@ class DeliveryItemActions(
     private val onChanged: () -> Unit
 ) : DeliveryItemAction {
 
-    override fun onViewDiff(diffId: String) = showDiffFiles(diffId)
+    override fun onViewDiff(item: DeliveryItemDto) = showDiffFiles(item)
     override fun onConfirm(item: DeliveryItemDto) = confirmDelivery(item)
     override fun onReject(item: DeliveryItemDto) = showRejectDialog(item)
     override fun onRetry(item: DeliveryItemDto) = retryDelivery(item)
 
-    /** 查看 Diff：拉取文件列表弹窗（仅文件名 + 增删统计） */
-    private fun showDiffFiles(diffId: String) {
+    /** 查看 Diff：拉取文件列表弹窗（文件名 + 增删统计），顶部带「通过 Diff / 拒绝」审核按钮 */
+    private fun showDiffFiles(item: DeliveryItemDto) {
         val projectId = mainViewModel.currentProjectId() ?: return
+        val diffId = item.diffId ?: return
         fragment.viewLifecycleOwner.lifecycleScope.launch {
             val files = diffRepo.getDiffFiles(projectId, diffId).getOrNull().orEmpty()
             val sb = StringBuilder()
@@ -39,11 +40,25 @@ class DeliveryItemActions(
                     .append("  +${f.additions} -${f.deletions}").append("\n")
             }
             if (sb.isBlank()) sb.append("（该 Diff 无文件内容）")
-            MaterialAlertDialogBuilder(fragment.requireContext())
+            val builder = MaterialAlertDialogBuilder(fragment.requireContext())
                 .setTitle("实时/交付 Diff")
                 .setMessage(sb.toString())
-                .setPositiveButton("关闭", null)
-                .show()
+            val taskId = item.source?.taskId
+            // 通过 Diff：确认交付（MR_FIRST 已自动授权；DIFF_FIRST 手动确认后进入交付）。
+            // 能力位缺省按 true 兜底（与 TaskDetailFragment 一致，防旧后端/字段缺失误隐藏审核入口）。
+            val caps = item.capabilities
+            if (taskId != null && (caps?.canApprove ?: true)) {
+                builder.setPositiveButton("通过 Diff") { _, _ ->
+                    confirmDelivery(item)
+                }
+            }
+            if (taskId != null && (caps?.canReject ?: true)) {
+                builder.setNegativeButton("拒绝") { _, _ ->
+                    showRejectDialog(item)
+                }
+            }
+            builder.setNeutralButton("关闭", null)
+            builder.show()
         }
     }
 

@@ -405,6 +405,25 @@ class MainViewModel(
         }
     }
 
+    /**
+     * 退回群聊列表时恢复抽屉上下文与当前展示内容一致：
+     * 抽屉中「选了团队但未选项目」就退回时，_currentTeam 已切换但 _currentProject 仍是旧团队的旧项目，
+     * 两者不匹配会导致群聊列表被清空（currentProjectId 在错误团队的桶中查不到）。
+     * 此时把当前团队恢复为 _currentProject 真正所属的团队（不改动项目），
+     * 使抽屉高亮与群聊列表实际展示的项目及其团队一致。
+     */
+    fun restoreContextToCurrentProject() {
+        val project = _currentProject.value
+        if (project.isEmpty()) return
+        val currentTeamId = teamNameToId[_currentTeam.value]
+        // 当前项目已属于当前团队 → 无需恢复
+        if (currentTeamId != null && projectIdsByTeam[currentTeamId]?.containsKey(project) == true) return
+        // 反查当前项目所属团队（本地已加载的项目桶；未命中时保持现状，由项目列表刷新兜底）
+        val ownerTeamId = projectIdsByTeam.entries.firstOrNull { it.value.containsKey(project) }?.key ?: return
+        val ownerTeamName = teamNameToId.entries.firstOrNull { it.value == ownerTeamId }?.key ?: return
+        setCurrentTeam(ownerTeamName, autoSelectProject = false)
+    }
+
     private fun projectsOf(team: String): List<String> =
         if (loadedProjectsTeam == team) _projects.value else emptyList()
 

@@ -25,6 +25,8 @@ import com.example.qgent.data.model.RepositoryDeliveryDto
 import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.TaskRunDetailListItemDto
 import com.example.qgent.data.model.TaskStepListItemDto
+import com.example.qgent.data.model.formatFullTime
+import com.example.qgent.data.model.parseRfc3339
 import com.example.qgent.data.model.toDiffFile
 import com.example.qgent.data.repository.DiffRepository
 import com.example.qgent.data.repository.TaskRepository
@@ -350,18 +352,30 @@ class TaskDetailFragment : Fragment() {
         }
     }
 
-    /** 查看任务运行执行日志：拉取后弹窗展示（后端日志接口 §12.2，可定位失败原因） */
+    /** 查看任务运行执行日志：拉取后弹窗展示（后端日志接口 §12.2/§33，可定位失败原因） */
     private fun showRunLogs(run: TaskRunDetailListItemDto) {
         viewLifecycleOwner.lifecycleScope.launch {
             taskRepository.getTaskRunLogs(projectId, run.id)
                 .onSuccess { logs ->
                     if (logs.isEmpty()) {
+                        // §33.2：日志为空不代表执行失败（Planner 启动阶段失败时无日志记录）
                         Toast.makeText(requireContext(), R.string.task_run_logs_empty, Toast.LENGTH_SHORT).show()
                         return@onSuccess
                     }
                     val sb = StringBuilder()
                     logs.forEach { entry ->
-                        sb.append(entry.timestamp).append("  ").append(entry.content).append("\n")
+                        // §33.2 展示约定：EXECUTION=执行日志 / SYSTEM=生命周期日志 / TERMINAL=结果摘要
+                        val nodeTag = entry.node?.takeIf { it.isNotBlank() }?.let { "[$it] " }.orEmpty()
+                        val typeTag = when (entry.entryType) {
+                            "EXECUTION" -> "执行"
+                            "SYSTEM" -> "系统"
+                            "TERMINAL" -> "结果"
+                            else -> null
+                        }?.let { "[$it] " }.orEmpty()
+                        // 时间戳为 UTC RFC3339（§2），转成本地时间展示，避免直接显示 UTC 原始串
+                        val time = formatFullTime(parseRfc3339(entry.timestamp))
+                        sb.append(time).append("  ").append(typeTag).append(nodeTag)
+                            .append(entry.content).append("\n")
                     }
                     val dialogBinding = com.example.qgent.databinding.DialogTextContentBinding.inflate(layoutInflater)
                     dialogBinding.tvContent.text = sb.toString()
@@ -484,17 +498,20 @@ class TaskDetailFragment : Fragment() {
         val noCode = mainViewModel.isNoCodeChangeTask(taskId) ||
             (detail.status == "SUCCEEDED" && !hasReviewBatch)
 
-        // 交付模式：MR_FIRST=⚡自动交付 / DIFF_FIRST=📦代码交付，deliveryReason 作为副文案（§15）。
+        // 交付模式：MR_FIRST=⚡MR 前自动预检 / DIFF_FIRST=📦代码交付，deliveryReason 作为副文案（§15）。
+        // MR_FIRST 仅任务真正进入交付阶段（待 Diff 确认及之后）才展示标签：deliveryMode 在规划阶段已持久化，
+        // 任务尚未进入交付（规划中/待执行/执行中/失败/已取消）时展示会让人误以为已自动交付成功。
         // 无代码任务不显示「代码交付」标签（未实际交付代码，只展示"无代码变更"空态）
         val mrFirst = DiffReviewRules.isMrFirst(detail.deliveryMode)
-        val showDeliveryMode = mrFirst || (detail.deliveryMode == "DIFF_FIRST" && !noCode)
+        val mrFirstInDeliveryPhase = DiffReviewRules.showDeliveryModeLabel(detail.deliveryMode, detail.status)
+        val showDeliveryMode = mrFirstInDeliveryPhase || (detail.deliveryMode == "DIFF_FIRST" && !noCode)
         binding.tvDeliveryMode.isVisible = showDeliveryMode
         binding.tvDeliveryMode.text = when {
-            mrFirst -> getString(R.string.task_delivery_auto)
+            mrFirstInDeliveryPhase -> getString(R.string.task_delivery_auto)
             detail.deliveryMode == "DIFF_FIRST" && !noCode -> getString(R.string.task_delivery_code)
             else -> ""
         }
-        if (mrFirst && !detail.deliveryReason.isNullOrBlank()) {
+        if (mrFirstInDeliveryPhase && !detail.deliveryReason.isNullOrBlank()) {
             binding.tvDeliveryMode.text = "${binding.tvDeliveryMode.text}（${detail.deliveryReason}）"
         }
         binding.tvNoCodeChange.isVisible = noCode && detail.status == "SUCCEEDED"
