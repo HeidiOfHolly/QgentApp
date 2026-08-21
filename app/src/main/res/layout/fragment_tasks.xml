@@ -122,7 +122,7 @@
                     android:layout_height="28dp"
                     android:src="@drawable/ic_mr"
                     android:layout_marginStart="20dp"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="7dp"
                     app:tint="@color/navy_light" />
                 <TextView
                     android:id="@+id/tvNewTask"
@@ -131,7 +131,7 @@
                     android:layout_marginStart="5dp"
                     android:text="最近任务"
                     android:textColor="@color/text_primary"
-                    android:textSize="28sp"
+                    android:textSize="25sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
@@ -180,7 +180,7 @@
                     android:layout_marginStart="5dp"
                     android:text="任务列表"
                     android:textColor="@color/text_primary"
-                    android:textSize="28sp"
+                    android:textSize="25sp"
                     android:textStyle="bold" />
 
                 <Space
@@ -241,7 +241,7 @@
                     android:paddingStart="5dp"
                     android:text="最近动态"
                     android:textColor="@color/charcoal"
-                    android:textSize="20dp"
+                    android:textSize="18dp"
                     android:textStyle="bold" />
             </LinearLayout>
             <TextView

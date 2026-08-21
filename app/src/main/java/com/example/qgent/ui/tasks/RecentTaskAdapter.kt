@@ -1,5 +1,6 @@
 package com.example.qgent.ui.tasks
 
+import android.text.TextUtils
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
@@ -29,6 +30,9 @@ class RecentTaskAdapter(
         val binding = holder.binding
         val context = binding.root.context
         binding.tvRecentTaskTitle.text = task.displayCode + " " + task.title
+        // 标题最多两行，超长省略（与 item_recent_task.xml 的 maxLines/ellipsize 呼应，运行时兜底）
+        binding.tvRecentTaskTitle.maxLines = 2
+        binding.tvRecentTaskTitle.ellipsize = TextUtils.TruncateAt.END
         binding.tvRecentTaskStatus.text = recentStatusText(task.status)
         binding.tvRecentTaskStatus.setTextColor(context.getColor(taskStatusColorRes(task.status)))
         binding.root.setOnClickListener { onItemClick(task) }

@@ -30,24 +30,13 @@
             android:textSize="20sp"
             android:textStyle="bold" />
 
-        <!-- TestSet（仅管理员可见，点击进 TestSet 列表） -->
-        <ImageView
-            android:id="@+id/btnTestset"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/bg_oval"
-            android:clickable="true"
-            android:contentDescription="TestSet"
-            android:focusable="true"
-            android:padding="8dp"
-            android:src="@drawable/ic_settings"
-            android:visibility="gone" />
+
 
         <!-- 通知（仅管理员可见，点击进 MR 申请消息列表） -->
         <FrameLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp">
+            >
             <ImageView
                 android:id="@+id/btnNotification"
                 android:layout_width="40dp"
@@ -56,7 +45,7 @@
                 android:clickable="true"
                 android:contentDescription="@string/notification"
                 android:focusable="true"
-                android:padding="8dp"
+                android:padding="5dp"
                 android:src="@drawable/ic_bell"
                 android:visibility="gone" />
             <!-- 未读 MR 申请红点 -->
@@ -69,6 +58,20 @@
                 android:visibility="gone"
                 tools:visibility="visible" />
         </FrameLayout>
+        <!-- TestSet（仅管理员可见，点击进 TestSet 列表） -->
+        <ImageView
+            android:id="@+id/btnTestset"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_oval"
+            android:clickable="true"
+            android:contentDescription="TestSet"
+            android:focusable="true"
+            android:padding="5dp"
+            android:layout_marginStart="8dp"
+            android:src="@drawable/ic_settings"
+            app:tint="@color/charcoal"
+            android:visibility="gone" />
     </LinearLayout>
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout

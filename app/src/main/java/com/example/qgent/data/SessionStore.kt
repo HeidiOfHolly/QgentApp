@@ -61,8 +61,19 @@ object SessionStore {
         requirePrefs().edit().putString(KEY_USER_AVATAR, avatarUrl).apply()
     }
 
+    /**
+     * 退出登录 / 会话过期：仅清除会话数据（token + 用户信息），
+     * 保留「记住密码」的邮箱与密码，使下次打开登录页仍可回填账号密码。
+     */
     fun clear() {
-        requirePrefs().edit().clear().apply()
+        val prefs = requirePrefs()
+        val rememberedEmail = prefs.getString(KEY_REMEMBERED_EMAIL, null)
+        val rememberedPassword = prefs.getString(KEY_REMEMBERED_PASSWORD, null)
+        val editor = prefs.edit().clear()
+        // 重新写回记住的凭据（仅当存在，避免无谓写入）
+        if (rememberedEmail != null) editor.putString(KEY_REMEMBERED_EMAIL, rememberedEmail)
+        if (rememberedPassword != null) editor.putString(KEY_REMEMBERED_PASSWORD, rememberedPassword)
+        editor.apply()
     }
 
     /** 刷新后仅更新 token（不动用户信息，刷新响应可能不含 user 字段） */
@@ -85,7 +96,9 @@ object SessionStore {
 
     fun isLoggedIn(): Boolean = !accessToken().isNullOrEmpty()
 
-    fun rememberedEmail(): String? = requirePrefs().getString(KEY_REMEMBERED_EMAIL, null)
+    /** 记住的邮箱；未记住或为空返回 null（登录页据此判断是否回填并勾选「记住密码」） */
+    fun rememberedEmail(): String? =
+        requirePrefs().getString(KEY_REMEMBERED_EMAIL, null)?.takeIf { it.isNotBlank() }
 
     fun saveRememberedEmail(email: String) {
         requirePrefs().edit().putString(KEY_REMEMBERED_EMAIL, email).apply()

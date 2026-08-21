@@ -61,6 +61,8 @@ class ChatSettingsFragment : Fragment() {
     }
     private val userRepository: UserRepository
         get() = (requireActivity().application as QgentApp).container.userRepository
+    /** 项目仓库加载协程：loadGroupData 会被多次调用，取消旧加载避免竞态导致同一仓库重复渲染 */
+    private var loadReposJob: kotlinx.coroutines.Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -348,13 +350,18 @@ class ChatSettingsFragment : Fragment() {
     /** dp 转 px */
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    /** 绑定仓库：展示当前项目绑定的全部仓库（getProjectRepositories，§6.4） */
+    /** 项目仓库：展示当前项目绑定的全部仓库（getProjectRepositories，§6.4）。
+     *  loadGroupData 会被多次调用（onViewCreated / loadAdminPermission / 成员变更后），
+     *  取消上一次在途加载，避免慢的旧请求后返回把仓库追加到新结果之后造成重复展示。 */
     private fun loadProjectRepositories(projectId: String) {
+        loadReposJob?.cancel()
         binding.containerRepositories.removeAllViews()
         binding.tvRepositoriesEmpty.isVisible = false
-        viewLifecycleOwner.lifecycleScope.launch {
+        loadReposJob = viewLifecycleOwner.lifecycleScope.launch {
             val repos = (requireActivity().application as QgentApp).container.githubRepository
                 .getProjectRepositories(projectId).getOrNull().orEmpty()
+            // 仅当仍是最近一次加载（自身 job 未被更新替换）时渲染，避免慢的旧请求后到导致重复
+            if (loadReposJob != kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) return@launch
             binding.tvRepositoriesEmpty.isVisible = repos.isEmpty()
             repos.forEach { repo ->
                 val row = layoutInflater.inflate(R.layout.item_bound_repo_row, binding.containerRepositories, false) as TextView
@@ -530,6 +537,7 @@ class ChatSettingsFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        loadReposJob?.cancel()
         _binding = null
     }
 }
