@@ -101,9 +101,11 @@ class DeliveryItemDetailFragment : Fragment() {
     /**
      * 统一创建 MR 自动预检流程（计划 §4.2/§4.3）：
      * 按 Task 查全部仓库预检状态，按状态展示操作按钮：
-     * - 无预检 / FAILED / CQ_REJECTED → 显示「创建 MR / 重新预检」（申请预检，启动 Dry Run）
+     * - 无预检记录 → 只读提示（MR_FIRST 交付后后端自动发起预检，不提供手动「创建 MR」）
      * - REQUESTED/DRY_RUN_QUEUED/DRY_RUN_RUNNING → 「预检中」，禁用
      * - WAITING_CQ → 显示「CQ+1」
+     * - CQ_REJECTED → 显示「重新预检」
+     * - FAILED/STALE → 显示「重试预检」
      * - CREATING_MR → 「正在创建 MR」，禁用
      * - MR_CREATED → 显示真实 MR 链接，无按钮
      */
@@ -117,13 +119,10 @@ class DeliveryItemDetailFragment : Fragment() {
             val status = taskRepository.getTaskMergeRequestPreflight(projectId, taskId)
                 .getOrNull()?.firstOrNull()   // 交付物详情按首个仓库展示
             if (status == null) {
+                // MR_FIRST 交付后由后端自动发起 Dry Run（§27.10/§46），前端无需手动「创建 MR」；
+                // 未查到预检记录时只读提示，交由后端自动推进（SSE preflight.updated 到达后自动刷新）
                 binding.tvPreflightStatus.isVisible = true
-                binding.tvPreflightStatus.text = "尚未创建 MR，可申请预检"
-                binding.btnCreateMr.isVisible = true
-                binding.btnCreateMr.text = "创建 MR"
-                binding.btnCreateMr.setOnClickListener {
-                    requestPreflight(projectId, taskId, itemDto)
-                }
+                binding.tvPreflightStatus.text = "等待后端自动发起预检"
                 return@launch
             }
             // 真实 MR 已创建 → 展示链接，无操作按钮

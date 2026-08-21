@@ -157,7 +157,7 @@
                         android:layout_height="wrap_content"
                         android:columnCount="4" />
 
-                    <!-- 绑定仓库：当前群关联的仓库列表（复用项目仓库接口） -->
+                    <!-- 项目仓库：当前项目绑定的全部仓库（getProjectRepositories） -->
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
@@ -168,7 +168,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="绑定仓库"
+                        android:text="项目仓库"
                         android:textColor="@color/text_secondary"
                         android:textSize="14sp"
                         android:textStyle="bold" />

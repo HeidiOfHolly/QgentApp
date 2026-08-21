@@ -329,11 +329,13 @@ class ChatSettingsFragment : Fragment() {
             return
         }
 
+        // 绑定仓库区块：展示当前项目绑定的全部仓库（不依赖当前群）
+        loadProjectRepositories(projectId)
+
         viewLifecycleOwner.lifecycleScope.launch {
             chatRepo.getGroup(projectId, groupId).onSuccess { dto ->
                 binding.tvGroupName.text = dto.title
                 groupCreatorId = dto.createdBy
-                loadBoundRepositories(projectId, dto.repositoryIds.orEmpty())
             }
             chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
                 Log.d("ChatSettings", "getMembers raw: $dtos")
@@ -346,22 +348,17 @@ class ChatSettingsFragment : Fragment() {
     /** dp 转 px */
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    /** 绑定仓库：群 repositoryIds → 项目仓库映射 → 填充列表（复用 getProjectRepositories） */
-    private fun loadBoundRepositories(projectId: String, repositoryIds: List<String>) {
+    /** 绑定仓库：展示当前项目绑定的全部仓库（getProjectRepositories，§6.4） */
+    private fun loadProjectRepositories(projectId: String) {
         binding.containerRepositories.removeAllViews()
-        if (repositoryIds.isEmpty()) {
-            binding.tvRepositoriesEmpty.isVisible = true
-            return
-        }
+        binding.tvRepositoriesEmpty.isVisible = false
         viewLifecycleOwner.lifecycleScope.launch {
-            val nameById = (requireActivity().application as QgentApp).container.githubRepository
+            val repos = (requireActivity().application as QgentApp).container.githubRepository
                 .getProjectRepositories(projectId).getOrNull().orEmpty()
-                .associate { it.id to (it.displayName.ifBlank { it.fullName }) }
-            val names = repositoryIds.mapNotNull { nameById[it] }
-            binding.tvRepositoriesEmpty.isVisible = names.isEmpty()
-            names.forEach { name ->
+            binding.tvRepositoriesEmpty.isVisible = repos.isEmpty()
+            repos.forEach { repo ->
                 val row = layoutInflater.inflate(R.layout.item_bound_repo_row, binding.containerRepositories, false) as TextView
-                row.text = "• $name"
+                row.text = "• ${repo.displayName.ifBlank { repo.fullName }}"
                 binding.containerRepositories.addView(row)
             }
         }
