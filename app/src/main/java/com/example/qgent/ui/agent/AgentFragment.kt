@@ -17,8 +17,12 @@ import com.example.qgent.model.MemoryItem
 import com.example.qgent.model.SkillItem
 import com.example.qgent.model.toMemoryItem
 import com.example.qgent.model.toSkillItem
+import com.example.qgent.ui.personal.setInlineSkeletonLoading
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -74,6 +78,12 @@ class AgentFragment : Fragment() {
             // 展示全部 ACTIVE Agent（角色已收敛为 4 种执行角色）
             agentAdapter.submitList(agents.filter { it.status.name != "ARCHIVED" })
         }
+        mainViewModel.agentsLoading.observe(viewLifecycleOwner) { loading ->
+            setInlineSkeletonLoading(
+                binding.rvAgents,
+                loading && mainViewModel.agents.value.orEmpty().isEmpty()
+            )
+        }
 
         // 「+ 新建」→ 新建 Agent 表单（任何人都可创建自己的 PRIVATE Agent）
         binding.tvAddAgent.setOnClickListener {
@@ -119,7 +129,7 @@ class AgentFragment : Fragment() {
             renderMemoryPreview(approvedMemories)
 
             val publishedSkills = skillRepo.getSkills(projectId).getOrNull().orEmpty()
-                .filter { it.status == "PUBLISHED" }
+                .filter { it.status == "PUBLISHED" && it.visibility != "PRIVATE" }
                 .take(3)
                 .map { it.toSkillItem() }
             renderSkillPreview(publishedSkills)
@@ -170,10 +180,14 @@ class AgentFragment : Fragment() {
         val agents = mainViewModel.agents.value.orEmpty()
         if (agents.isEmpty()) return
         val app = requireActivity().application as QgentApp
-        val working = mutableSetOf<String>()
-        agents.forEach { agent ->
-            val runs = app.container.taskRepository.getTaskRuns(projectId, agent.id).getOrNull().orEmpty()
-            if (runs.any { it.status in ACTIVE_RUN_STATUSES }) working.add(agent.id)
+        // 并发拉取各 Agent 的 task-runs（原逐个串行，N 个 Agent 耗时累加；并发后取最慢一个）
+        val working = coroutineScope {
+            agents.map { agent ->
+                async {
+                    val runs = app.container.taskRepository.getTaskRuns(projectId, agent.id).getOrNull().orEmpty()
+                    if (runs.any { it.status in ACTIVE_RUN_STATUSES }) agent.id else null
+                }
+            }.awaitAll().filterNotNull().toMutableSet()
         }
         agentAdapter.setWorkingIds(working)
     }

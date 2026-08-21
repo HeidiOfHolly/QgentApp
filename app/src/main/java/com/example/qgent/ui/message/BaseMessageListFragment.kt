@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.NotificationDto
@@ -58,6 +59,8 @@ abstract class BaseMessageListFragment : Fragment() {
 
     private val items = mutableListOf<NotificationDto>()
     private lateinit var adapter: NotificationAdapter
+    private var notificationLoadGeneration = 0
+    private var hasLoadedNotifications = false
 
     /** 已拒绝的团队邀请通知 id：后端无“拒绝”接口，本地标记后不再展示、不再弹窗 */
     private val rejectedInvitationIds = mutableSetOf<String>()
@@ -68,6 +71,12 @@ abstract class BaseMessageListFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentMessageListBinding.inflate(inflater, container, false)
+        val loadingSize = (56 * resources.displayMetrics.density).toInt()
+        Glide.with(this)
+            .asGif()
+            .load(R.drawable.blue_robot_loading_animation)
+            .override(loadingSize, loadingSize)
+            .into(_binding!!.ivMessageListLoading)
         return binding.root
     }
 
@@ -87,17 +96,30 @@ abstract class BaseMessageListFragment : Fragment() {
     }
 
     private fun loadNotifications() {
+        val generation = ++notificationLoadGeneration
+        hasLoadedNotifications = false
+        binding.tvEmpty.isVisible = false
+        binding.messageListLoadingState.isVisible = items.isEmpty()
         viewLifecycleOwner.lifecycleScope.launch {
-            userRepository.getNotifications().onSuccess { list ->
-                items.clear()
-                items.addAll(list.filter(notificationsFilter))
-                adapter.notifyDataSetChanged()
-                updateEmptyState()
-                // 刷新完成 → 收起下拉刷新动画
-                binding.swipeRefresh.isRefreshing = false
-            }.onFailure { e ->
-                binding.swipeRefresh.isRefreshing = false
-                Toast.makeText(requireContext(), e.message ?: getString(R.string.load_failed), Toast.LENGTH_SHORT).show()
+            try {
+                userRepository.getNotifications().onSuccess { list ->
+                    // 任务通知页初始化会立即按项目条件刷新一次；旧请求晚到时不能覆盖新筛选结果。
+                    if (generation != notificationLoadGeneration) return@onSuccess
+                    items.clear()
+                    items.addAll(list.filter(notificationsFilter))
+                    adapter.notifyDataSetChanged()
+                    hasLoadedNotifications = true
+                }.onFailure { e ->
+                    if (generation == notificationLoadGeneration) {
+                        Toast.makeText(requireContext(), e.message ?: getString(R.string.load_failed), Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } finally {
+                if (generation == notificationLoadGeneration) {
+                    binding.swipeRefresh.isRefreshing = false
+                    binding.messageListLoadingState.isVisible = false
+                    updateEmptyState()
+                }
             }
         }
     }
@@ -284,7 +306,8 @@ abstract class BaseMessageListFragment : Fragment() {
     }
 
     private fun updateEmptyState() {
-        binding.tvEmpty.isVisible = items.isEmpty()
+        binding.tvEmpty.isVisible = hasLoadedNotifications && items.isEmpty() &&
+            !binding.messageListLoadingState.isVisible
     }
 
     private inner class NotificationAdapter :

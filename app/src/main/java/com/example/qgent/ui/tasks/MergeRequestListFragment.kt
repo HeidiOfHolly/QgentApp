@@ -17,6 +17,7 @@ import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.sse.ProjectEventStream
 import com.example.qgent.data.sse.SseEventType
 import com.example.qgent.databinding.FragmentMrListBinding
+import com.example.qgent.ui.personal.setSkeletonLoading
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -35,6 +36,9 @@ class MergeRequestListFragment : Fragment() {
     }
     private val githubRepository: GitHubRepository
         get() = (requireActivity().application as QgentApp).container.githubRepository
+
+    /** 首次加载是否完成（onDone 回调或有数据时置位）：控制骨架屏显示，事件刷新不重复闪骨架 */
+    private var mrLoaded = false
 
     /** 项目级 SSE 事件流：MR/分支/交付/仓库状态事件到达 → 刷新 MR 列表与仓库名映射 */
     private val eventStream: ProjectEventStream
@@ -73,8 +77,11 @@ class MergeRequestListFragment : Fragment() {
         binding.rvMrList.adapter = mrAdapter
 
         taskListViewModel.uiState.observe(viewLifecycleOwner) { state ->
+            if (state.mergeRequests.isNotEmpty()) mrLoaded = true
             mrAdapter.submitList(state.mergeRequests)
-            binding.tvEmpty.isVisible = state.mergeRequests.isEmpty()
+            // 骨架屏：首次加载完成前且无数据时显示；有数据/加载完成（onDone）隐藏
+            setSkeletonLoading(binding.viewSkeleton.root, !mrLoaded && state.mergeRequests.isEmpty())
+            binding.tvEmpty.isVisible = state.mergeRequests.isEmpty() && mrLoaded
             state.error?.let {
                 Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
                 taskListViewModel.consumeError()
@@ -85,7 +92,7 @@ class MergeRequestListFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         val projectId = mainViewModel.currentProjectId() ?: return
-        taskListViewModel.loadMergeRequestsForList(projectId)
+        taskListViewModel.loadMergeRequestsForList(projectId, onDone = { mrLoaded = true })
         loadRepoNameMap(projectId)
         startEventStream(projectId)
     }

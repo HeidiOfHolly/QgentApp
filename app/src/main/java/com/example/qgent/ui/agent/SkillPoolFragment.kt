@@ -21,13 +21,14 @@ import com.example.qgent.data.repository.SkillRepository
 import com.example.qgent.databinding.FragmentSkillPoolBinding
 import com.example.qgent.model.SkillItem
 import com.example.qgent.model.toSkillItem
+import com.example.qgent.ui.personal.setInlineSkeletonLoading
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
- * Skill 池：审核队列（PENDING_REVIEW）+ 共享池（PUBLISHED）。
- * - 新建（顶部「+ 新建」，创建草稿后自行提交审核）；
+ * Skill 池：审核队列（PENDING_REVIEW）+ 私有池 + 共享池（PUBLISHED）。
+ * - 新建（顶部「+ 新建」，选择私有或项目共享；共享草稿会自动提交审核）；
  * - 点击条目：弹纯文本详情（ResourceDetailSheet）；
  * - 审核队列条目：长按弹出 通过/拒绝（仅项目 Admin）；
  * - 共享池条目：长按归档删除（仅项目 Admin）。
@@ -57,10 +58,11 @@ class SkillPoolFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.btnBack.setOnClickListener { findNavController().popBackStack() }
-        // 新建 Skill：输入名称/内容创建草稿（创建后可在审核队列/详情提交审核）
+        // 新建 Skill：选择私有或项目共享；普通成员创建的共享草稿会自动提交审核。
         binding.btnAddSkill.setOnClickListener { showCreateSkillDialog() }
 
         binding.rvReviewList.layoutManager = LinearLayoutManager(requireContext())
+        binding.rvPrivateList.layoutManager = LinearLayoutManager(requireContext())
         binding.rvApprovedList.layoutManager = LinearLayoutManager(requireContext())
 
         loadSkills()
@@ -82,36 +84,69 @@ class SkillPoolFragment : Fragment() {
     private fun loadSkills() {
         val projectId = mainViewModel.currentProjectId() ?: return
         viewLifecycleOwner.lifecycleScope.launch {
+            val initialLoad = binding.rvReviewList.adapter == null &&
+                binding.rvPrivateList.adapter == null && binding.rvApprovedList.adapter == null
+            if (initialLoad) {
+                binding.tvReviewEmpty.isVisible = false
+                binding.tvPrivateEmpty.isVisible = false
+                binding.tvApprovedEmpty.isVisible = false
+                setInlineSkeletonLoading(binding.rvReviewList, true)
+                setInlineSkeletonLoading(binding.rvPrivateList, true)
+                setInlineSkeletonLoading(binding.rvApprovedList, true)
+            }
             // 先确认审核权限再渲染列表，避免权限未就绪时（或普通成员）误显示 通过/拒绝 按钮
-            isAdmin = resolveAdminRole()
-            skillRepo.getSkills(projectId).onSuccess { dtos ->
-                val pending = dtos.filter { it.status == "PENDING_REVIEW" }.map { it.toSkillItem() }
-                val approved = dtos.filter { it.status == "PUBLISHED" }.map { it.toSkillItem() }
-                render(pending, approved)
-            }.onFailure {
-                render(emptyList(), emptyList())
+            try {
+                isAdmin = resolveAdminRole()
+                skillRepo.getSkills(projectId).onSuccess { dtos ->
+                    val pending = dtos.filter {
+                        it.visibility != "PRIVATE" && it.status == "PENDING_REVIEW"
+                    }.map { it.toSkillItem() }
+                    val privateSkills = dtos.filter {
+                        it.visibility == "PRIVATE" && it.status == "PUBLISHED"
+                    }.map { it.toSkillItem() }
+                    val sharedSkills = dtos.filter {
+                        it.visibility != "PRIVATE" && it.status == "PUBLISHED"
+                    }.map { it.toSkillItem() }
+                    render(pending, privateSkills, sharedSkills)
+                }.onFailure {
+                    render(emptyList(), emptyList(), emptyList())
+                }
+            } finally {
+                if (initialLoad) {
+                    setInlineSkeletonLoading(binding.rvReviewList, false)
+                    setInlineSkeletonLoading(binding.rvPrivateList, false)
+                    setInlineSkeletonLoading(binding.rvApprovedList, false)
+                }
             }
         }
     }
 
-    private fun render(pending: List<SkillItem>, approved: List<SkillItem>) {
+    private fun render(
+        pending: List<SkillItem>,
+        privateSkills: List<SkillItem>,
+        sharedSkills: List<SkillItem>
+    ) {
         // 审核队列：点击弹详情卡片，右上角带 通过/拒绝（Admin 可操作；非 Admin 只读）
         binding.rvReviewList.adapter = PoolResourceAdapter(pending) { item ->
             showReviewSheet(item)
         }
         binding.tvReviewEmpty.isVisible = pending.isEmpty()
 
+        binding.tvPrivateCount.text = "共 ${privateSkills.size} 条"
+        binding.rvPrivateList.adapter = PoolResourceAdapter(privateSkills) { item -> onItemClick(item) }
+        binding.tvPrivateEmpty.isVisible = privateSkills.isEmpty()
+
         // 共享池：点击看纯文本详情；长按归档删除（仅 Admin）
-        binding.tvApprovedCount.text = "共 ${approved.size} 条"
-        val approvedAdapter = PoolResourceAdapter(approved) { item -> onItemClick(item) }
+        binding.tvApprovedCount.text = "共 ${sharedSkills.size} 条"
+        val approvedAdapter = PoolResourceAdapter(sharedSkills) { item -> onItemClick(item) }
         approvedAdapter.setOnItemLongClick { item, _ ->
             if (isAdmin) confirmDeleteSkill(item)
         }
         binding.rvApprovedList.adapter = approvedAdapter
-        binding.tvApprovedEmpty.isVisible = approved.isEmpty()
+        binding.tvApprovedEmpty.isVisible = sharedSkills.isEmpty()
     }
 
-    /** 新建 Skill 弹窗：名称必填 + 内容可选（创建草稿后可在审核队列处理） */
+    /** 新建 Skill 弹窗：名称必填、内容可选，并选择仅自己可见或项目共享。 */
     private fun showCreateSkillDialog() {
         val projectId = mainViewModel.currentProjectId() ?: run {
             Toast.makeText(requireContext(), "请先选择项目", Toast.LENGTH_SHORT).show()
@@ -128,19 +163,50 @@ class SkillPoolFragment : Fragment() {
                     Toast.makeText(requireContext(), "请输入 Skill 名称", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
-                createSkill(projectId, name, dialogBinding.etContent.text.toString().trim().ifEmpty { null })
+                val visibility = when (dialogBinding.rgVisibility.checkedRadioButtonId) {
+                    R.id.rbProjectShared -> "PROJECT_SHARED"
+                    else -> "PRIVATE"
+                }
+                createSkill(
+                    projectId = projectId,
+                    name = name,
+                    content = dialogBinding.etContent.text.toString().trim().ifEmpty { null },
+                    visibility = visibility
+                )
             }
             .show()
     }
 
-    private fun createSkill(projectId: String, name: String, content: String?) {
+    private fun createSkill(projectId: String, name: String, content: String?, visibility: String) {
         viewLifecycleOwner.lifecycleScope.launch {
-            skillRepo.createSkill(projectId, CreateSkillRequest(name = name, content = content), UUID.randomUUID().toString())
-                .onSuccess {
-                    Toast.makeText(requireContext(), "已创建 Skill（草稿）", Toast.LENGTH_SHORT).show()
+            skillRepo.createSkill(
+                projectId,
+                CreateSkillRequest(name = name, content = content, visibility = visibility),
+                UUID.randomUUID().toString()
+            ).onSuccess { skill ->
+                // The server decides whether a shared Skill is published or starts as a draft.
+                if (visibility == "PROJECT_SHARED" && skill.status == "DRAFT") {
+                    skillRepo.submitReview(projectId, skill.id, UUID.randomUUID().toString())
+                        .onSuccess {
+                            Toast.makeText(requireContext(), "已创建并提交审核", Toast.LENGTH_SHORT).show()
+                            loadSkills()
+                        }
+                        .onFailure {
+                            Toast.makeText(
+                                requireContext(),
+                                "Skill 已创建，但提交审核失败：${it.message}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            loadSkills()
+                        }
+                } else {
+                    val message = if (visibility == "PRIVATE") "已创建私有 Skill" else "已创建项目共享 Skill"
+                    Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
                     loadSkills()
                 }
-                .onFailure { Toast.makeText(requireContext(), "创建失败：${it.message}", Toast.LENGTH_SHORT).show() }
+            }.onFailure {
+                Toast.makeText(requireContext(), "创建失败：${it.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

@@ -24,14 +24,21 @@ class GroupAvatarView @JvmOverloads constructor(
 ) : ViewGroup(context, attrs) {
 
     private var avatars: List<String> = emptyList()
+    private var hasRendered = false
 
-    /** 设置成员头像 URL 列表（自动取前 9 个并重建网格） */
+    /** 设置成员头像 URL 列表（成员未变化时复用现有网格） */
     fun setAvatars(urls: List<String>) {
-        avatars = urls.filter { it.isNotBlank() }.take(MAX_AVATARS)
+        val normalized = urls.filter { it.isNotBlank() }.take(MAX_AVATARS)
+        if (hasRendered && normalized == avatars) return
+        avatars = normalized
+        hasRendered = true
         rebuild()
     }
 
     private fun rebuild() {
+        for (index in 0 until childCount) {
+            (getChildAt(index) as? ImageView)?.let { Glide.with(it).clear(it) }
+        }
         removeAllViews()
         val count = avatars.size.coerceIn(1, MAX_AVATARS) // 至少 1 格
         val gapPx = gapPx()
@@ -39,13 +46,14 @@ class GroupAvatarView @JvmOverloads constructor(
             val iv = ImageView(context).apply {
                 // 格子白底：空位也是白色格子，与列表行背景区分（边框感）
                 setBackgroundColor(Color.WHITE)
-                setImageDrawable(null)
+                setImageResource(R.drawable.ic_avatar_default)
             }
             addView(iv)
             if (index < avatars.size) {
                 Glide.with(iv)
                     .load(authedUrl(avatars[index]))
                     .centerCrop()
+                    .dontAnimate()
                     .placeholder(R.drawable.ic_avatar_default)
                     .error(R.drawable.ic_avatar_default)
                     .into(iv)

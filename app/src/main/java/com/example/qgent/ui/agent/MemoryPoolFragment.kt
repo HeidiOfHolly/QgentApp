@@ -18,6 +18,7 @@ import com.example.qgent.data.repository.MemoryRepository
 import com.example.qgent.databinding.FragmentMemoryPoolBinding
 import com.example.qgent.model.MemoryItem
 import com.example.qgent.model.toMemoryItem
+import com.example.qgent.ui.personal.setInlineSkeletonLoading
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -78,14 +79,28 @@ class MemoryPoolFragment : Fragment() {
     private fun loadMemories() {
         val projectId = mainViewModel.currentProjectId() ?: return
         viewLifecycleOwner.lifecycleScope.launch {
+            val initialLoad = binding.rvReviewList.adapter == null && binding.rvApprovedList.adapter == null
+            if (initialLoad) {
+                binding.tvReviewEmpty.isVisible = false
+                binding.tvApprovedEmpty.isVisible = false
+                setInlineSkeletonLoading(binding.rvReviewList, true)
+                setInlineSkeletonLoading(binding.rvApprovedList, true)
+            }
             // 先确认审核权限再渲染列表，避免权限未就绪时（或普通成员）误显示 通过/拒绝 按钮
-            isAdmin = resolveAdminRole()
-            memoryRepo.getMemories(projectId).onSuccess { dtos ->
-                val pending = dtos.filter { it.status == "PENDING_REVIEW" }.map { it.toMemoryItem() }
-                val approved = dtos.filter { it.status == "APPROVED" }.map { it.toMemoryItem() }
-                render(pending, approved)
-            }.onFailure {
-                render(emptyList(), emptyList())
+            try {
+                isAdmin = resolveAdminRole()
+                memoryRepo.getMemories(projectId).onSuccess { dtos ->
+                    val pending = dtos.filter { it.status == "PENDING_REVIEW" }.map { it.toMemoryItem() }
+                    val approved = dtos.filter { it.status == "APPROVED" }.map { it.toMemoryItem() }
+                    render(pending, approved)
+                }.onFailure {
+                    render(emptyList(), emptyList())
+                }
+            } finally {
+                if (initialLoad) {
+                    setInlineSkeletonLoading(binding.rvReviewList, false)
+                    setInlineSkeletonLoading(binding.rvApprovedList, false)
+                }
             }
         }
     }

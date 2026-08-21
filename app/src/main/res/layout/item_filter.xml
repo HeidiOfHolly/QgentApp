@@ -14,7 +14,7 @@
     android:paddingTop="8dp"
     android:paddingEnd="8dp"
     android:paddingBottom="8dp"
-    android:elevation="5dp">
+    android:elevation="1dp">
 
     <TextView
         android:id="@+id/tvFilterName"

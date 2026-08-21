@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 轻量加载占位（骨架屏）：列表加载中显示，数据到位后隐藏 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="16dp"
+    android:paddingTop="4dp"
+    android:paddingEnd="16dp">
+
+    <include layout="@layout/item_skeleton_row" />
+    <include layout="@layout/item_skeleton_row" />
+    <include layout="@layout/item_skeleton_row" />
+    <include layout="@layout/item_skeleton_row" />
+    <include layout="@layout/item_skeleton_row" />
+    <include layout="@layout/item_skeleton_row" />
+</LinearLayout>

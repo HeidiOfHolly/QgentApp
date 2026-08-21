@@ -79,15 +79,16 @@
                 android:orientation="horizontal"
                 android:padding="16dp">
 
-                <ImageView
+                <com.google.android.material.imageview.ShapeableImageView
                     android:id="@+id/ivTeamAvatar"
                     android:layout_width="72dp"
                     android:layout_height="72dp"
-                    android:background="@drawable/bg_oval"
-                    android:backgroundTint="@color/deep_blue"
                     android:contentDescription="@string/project_avatar"
-                    android:padding="14dp"
-                    android:src="@drawable/ic_group"
+                    android:scaleType="centerCrop"
+                    app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.App.Avatar"
+                    app:srcCompat="@drawable/ic_group"
+                    app:strokeColor="@color/white"
+                    app:strokeWidth="2dp"
                     app:tint="@color/blue_tint" />
 
                 <LinearLayout

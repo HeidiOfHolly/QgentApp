@@ -1,5 +1,6 @@
 package com.example.qgent.ui.personal
 
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
@@ -62,8 +63,12 @@ class ProjectAdapter(
         // 项目头像（§31.1）：有则显示，无则默认文件夹图标
         val avatarUrl = avatarMap[items[position]]
         if (avatarUrl.isNullOrBlank()) {
+            holder.binding.ivProjectAvatar.imageTintList = ColorStateList.valueOf(
+                ContextCompat.getColor(holder.binding.root.context, R.color.text_secondary)
+            )
             holder.binding.ivProjectAvatar.setImageResource(R.drawable.ic_folder)
         } else {
+            holder.binding.ivProjectAvatar.imageTintList = null
             Glide.with(holder.binding.ivProjectAvatar)
                 .load(RetrofitClient.resolveMediaUrl(avatarUrl))
                 .centerCrop()

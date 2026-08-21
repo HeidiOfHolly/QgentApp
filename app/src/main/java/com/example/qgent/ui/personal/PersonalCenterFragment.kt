@@ -48,6 +48,12 @@ class PersonalCenterFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentPersonalCenterBinding.inflate(inflater, container, false)
+        val loadingSize = (56 * resources.displayMetrics.density).toInt()
+        Glide.with(this)
+            .asGif()
+            .load(R.drawable.blue_robot_loading_animation)
+            .override(loadingSize, loadingSize)
+            .into(_binding!!.ivProjectsLoading)
         return binding.root
     }
 
@@ -112,7 +118,7 @@ class PersonalCenterFragment : Fragment() {
 
         // 切换团队加载项目期间，抽屉中央显示 ProgressBar
         mainViewModel.projectsLoading.observe(viewLifecycleOwner) { loading ->
-            binding.progressBar.isVisible = loading
+            binding.projectLoadingState.isVisible = loading
         }
 
         // 当前项目变化：右列项目高亮同步

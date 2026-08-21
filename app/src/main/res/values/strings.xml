@@ -1,6 +1,16 @@
 <resources>
     <string name="app_name">Qgent</string>
     <string name="splash_loading">正在加载…</string>
+    <string name="project_loading">正在加载项目…</string>
+    <string name="chat_list_loading">正在加载群聊…</string>
+    <string name="message_loading">正在加载消息…</string>
+    <string name="delivery_loading">正在加载交付信息…</string>
+    <string name="delivery_empty_title">还没有交付物</string>
+    <string name="delivery_empty_hint">任务完成并通过审核后，交付物会显示在这里</string>
+    <string name="delivery_unavailable_title">交付物暂不可用</string>
+    <string name="delivery_unavailable_hint">请稍后下拉刷新重试</string>
+    <string name="merge_request_empty_title">还没有合并请求</string>
+    <string name="merge_request_empty_hint">任务产生合并请求后，会在这里集中展示</string>
 
     <!-- 登录页 -->
     <string name="login_subtitle">登录 Qgent，进入你的团队工作空间</string>
@@ -67,6 +77,7 @@
 
     <string name="nav_chat">群聊</string>
     <string name="group_tag_main">总群</string>
+    <string name="group_tag_requirement">需求群</string>
     <string name="cancel_quote">取消引用</string>
     <string name="quote_prefix">回复 %1$s</string>
     <string name="message_copied">已复制</string>

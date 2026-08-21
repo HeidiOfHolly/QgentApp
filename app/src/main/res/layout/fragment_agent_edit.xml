@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurfaceVariant"
+    android:background="@color/off_white"
     android:fillViewport="true">
 
     <LinearLayout
@@ -115,10 +115,10 @@
                     android:orientation="vertical">
 
                     <RadioButton
-                        android:id="@+id/rbPlanner"
+                        android:id="@+id/rbGeneral"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="规划者（PLANNER）" />
+                        android:text="通用（GENERAL）" />
 
                     <RadioButton
                         android:id="@+id/rbDeveloper"

@@ -41,6 +41,7 @@ import com.example.qgent.model.GroupType
 import com.example.qgent.databinding.BottomSheetCreateGroupBinding
 import com.example.qgent.databinding.DialogSearchMessagesBinding
 import com.example.qgent.databinding.FragmentChatSettingsBinding
+import com.example.qgent.ui.personal.setInlineSkeletonLoading
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -335,14 +336,20 @@ class ChatSettingsFragment : Fragment() {
         loadProjectRepositories(projectId)
 
         viewLifecycleOwner.lifecycleScope.launch {
-            chatRepo.getGroup(projectId, groupId).onSuccess { dto ->
-                binding.tvGroupName.text = dto.title
-                groupCreatorId = dto.createdBy
-            }
-            chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
-                Log.d("ChatSettings", "getMembers raw: $dtos")
-                lastRawMembers = dtos
-                renderMembers(mergeAgents(projectId, groupId, dtos))
+            val initialLoad = binding.containerMembers.childCount == 0
+            if (initialLoad) setInlineSkeletonLoading(binding.containerMembers, true)
+            try {
+                chatRepo.getGroup(projectId, groupId).onSuccess { dto ->
+                    binding.tvGroupName.text = dto.title
+                    groupCreatorId = dto.createdBy
+                }
+                chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
+                    Log.d("ChatSettings", "getMembers raw: $dtos")
+                    lastRawMembers = dtos
+                    renderMembers(mergeAgents(projectId, groupId, dtos))
+                }
+            } finally {
+                if (initialLoad) setInlineSkeletonLoading(binding.containerMembers, false)
             }
         }
     }
@@ -355,18 +362,28 @@ class ChatSettingsFragment : Fragment() {
      *  取消上一次在途加载，避免慢的旧请求后返回把仓库追加到新结果之后造成重复展示。 */
     private fun loadProjectRepositories(projectId: String) {
         loadReposJob?.cancel()
-        binding.containerRepositories.removeAllViews()
-        binding.tvRepositoriesEmpty.isVisible = false
         loadReposJob = viewLifecycleOwner.lifecycleScope.launch {
-            val repos = (requireActivity().application as QgentApp).container.githubRepository
-                .getProjectRepositories(projectId).getOrNull().orEmpty()
-            // 仅当仍是最近一次加载（自身 job 未被更新替换）时渲染，避免慢的旧请求后到导致重复
-            if (loadReposJob != kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) return@launch
-            binding.tvRepositoriesEmpty.isVisible = repos.isEmpty()
-            repos.forEach { repo ->
-                val row = layoutInflater.inflate(R.layout.item_bound_repo_row, binding.containerRepositories, false) as TextView
-                row.text = "• ${repo.displayName.ifBlank { repo.fullName }}"
-                binding.containerRepositories.addView(row)
+            val initialLoad = binding.containerRepositories.childCount == 0
+            if (initialLoad) {
+                binding.tvRepositoriesEmpty.isVisible = false
+                setInlineSkeletonLoading(binding.containerRepositories, true)
+            }
+            try {
+                val repos = (requireActivity().application as QgentApp).container.githubRepository
+                    .getProjectRepositories(projectId).getOrNull().orEmpty()
+                // 仅当仍是最近一次加载（自身 job 未被更新替换）时渲染，避免慢的旧请求后到导致重复
+                if (loadReposJob != kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]) return@launch
+                binding.containerRepositories.removeAllViews()
+                binding.tvRepositoriesEmpty.isVisible = repos.isEmpty()
+                repos.forEach { repo ->
+                    val row = layoutInflater.inflate(R.layout.item_bound_repo_row, binding.containerRepositories, false) as TextView
+                    row.text = "• ${repo.displayName.ifBlank { repo.fullName }}"
+                    binding.containerRepositories.addView(row)
+                }
+            } finally {
+                if (loadReposJob == kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job] && initialLoad) {
+                    setInlineSkeletonLoading(binding.containerRepositories, false)
+                }
             }
         }
     }
@@ -382,10 +399,12 @@ class ChatSettingsFragment : Fragment() {
         if (isMainGroup) return dtos
         val allAgents = mainViewModel.agents.value.orEmpty()
         Log.d("ChatSettings", "mergeAgents: raw=${dtos.size} agents=${allAgents.size} groups=${mainViewModel.groups.value.orEmpty().size}")
-        // 群里只合并一个 Agent（取团队第一个 ACTIVE；角色已收敛为 4 种执行角色）
-        // 显示名统一为「编排助手」（与后端编排回复方 senderName 对齐），id/头像仍指向该 Agent
+        // 与聊天详情/成员页使用同一个真实编排助手，避免按 Agent 列表顺序取错 ID。
         val teamAgents = allAgents
-            .firstOrNull { it.status.name != "ARCHIVED" }
+            .firstOrNull {
+                it.roleWire?.equals("ORCHESTRATOR", ignoreCase = true) == true &&
+                    it.status.name == "ACTIVE" && it.visibility.name == "TEAM"
+            }
             ?.let {
                 listOf(GroupMemberDto(
                     id = it.id,
@@ -458,6 +477,7 @@ class ChatSettingsFragment : Fragment() {
         cell.findViewById<ImageView>(R.id.ivMemberAvatar)?.apply {
             setImageResource(iconRes)
             setBackgroundResource(R.drawable.bg_oval)
+            setPadding(8, 8, 8, 8)
             backgroundTintList = android.content.res.ColorStateList.valueOf(
                 androidx.core.content.ContextCompat.getColor(requireContext(), R.color.bg_chat_pinned)
             )

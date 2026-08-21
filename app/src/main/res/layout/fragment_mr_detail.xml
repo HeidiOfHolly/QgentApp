@@ -62,7 +62,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="@color/text_primary"
-                android:textSize="25sp"
+                android:textSize="22sp"
                 android:textStyle="bold"
                 tools:text="#42 实现邮箱登录" />
 

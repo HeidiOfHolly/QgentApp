@@ -189,6 +189,7 @@
             android:text="@string/register_button"
             android:textSize="16sp"
             android:textStyle="bold"
+            app:backgroundTint="@color/navy_dark"
             app:cornerRadius="12dp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.0"

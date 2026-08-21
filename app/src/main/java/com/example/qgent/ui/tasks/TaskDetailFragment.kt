@@ -72,6 +72,9 @@ class TaskDetailFragment : Fragment() {
     /** 最近一次加载的任务运行列表（失败原因展示复用；detail 与 runs 并发加载，需两者齐备再判断） */
     private var lastRuns = emptyList<TaskRunDetailListItemDto>()
 
+    /** 正在请求日志的运行 ID，避免同一日志入口被连续点击后发出重复请求。 */
+    private var loadingRunLogId: String? = null
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -347,7 +350,10 @@ class TaskDetailFragment : Fragment() {
                         item.tvRunStatus.setTextColor(view.context.getColor(taskStatusColorRes(run.status)))
                         item.tvRunAgent.text = run.agent?.name ?: run.agentId
                         // 查看执行日志：失败/完成的运行可看具体执行过程（§12.2）
-                        item.tvViewLogs.setOnClickListener { showRunLogs(run) }
+                        val logLoading = loadingRunLogId == run.id
+                        item.tvViewLogs.isEnabled = !logLoading
+                        item.tvViewLogs.text = if (logLoading) "加载中..." else getString(R.string.view_task_run_logs)
+                        item.tvViewLogs.setOnClickListener { showRunLogs(run, item.tvViewLogs) }
                     }
                     lastRuns = runs
                     updateFailureReason()
@@ -360,41 +366,51 @@ class TaskDetailFragment : Fragment() {
     }
 
     /** 查看任务运行执行日志：拉取后弹窗展示（后端日志接口 §12.2/§33，可定位失败原因） */
-    private fun showRunLogs(run: TaskRunDetailListItemDto) {
+    private fun showRunLogs(run: TaskRunDetailListItemDto, actionView: TextView) {
+        if (loadingRunLogId == run.id) return
+        loadingRunLogId = run.id
+        actionView.isEnabled = false
+        actionView.text = "加载中..."
         viewLifecycleOwner.lifecycleScope.launch {
-            taskRepository.getTaskRunLogs(projectId, run.id)
-                .onSuccess { logs ->
-                    if (logs.isEmpty()) {
-                        // §33.2：日志为空不代表执行失败（Planner 启动阶段失败时无日志记录）
-                        Toast.makeText(requireContext(), R.string.task_run_logs_empty, Toast.LENGTH_SHORT).show()
-                        return@onSuccess
+            try {
+                taskRepository.getTaskRunLogs(projectId, run.id)
+                    .onSuccess { logs ->
+                        if (logs.isEmpty()) {
+                            // §33.2：日志为空不代表执行失败（Planner 启动阶段失败时无日志记录）
+                            Toast.makeText(requireContext(), R.string.task_run_logs_empty, Toast.LENGTH_SHORT).show()
+                            return@onSuccess
+                        }
+                        val sb = StringBuilder()
+                        logs.forEach { entry ->
+                            // §33.2 展示约定：EXECUTION=执行日志 / SYSTEM=生命周期日志 / TERMINAL=结果摘要
+                            val nodeTag = entry.node?.takeIf { it.isNotBlank() }?.let { "[$it] " }.orEmpty()
+                            val typeTag = when (entry.entryType) {
+                                "EXECUTION" -> "执行"
+                                "SYSTEM" -> "系统"
+                                "TERMINAL" -> "结果"
+                                else -> null
+                            }?.let { "[$it] " }.orEmpty()
+                            // 时间戳为 UTC RFC3339（§2），转成本地时间展示，避免直接显示 UTC 原始串
+                            val time = formatFullTime(parseRfc3339(entry.timestamp))
+                            sb.append(time).append("  ").append(typeTag).append(nodeTag)
+                                .append(entry.content).append("\n")
+                        }
+                        val dialogBinding = com.example.qgent.databinding.DialogTextContentBinding.inflate(layoutInflater)
+                        dialogBinding.tvContent.text = sb.toString()
+                        AlertDialog.Builder(requireContext())
+                            .setTitle(R.string.task_run_logs_title)
+                            .setView(dialogBinding.root)
+                            .setPositiveButton(R.string.close, null)
+                            .show()
                     }
-                    val sb = StringBuilder()
-                    logs.forEach { entry ->
-                        // §33.2 展示约定：EXECUTION=执行日志 / SYSTEM=生命周期日志 / TERMINAL=结果摘要
-                        val nodeTag = entry.node?.takeIf { it.isNotBlank() }?.let { "[$it] " }.orEmpty()
-                        val typeTag = when (entry.entryType) {
-                            "EXECUTION" -> "执行"
-                            "SYSTEM" -> "系统"
-                            "TERMINAL" -> "结果"
-                            else -> null
-                        }?.let { "[$it] " }.orEmpty()
-                        // 时间戳为 UTC RFC3339（§2），转成本地时间展示，避免直接显示 UTC 原始串
-                        val time = formatFullTime(parseRfc3339(entry.timestamp))
-                        sb.append(time).append("  ").append(typeTag).append(nodeTag)
-                            .append(entry.content).append("\n")
+                    .onFailure { e ->
+                        Toast.makeText(requireContext(), "加载日志失败：${e.message}", Toast.LENGTH_SHORT).show()
                     }
-                    val dialogBinding = com.example.qgent.databinding.DialogTextContentBinding.inflate(layoutInflater)
-                    dialogBinding.tvContent.text = sb.toString()
-                    AlertDialog.Builder(requireContext())
-                        .setTitle(R.string.task_run_logs_title)
-                        .setView(dialogBinding.root)
-                        .setPositiveButton(R.string.close, null)
-                        .show()
-                }
-                .onFailure { e ->
-                    Toast.makeText(requireContext(), "加载日志失败：${e.message}", Toast.LENGTH_SHORT).show()
-                }
+            } finally {
+                loadingRunLogId = null
+                actionView.isEnabled = true
+                actionView.setText(R.string.view_task_run_logs)
+            }
         }
     }
 

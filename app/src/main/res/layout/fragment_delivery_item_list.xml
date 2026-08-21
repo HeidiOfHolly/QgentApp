@@ -5,7 +5,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/light_gray"
+    android:background="@color/off_white"
     android:orientation="vertical"
     tools:context=".ui.delivery.DeliveryItemListFragment">
 
@@ -62,6 +62,15 @@
         android:text="暂无交付物"
         android:textColor="@color/text_secondary"
         android:textSize="14sp"
+        android:visibility="gone" />
+
+    <!-- 加载占位（骨架屏，无转圈）：首次加载时显示，数据到位隐藏 -->
+    <include
+        android:id="@+id/viewSkeleton"
+        layout="@layout/view_skeleton_rows"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:visibility="gone" />
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout

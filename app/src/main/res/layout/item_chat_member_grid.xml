@@ -14,15 +14,17 @@
         android:gravity="center_horizontal"
         android:orientation="vertical">
 
-        <ImageView
+        <com.google.android.material.imageview.ShapeableImageView
             android:id="@+id/ivMemberAvatar"
             android:layout_width="44dp"
             android:layout_height="44dp"
-            android:background="@drawable/bg_oval"
-            android:backgroundTint="@color/bg_chat_pinned"
+            android:background="@drawable/bg_avatar"
             android:contentDescription="@string/avatar"
+            android:scaleType="centerCrop"
             android:src="@drawable/ic_avatar_default"
-            android:padding="8dp" />
+            app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.App.Avatar"
+            app:strokeColor="@color/white"
+            app:strokeWidth="1dp" />
 
         <TextView
             android:id="@+id/tvMemberName"

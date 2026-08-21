@@ -16,13 +16,16 @@
     android:paddingEnd="12dp"
     tools:context=".ui.team.TeamManageFragment">
 
-    <ImageView
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/ivTeamAvatar"
         android:layout_width="45dp"
         android:layout_height="45dp"
-        android:background="@drawable/bg_oval"
         android:contentDescription="@string/team_name_placeholder"
-        android:padding="8dp"
-        android:src="@drawable/ic_group"
+        android:scaleType="centerCrop"
+        app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.App.Avatar"
+        app:srcCompat="@drawable/ic_group"
+        app:strokeColor="@color/white"
+        app:strokeWidth="1.5dp"
         app:tint="@color/navy" />
 
     <LinearLayout

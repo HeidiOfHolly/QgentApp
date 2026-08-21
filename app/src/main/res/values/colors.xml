@@ -3,48 +3,49 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
-    <!-- 品牌主色 -->
-    <color name="navy">#00183A</color>
-    <color name="navy_dark">#001229</color>
-    <color name="navy_light">#33466A</color>
-    <color name="deep_blue">#041A39</color>
+    <!-- 品牌主色：深海蓝作为结构色，钴蓝作为操作色。
+         navy 为顶部栏/抽屉背景，2026-08-21 淡化一档（原 #17324D 偏深） -->
+    <color name="navy">#2E5275</color>
+    <color name="navy_dark">#10263D</color>
+    <color name="navy_light">#315B7B</color>
+    <color name="deep_blue">#10263D</color>
 
     <!-- 品牌辅助色 -->
-    <color name="mint">#05DEBA</color>
-    <color name="teal">#056684</color>
-    <color name="green">#0B7D92</color>
+    <color name="mint">#18B89B</color>
+    <color name="teal">#137C8A</color>
+    <color name="green">#1B8F76</color>
 
     <!-- 任务状态文字色：进行中类状态用黄 -->
-    <color name="status_yellow">#D97706</color>
+    <color name="status_yellow">#B7791F</color>
 
     <!-- 中性色 -->
-    <color name="off_white">#F6F8FB</color>
-    <color name="blue_tint">#D6E2F5</color>
-    <color name="slate_gray">#55617C</color>
-    <color name="charcoal">#1A1C1E</color>
-    <color name="gray">#74777F</color>
-    <color name="light_gray">#E9EAF2</color>
-    <color name="gray_dark">#44474F</color>
-    <color name="red_danger">#E5484D</color>
+    <color name="off_white">#F7F8FA</color>
+    <color name="blue_tint">#E8F0FF</color>
+    <color name="slate_gray">#5A687B</color>
+    <color name="charcoal">#17202A</color>
+    <color name="gray">#7B8794</color>
+    <color name="light_gray">#E4E9F0</color>
+    <color name="gray_dark">#4B5563</color>
+    <color name="red_danger">#D94A56</color>
 
-    <color name="primary">#2563EB</color>
-    <color name="primary_container">#DBEAFE</color>
+    <color name="primary">#2F6FED</color>
+    <color name="primary_container">#E6F0FF</color>
     <color name="on_primary">#FFFFFFFF</color>
     <color name="on_primary_container">#001B3C</color>
-    <color name="text_primary">#1F2329</color>
-    <color name="text_secondary">#8A8A8E</color>
-    <color name="divider">#EEEFF1</color>
+    <color name="text_primary">#202A35</color>
+    <color name="text_secondary">#667085</color>
+    <color name="divider">#E6EAF0</color>
     <color name="unread_badge">#FF3B30</color>
-    <color name="bg_search">#F2F3F5</color>
+    <color name="bg_search">#F0F3F7</color>
     <color name="exit_red">#FF3B30</color>
 
-    <color name="team_item_normal">#8896AE</color>
-    <color name="bg_chat_pinned">#ECEEF2</color>
+    <color name="team_item_normal">#7C8797</color>
+    <color name="bg_chat_pinned">#EFF3F8</color>
     <!-- 置顶群聊列表行背景（深一档灰，区别于普通群聊透明底） -->
-    <color name="bg_chat_pinned_row">#D9DEE8</color>
+    <color name="bg_chat_pinned_row">#E4EAF2</color>
     <!-- 多选模式：普通行浅底色 / 选中行加深底色 -->
-    <color name="bg_chat_multi_select">#F4F6FA</color>
-    <color name="bg_chat_selected">#DDE7F5</color>
+    <color name="bg_chat_multi_select">#F4F7FB</color>
+    <color name="bg_chat_selected">#E6F0FF</color>
     <!-- 通知直达目标消息高亮（浅琥珀半透明，整行铺底） -->
     <color name="message_highlight">#40FFC107</color>
 

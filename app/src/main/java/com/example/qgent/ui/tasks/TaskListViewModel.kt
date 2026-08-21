@@ -112,8 +112,9 @@ class TaskListViewModel(
 
     /** 任务首页：仅加载当前用户创建的任务（createdBy=userId，无列表页筛选），
      *  与 state.tasks（列表页可筛选）分离，返回主界面时列表页筛选不影响首页展示。
-     *  排序：未完成优先（未完成/已完成分组内再按 updatedAt 倒序）。 */
-    fun loadMyTasks(projectId: String?, userId: String?) {
+     *  排序：未完成优先（未完成/已完成分组内再按 updatedAt 倒序）。
+     *  @param onDone 加载完成回调（成功/失败均调用），供页面标记「首次加载完成」收起骨架屏 */
+    fun loadMyTasks(projectId: String?, userId: String?, onDone: (() -> Unit)? = null) {
         if (projectId == null || userId == null) return
         viewModelScope.launch {
             repo.getTasks(projectId, createdBy = userId)
@@ -127,13 +128,15 @@ class TaskListViewModel(
                 .onFailure { e ->
                     android.util.Log.e("TaskPoll", "loadMyTasks FAILED: ${e.message}")
                 }
+            onDone?.invoke()
         }
     }
 
     /** 加载最近被调用的 Agent 及任务：遍历项目内 Agent，逐个查 task-runs（§20.6），
      *  按 createdAt 倒序取最新 MAX_AGENT_ACTIVITIES 条。单个 Agent 查询失败静默跳过。
-     *  新查询前取消上一次：轮询每 3 秒触发，多 agent 串行查询慢，不取消会导致旧协程晚到覆盖新结果。 */
-    fun loadActivities(projectId: String?, agents: List<Agent>) {
+     *  新查询前取消上一次：轮询每 3 秒触发，多 agent 串行查询慢，不取消会导致旧协程晚到覆盖新结果。
+     *  @param onDone 加载完成回调（成功/失败均调用），供页面标记「首次加载完成」收起骨架屏 */
+    fun loadActivities(projectId: String?, agents: List<Agent>, onDone: (() -> Unit)? = null) {
         if (projectId == null) return
         activitiesJob?.cancel()
         activitiesJob = viewModelScope.launch {
@@ -156,6 +159,7 @@ class TaskListViewModel(
             _uiState.value = _uiState.value.copy(
                 agentRuns = all.sortedWith(compareByDescending { it.createdAt }).take(MAX_AGENT_ACTIVITIES)
             )
+            onDone?.invoke()
         }
     }
 
@@ -186,8 +190,9 @@ class TaskListViewModel(
     }
 
     /** MR 列表页专用：只加载 MR（全量），供独立 MR 列表页使用。
-     *  @param force true 时跳过「同项目已加载」防重复（事件触发刷新用，设计要点：事件一律重新查询） */
-    fun loadMergeRequestsForList(projectId: String?, force: Boolean = false) {
+     *  @param force true 时跳过「同项目已加载」防重复（事件触发刷新用，设计要点：事件一律重新查询）
+     *  @param onDone 加载完成回调（成功/失败均调用），供页面标记「首次加载完成」收起骨架屏 */
+    fun loadMergeRequestsForList(projectId: String?, force: Boolean = false, onDone: (() -> Unit)? = null) {
         if (projectId == null) return
         // 独立跟踪 MR 项目：与任务加载共用 loadedProjectId 会串数据（见 loadTasks）
         if (!force && loadedMrProjectId == projectId && _uiState.value.mergeRequests.isNotEmpty()) return
@@ -200,6 +205,7 @@ class TaskListViewModel(
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(error = e.message ?: "加载合并请求失败")
                 }
+            onDone?.invoke()
         }
     }
 

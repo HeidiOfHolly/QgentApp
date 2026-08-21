@@ -8,7 +8,7 @@
     android:layout_marginHorizontal="10dp"
     android:layout_marginTop="5dp"
     android:background="@drawable/bg_card"
-    android:elevation="5dp"
+    android:elevation="1dp"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingStart="16dp"

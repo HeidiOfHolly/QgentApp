@@ -420,6 +420,13 @@ interface QgApiService {
         @Query("limit") limit: Int = 100
     ): Response<ApiResponse<List<GroupMessageDto>>>
 
+    /** 群搜索（/search?type=groups）：按关键字搜当前用户可访问的群（跨项目），返回群摘要列表 */
+    @GET("search")
+    suspend fun searchGroups(
+        @Query("q") q: String,
+        @Query("type") type: String
+    ): Response<ApiResponse<List<GroupDto>>>
+
     /** v2.0.6 §1.3：按消息 ID 拉取单条群消息（通知直达被 @ 消息定位用） */
     @GET("projects/{projectId}/groups/{groupId}/messages/{messageId}")
     suspend fun getMessage(

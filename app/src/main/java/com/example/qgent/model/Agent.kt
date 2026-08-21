@@ -6,13 +6,15 @@ enum class AgentRole {
     PLANNER,
     DEVELOPER,
     TESTER,
-    REVIEWER;
+    REVIEWER,
+    GENERAL;
 
     fun displayName(): String = when (this) {
         PLANNER -> "规划者"
         DEVELOPER -> "开发者"
         TESTER -> "测试者"
         REVIEWER -> "审查者"
+        GENERAL -> "通用"
     }
 }
 
