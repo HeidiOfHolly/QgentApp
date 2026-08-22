@@ -925,6 +925,15 @@ interface QgApiService {
         @Body body: CqActionRequest
     ): Response<ApiResponse<Unit>>
 
+    /** Dry Run 预检 CQ 拒绝（reason 必填；不会创建 MR） */
+    @POST("projects/{projectId}/dry-runs/{dryRunId}/cq-rejections")
+    suspend fun dryRunCqReject(
+        @Path("projectId") projectId: String,
+        @Path("dryRunId") dryRunId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CqActionRequest
+    ): Response<ApiResponse<Unit>>
+
     /** 创建 Dry Run（§12.4/§32.1：repositoryId/sourceRef/targetBranch，taskId 可选；202 受理） */
     @POST("projects/{projectId}/dry-runs")
     suspend fun createDryRun(

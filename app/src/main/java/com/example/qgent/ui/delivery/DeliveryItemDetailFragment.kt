@@ -115,6 +115,7 @@ class DeliveryItemDetailFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             // 复位操作区
             binding.btnCqApprove.isVisible = false
+            binding.btnCqReject.isVisible = false
             binding.btnCreateMr.isVisible = false
             val status = taskRepository.getTaskMergeRequestPreflight(projectId, taskId)
                 .getOrNull()?.firstOrNull()   // 交付物详情按首个仓库展示
@@ -133,12 +134,14 @@ class DeliveryItemDetailFragment : Fragment() {
                 return@launch
             }
             when (status.status) {
-                // Dry Run 通过，等待 CQ+1
+                // Dry Run 通过，等待 CQ+1：可批准（CQ+1）或拒绝（拒绝 CQ，reason 必填）
                 "WAITING_CQ" -> {
                     binding.btnCqApprove.isVisible = true
+                    binding.btnCqReject.isVisible = true
                     binding.tvPreflightStatus.isVisible = true
                     binding.tvPreflightStatus.text = "DryRun 通过，等待独立成员 CQ+1"
                     binding.btnCqApprove.setOnClickListener { doCqApprove(projectId, status.dryRunId) }
+                    binding.btnCqReject.setOnClickListener { doCqReject(projectId, status.dryRunId) }
                 }
                 // 正在创建 MR（CQ+1 已通过，后端异步创建）
                 "CREATING_MR" -> {
@@ -213,6 +216,40 @@ class DeliveryItemDetailFragment : Fragment() {
                     Toast.makeText(requireContext(), "CQ+1 失败：${e.message}", Toast.LENGTH_LONG).show()
                 }
         }
+    }
+
+    /** 拒绝 CQ：对 Dry Run 提交拒绝并给出修改意见（reason 必填；不会创建 MR） */
+    private fun doCqReject(projectId: String, dryRunId: String?) {
+        if (dryRunId.isNullOrBlank()) {
+            Toast.makeText(requireContext(), "暂无可拒绝的 DryRun", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val input = android.widget.EditText(requireContext()).apply {
+            hint = "拒绝原因 / 修改意见（必填）"
+            textSize = 15f
+        }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+            .setTitle("拒绝 CQ")
+            .setView(input)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("确认拒绝") { _, _ ->
+                val reason = input.text.toString().trim()
+                if (reason.isEmpty()) {
+                    Toast.makeText(requireContext(), "请填写拒绝原因", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                viewLifecycleOwner.lifecycleScope.launch {
+                    taskRepository.dryRunCqReject(projectId, dryRunId, reason, UUID.randomUUID().toString())
+                        .onSuccess {
+                            Toast.makeText(requireContext(), "已拒绝 CQ", Toast.LENGTH_SHORT).show()
+                            item?.let { loadPreflight(it) }
+                        }
+                        .onFailure { e ->
+                            Toast.makeText(requireContext(), "拒绝 CQ 失败：${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                }
+            }
+            .show()
     }
 
     private fun bind(it: DeliveryItemDto) {

@@ -181,6 +181,23 @@
                     android:visibility="gone" />
 
                 <TextView
+                    android:id="@+id/btnCqReject"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_status_tag"
+                    android:backgroundTint="@color/exit_red"
+                    android:gravity="center"
+                    android:paddingStart="12dp"
+                    android:paddingTop="6dp"
+                    android:paddingEnd="12dp"
+                    android:paddingBottom="6dp"
+                    android:text="拒绝 CQ"
+                    android:textColor="@color/white"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+
+                <TextView
                     android:id="@+id/btnCreateMr"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"

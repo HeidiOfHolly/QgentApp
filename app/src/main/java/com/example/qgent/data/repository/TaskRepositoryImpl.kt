@@ -214,6 +214,9 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
     override suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit> =
         apiCall { service.dryRunCqApprove(projectId, dryRunId, idempotencyKey, CqActionRequest(reason)).toUnitOrThrow() }
 
+    override suspend fun dryRunCqReject(projectId: String, dryRunId: String, reason: String, idempotencyKey: String): Result<Unit> =
+        apiCall { service.dryRunCqReject(projectId, dryRunId, idempotencyKey, CqActionRequest(reason)).toUnitOrThrow() }
+
     override suspend fun createDryRun(
         projectId: String,
         repositoryId: String,
