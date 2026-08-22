@@ -139,7 +139,7 @@ class NewProjectViewModel(
                 .filter {
                     it.authorizationStatus == "AUTHORIZED" &&
                         !it.archived &&
-                        !it.defaultBranch.isNullOrEmpty() &&
+                        !it.defaultBranch.isNullOrBlank() &&
                         it.installationId in activeInstallationIds
                 }
             val boundIds = projects.getOrThrow()

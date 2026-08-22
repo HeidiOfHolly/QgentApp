@@ -3,7 +3,6 @@ package com.example.qgent.data.sse
 import android.content.Context
 import android.util.Log
 import com.example.qgent.data.SessionStore
-import com.example.qgent.data.SessionExpiryNotifier
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -168,8 +167,7 @@ class ProjectEventStream(
                             Outcome.CURSOR_EXPIRED
                         }
                         response.code == 401 -> {
-                            // TokenAuthenticator 已尝试刷新；仍 401 → 会话过期，触发自动退出登录
-                            SessionExpiryNotifier.notifyExpired()
+                            // TokenAuthenticator handles explicit refresh-token rejection.
                             Outcome.UNAUTHORIZED
                         }
                         !response.isSuccessful -> {
@@ -199,10 +197,10 @@ class ProjectEventStream(
                                         if (name != null) {
                                             SseEventType.fromWire(name)?.let { type ->
                                                 id?.let { saveLastEventId(streamKey, it) }
-                                                // 诊断日志：记录流上收到的每个事件（名称 + id + 原始 payload）
-                                                Log.d(TAG, "sse event: $name id=$id data=${dataLines}")
+                                                // 诊断日志降级为 VERBOSE：每事件完整 payload 高频输出
+                                                Log.v(TAG, "sse event: $name id=$id data=${dataLines}")
                                                 _events.tryEmit(SseEvent(id, type, dataLines.toString()))
-                                            } ?: Log.d(TAG, "unknown sse event: $name")
+                                            } ?: Log.v(TAG, "unknown sse event: $name")
                                         }
                                         eventName = null
                                         id = null

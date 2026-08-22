@@ -86,6 +86,9 @@ class MainViewModel(
     private val _agents = MutableStateFlow<List<Agent>>(emptyList())
     val agents: LiveData<List<Agent>> = _agents.asLiveData()
 
+    private val _agentsLoading = MutableStateFlow(false)
+    val agentsLoading: LiveData<Boolean> = _agentsLoading.asLiveData()
+
     // ── 项目列表（按当前团队） ──
 
     private val _projects = MutableStateFlow<List<String>>(emptyList())
@@ -112,6 +115,7 @@ class MainViewModel(
     private var loadProjectsJob: Job? = null
     private var loadGroupsJob: Job? = null
     private var loadAgentsJob: Job? = null
+    private var agentsRequestGeneration = 0
 
     // ── 抽屉红点刷新节流：事件风暴时 3s 合并只算一次；默认先延后 800ms 再算，
     //    让 loadGroups 等主链路请求先发出（同一 host OkHttp 默认并发只有 5，避免抢名额拖慢群列表） ──
@@ -676,18 +680,26 @@ class MainViewModel(
     private fun loadAgents(teamName: String) {
         // 切换团队时取消上一次未完成的加载，防止旧团队 Agent 后完成覆盖新结果
         loadAgentsJob?.cancel()
+        val requestGeneration = ++agentsRequestGeneration
+        _agentsLoading.value = true
         loadAgentsJob = viewModelScope.launch {
-            val teamId = teamNameToId[teamName] ?: return@launch
-            agentRepo.getAgents(teamId)
-                .onSuccess { dtos ->
-                    Log.d("Agents", "loadAgents success: ${dtos.map { it.name }}")
-                    // 过滤已下线（ARCHIVED）：下线即视为删除，不再出现在 Agent 名片列表
-                    _agents.value = dtos.filter { it.status != "ARCHIVED" }.map { it.toAgent() }
-                }
-                .onFailure { e ->
-                    Log.e("Agents", "loadAgents FAILED: ${e::class.simpleName} ${e.message}")
-                    _agents.value = emptyList()
-                }
+            try {
+                val teamId = teamNameToId[teamName] ?: return@launch
+                agentRepo.getAgents(teamId)
+                    .onSuccess { dtos ->
+                        if (requestGeneration != agentsRequestGeneration) return@onSuccess
+                        Log.d("Agents", "loadAgents success: ${dtos.map { it.name }}")
+                        // 过滤已下线（ARCHIVED）：下线即视为删除，不再出现在 Agent 名片列表
+                        _agents.value = dtos.filter { it.status != "ARCHIVED" }.map { it.toAgent() }
+                    }
+                    .onFailure { e ->
+                        if (requestGeneration != agentsRequestGeneration) return@onFailure
+                        Log.e("Agents", "loadAgents FAILED: ${e::class.simpleName} ${e.message}")
+                        _agents.value = emptyList()
+                    }
+            } finally {
+                if (requestGeneration == agentsRequestGeneration) _agentsLoading.value = false
+            }
         }
     }
 

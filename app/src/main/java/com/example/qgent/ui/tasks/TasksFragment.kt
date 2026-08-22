@@ -18,6 +18,7 @@ import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.databinding.FragmentTasksBinding
 import com.example.qgent.model.GroupType
 import com.example.qgent.ui.common.CreateTaskDialog
+import com.example.qgent.ui.personal.setSkeletonLoading
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -41,24 +42,31 @@ class TasksFragment : Fragment() {
     private val taskRepository: TaskRepository
         get() = (requireActivity().application as QgentApp).container.taskRepository
 
+    /** 首页数据首次加载完成标记：控制整页骨架屏（首次完成后轮询/刷新不再闪骨架） */
+    private var tasksLoaded = false
+    /** 详情页跳转尚未完成时忽略重复点击，避免连续入栈多个同一任务详情页。 */
+    private var isNavigatingToTaskDetail = false
+
     private val taskAdapter = TaskCardAdapter { task ->
-        findNavController().navigate(
-            R.id.action_tasks_to_taskDetail,
-            Bundle().apply {
-                putString(TaskDetailFragment.ARG_TASK_ID, task.id)
-                putString(TaskDetailFragment.ARG_PROJECT_ID, task.projectId)
-            }
-        )
+        openTaskDetail(task)
     }
     private val activityAdapter = ActivityAdapter()
     private val recentTaskAdapter = RecentTaskAdapter { task ->
-        findNavController().navigate(
-            R.id.action_tasks_to_taskDetail,
-            Bundle().apply {
-                putString(TaskDetailFragment.ARG_TASK_ID, task.id)
-                putString(TaskDetailFragment.ARG_PROJECT_ID, task.projectId)
-            }
-        )
+        openTaskDetail(task)
+    }
+
+    private fun openTaskDetail(task: com.example.qgent.data.model.TaskListItemDto) {
+        if (isNavigatingToTaskDetail) return
+        isNavigatingToTaskDetail = true
+        runCatching {
+            findNavController().navigate(
+                R.id.action_tasks_to_taskDetail,
+                Bundle().apply {
+                    putString(TaskDetailFragment.ARG_TASK_ID, task.id)
+                    putString(TaskDetailFragment.ARG_PROJECT_ID, task.projectId)
+                }
+            )
+        }.onFailure { isNavigatingToTaskDetail = false }
     }
 
     private var pollingJob: Job? = null
@@ -146,11 +154,13 @@ class TasksFragment : Fragment() {
             // 最近任务：当前用户最近创建的 MAX_RECENT_TASKS 个（myTasks 未完成优先排序，此处按创建时间倒序取最近）
             val recent = state.myTasks.sortedByDescending { it.createdAt }.take(MAX_RECENT_TASKS)
             recentTaskAdapter.submitList(recent)
-            binding.tvRecentTaskEmpty.isVisible = recent.isEmpty()
-            // 空状态：列表为空时展示提示，非空时隐藏
-            binding.tvTaskEmpty.isVisible = taskList.isEmpty()
-            // 最近动态：未加载出来前/无数据时统一显示空态提示
-            binding.tvAgentEmpty.isVisible = state.agentRuns.isEmpty()
+            // 骨架屏（按区块闪烁）：首次加载完成前且对应数据为空时显示，数据到位隐藏
+            setSkeletonLoading(binding.viewSkeletonRecent.root, !tasksLoaded && recent.isEmpty())
+            setSkeletonLoading(binding.viewSkeletonTaskList.root, !tasksLoaded && taskList.isEmpty())
+            // 空状态：列表为空时展示提示（首次加载完成后再显示，避免加载中与骨架并存）
+            binding.tvRecentTaskEmpty.isVisible = tasksLoaded && recent.isEmpty()
+            binding.tvTaskEmpty.isVisible = tasksLoaded && taskList.isEmpty()
+            binding.tvAgentEmpty.isVisible = tasksLoaded && state.agentRuns.isEmpty()
             state.error?.let {
                 taskListViewModel.consumeError()
             }
@@ -206,7 +216,12 @@ class TasksFragment : Fragment() {
         val groupIds = mainViewModel.groups.value.orEmpty()
             .filter { it.type == GroupType.REQUIREMENT }
             .map { it.id }
-        taskListViewModel.loadMyTasks(projectId, userId, groupIds)
+        taskListViewModel.loadMyTasks(projectId, userId, groupIds, onDone = ::markTasksLoaded)
+    }
+
+    /** 首页数据首次加载完成标记（onDone 回调）：控制整页骨架屏显示 */
+    private fun markTasksLoaded() {
+        tasksLoaded = true
     }
 
     /** 下拉刷新：重新拉取任务 / 最近动态 */
@@ -217,6 +232,8 @@ class TasksFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        // 从详情页返回后恢复任务卡片点击。
+        isNavigatingToTaskDetail = false
         mainViewModel.refreshUnreadTaskNotifications()
         // 首页加载当前用户任务（myTasks 体系，不受列表页筛选影响）
         loadMyTasks()

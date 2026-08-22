@@ -56,7 +56,6 @@ class ProfileFragment : Fragment() {
         // 展示当前登录用户信息
         val user = SessionStore.user()
         binding.tvUserName.text = user?.displayName ?: getString(R.string.user_name_placeholder)
-        binding.tvUserId.text = user?.id ?: ""
         loadAvatar(user?.avatarUrl)
 
         // 点击头像 → 选择本地图片上传（§7.0 /me/avatar）

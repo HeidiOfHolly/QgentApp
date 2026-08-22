@@ -16,7 +16,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingStart="24dp"
-        android:paddingTop="50dp"
+        android:paddingTop="32dp"
         android:paddingEnd="24dp"
         android:paddingBottom="32dp">
 
@@ -28,7 +28,7 @@
             android:textAppearance="@style/TextAppearance.Material3.HeadlineLarge"
             android:textColor="?attr/colorOnBackground"
             android:textStyle="bold"
-            android:layout_marginTop="50dp"
+            android:layout_marginTop="24dp"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
@@ -48,7 +48,7 @@
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="40dp"
+            android:layout_marginTop="32dp"
             android:hint="@string/login_email"
             app:boxStrokeWidthFocused="2dp"
             app:errorEnabled="true"
@@ -116,8 +116,9 @@
             android:layout_marginTop="32dp"
             android:minHeight="52dp"
             android:text="@string/login_button"
-            android:textSize="20sp"
+            android:textSize="18sp"
             android:textStyle="bold"
+            app:backgroundTint="@color/navy_dark"
             app:cornerRadius="12dp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"

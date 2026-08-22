@@ -53,30 +53,51 @@
             app:strokeWidth="1dp" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/tvEmpty"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="48dp"
-        android:gravity="center"
-        android:text="@string/message_list_empty"
-        android:textColor="@color/text_secondary"
-        android:textSize="14sp"
-        android:visibility="gone" />
-
-    <!-- 下拉刷新容器：包裹通知列表 -->
-    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-        android:id="@+id/swipeRefresh"
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvMessageList"
+        <!-- 下拉刷新容器：包裹通知列表 -->
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/swipeRefresh"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvMessageList"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="10dp" />
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+        <TextView
+            android:id="@+id/tvEmpty"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="10dp" />
-    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+            android:gravity="center"
+            android:text="@string/message_list_empty"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/messageListLoadingState"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/off_white"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/ivMessageListLoading"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:contentDescription="@string/message_loading"
+                android:scaleType="centerInside" />
+        </LinearLayout>
+    </FrameLayout>
 </LinearLayout>

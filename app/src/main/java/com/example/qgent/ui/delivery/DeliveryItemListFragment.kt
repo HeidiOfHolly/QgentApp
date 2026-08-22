@@ -21,6 +21,7 @@ import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.databinding.FragmentDeliveryItemListBinding
+import com.example.qgent.ui.personal.setSkeletonLoading
 import com.example.qgent.ui.tasks.FilterChip
 import com.example.qgent.ui.tasks.FilterChipAdapter
 import com.example.qgent.ui.tasks.TaskFilterType
@@ -64,6 +65,9 @@ class DeliveryItemListFragment : Fragment() {
     private var groupOptions: Map<String, String> = emptyMap()       // id -> 群名
     private var repoOptions: Map<String, String> = emptyMap()        // id -> 仓库名
     private var creatorOptions: List<Pair<String, String>> = emptyList() // id -> 显示名
+
+    /** 首次加载是否完成（加载结束无论成败置位）：控制骨架屏显示，筛选/刷新不再闪骨架 */
+    private var deliveriesLoaded = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentDeliveryItemListBinding.inflate(inflater, container, false)
@@ -186,6 +190,8 @@ class DeliveryItemListFragment : Fragment() {
         val projectId = mainViewModel.currentProjectId() ?: return
         binding.swipeRefresh.isRefreshing = false
         viewLifecycleOwner.lifecycleScope.launch {
+            // 骨架屏：首次加载完成前显示（不转圈），完成后隐藏（含失败）
+            setSkeletonLoading(binding.viewSkeleton.root, !deliveriesLoaded)
             val items = runCatching {
                 kotlinx.coroutines.withTimeout(10_000) {
                     taskRepo.getDeliveryItems(
@@ -197,6 +203,8 @@ class DeliveryItemListFragment : Fragment() {
                     ).getOrThrow()
                 }
             }.getOrNull()
+            deliveriesLoaded = true
+            setSkeletonLoading(binding.viewSkeleton.root, false)
             binding.rvDeliveries.removeAllViews()
             if (items == null) {
                 binding.tvEmpty.isVisible = true

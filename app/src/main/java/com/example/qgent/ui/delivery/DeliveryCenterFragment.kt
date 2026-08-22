@@ -40,6 +40,8 @@ class DeliveryCenterFragment : Fragment() {
         get() = (requireActivity().application as QgentApp).container.diffRepository
 
     private var eventStreamJob: Job? = null
+    private var pendingLoads = 0
+    private var loadingGeneration = 0
 
     /** 交付物操作（查看 Diff / 确认 / 拒绝 / 重试），成功后刷新本页交付物列表 */
     private val deliveryActions by lazy {
@@ -101,8 +103,29 @@ class DeliveryCenterFragment : Fragment() {
     }
 
     private fun refreshAll() {
-        loadDeliveries()
-        loadMRs()
+        val generation = beginLoading(2)
+        loadDeliveries(startLoading = false, generation = generation)
+        loadMRs(startLoading = false, generation = generation)
+    }
+
+    private fun beginLoading(requestCount: Int): Int {
+        loadingGeneration += 1
+        pendingLoads = requestCount
+        binding.deliveryLoadingState.isVisible = true
+        if (requestCount > 1) {
+            binding.deliveriesEmptyState.isVisible = false
+            binding.mrEmptyState.isVisible = false
+        }
+        return loadingGeneration
+    }
+
+    private fun finishLoading(generation: Int) {
+        if (generation != loadingGeneration) return
+        pendingLoads = (pendingLoads - 1).coerceAtLeast(0)
+        if (pendingLoads == 0) {
+            binding.deliveryLoadingState.isVisible = false
+            binding.swipeRefresh.isRefreshing = false
+        }
     }
 
     /** 项目级 SSE：交付/MR 事件 → 刷新交付中心 */
@@ -127,48 +150,60 @@ class DeliveryCenterFragment : Fragment() {
         }
     }
 
-    private fun loadDeliveries() {
+    private fun loadDeliveries(startLoading: Boolean = true, generation: Int? = null) {
         val projectId = mainViewModel.currentProjectId() ?: return
-        // 立即收起下拉刷新，避免新接口（delivery-items）在沙箱/后端未就绪时超时导致一直转圈
-        binding.swipeRefresh.isRefreshing = false
-        // 加载期间显示占位，避免长时间空白被误认为卡死
-        binding.tvDeliveriesEmpty.isVisible = true
-        binding.tvDeliveriesEmpty.text = "加载中…"
+        val activeGeneration = if (startLoading) beginLoading(1) else generation ?: beginLoading(1)
+        if (startLoading) binding.deliveriesEmptyState.isVisible = false
         viewLifecycleOwner.lifecycleScope.launch {
             // 10s 超时：接口未就绪/网络差时快速显示空态，不阻塞页面
-            val items = runCatching {
-                kotlinx.coroutines.withTimeout(10_000) { taskRepo.getDeliveryItems(projectId, type = "CODE").getOrThrow() }
-            }.getOrNull()
-            if (items == null) {
-                binding.tvDeliveriesEmpty.isVisible = true
-                binding.tvDeliveriesEmpty.text = "交付物功能暂不可用"
-            } else {
-                binding.tvDeliveriesEmpty.isVisible = items.isEmpty()
-                fillDeliveries(items)
+            try {
+                val items = runCatching {
+                    kotlinx.coroutines.withTimeout(10_000) { taskRepo.getDeliveryItems(projectId, type = "CODE").getOrThrow() }
+                }.getOrNull()
+                if (items == null) {
+                    binding.rvDeliveries.removeAllViews()
+                    binding.deliveriesEmptyState.isVisible = true
+                    binding.tvDeliveriesEmpty.text = getString(R.string.delivery_unavailable_title)
+                    binding.tvDeliveriesEmptyHint.text = getString(R.string.delivery_unavailable_hint)
+                } else {
+                    binding.deliveriesEmptyState.isVisible = items.isEmpty()
+                    binding.tvDeliveriesEmpty.text = getString(R.string.delivery_empty_title)
+                    binding.tvDeliveriesEmptyHint.text = getString(R.string.delivery_empty_hint)
+                    fillDeliveries(items)
+                }
+            } finally {
+                finishLoading(activeGeneration)
             }
         }
     }
 
-    private fun loadMRs() {
+    private fun loadMRs(startLoading: Boolean = true, generation: Int? = null) {
         val projectId = mainViewModel.currentProjectId() ?: return
-        // 加载期间显示占位，避免长时间空白被误认为卡死
-        binding.tvMREmpty.isVisible = true
-        binding.tvMREmpty.text = "加载中…"
+        val activeGeneration = if (startLoading) beginLoading(1) else generation ?: beginLoading(1)
+        if (startLoading) binding.mrEmptyState.isVisible = false
         viewLifecycleOwner.lifecycleScope.launch {
             // MR 区仅项目管理员可见：非管理员隐藏并跳过加载
             if (!mainViewModel.isProjectAdmin(projectId)) {
                 binding.mrSection.isVisible = false
                 return@launch
             }
-            val mrs = runCatching {
-                kotlinx.coroutines.withTimeout(10_000) { taskRepo.getMergeRequests(projectId).getOrThrow() }
-            }.getOrNull()
-            if (mrs == null) {
-                binding.tvMREmpty.isVisible = true
-                binding.tvMREmpty.text = "合并请求暂不可用"
-            } else {
-                binding.tvMREmpty.isVisible = mrs.isEmpty()
-                fillMRs(mrs)
+            try {
+                val mrs = runCatching {
+                    kotlinx.coroutines.withTimeout(10_000) { taskRepo.getMergeRequests(projectId).getOrThrow() }
+                }.getOrNull()
+                if (mrs == null) {
+                    binding.rvMRList.removeAllViews()
+                    binding.mrEmptyState.isVisible = true
+                    binding.tvMREmpty.text = getString(R.string.delivery_unavailable_title)
+                    binding.tvMREmptyHint.text = getString(R.string.delivery_unavailable_hint)
+                } else {
+                    binding.mrEmptyState.isVisible = mrs.isEmpty()
+                    binding.tvMREmpty.text = getString(R.string.merge_request_empty_title)
+                    binding.tvMREmptyHint.text = getString(R.string.merge_request_empty_hint)
+                    fillMRs(mrs)
+                }
+            } finally {
+                finishLoading(activeGeneration)
             }
         }
     }

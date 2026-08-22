@@ -24,6 +24,7 @@ import com.example.qgent.ui.personal.bindCollapsibleSection
 import com.example.qgent.ui.personal.fillLinearLayout
 import com.example.qgent.ui.personal.joinTeamErrorMessage
 import com.example.qgent.ui.personal.newInputDialog
+import com.example.qgent.ui.personal.setInlineSkeletonLoading
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -67,11 +68,29 @@ class TeamManageFragment : Fragment() {
                 bindTeamItem(view, team, isOwner = true)
             }
         }
+        mainViewModel.teamsLoading.observe(viewLifecycleOwner) { loading ->
+            val showSkeleton = loading && mainViewModel.teamDtos.value.orEmpty().isEmpty()
+            setInlineSkeletonLoading(binding.rvJoined, showSkeleton)
+            setInlineSkeletonLoading(binding.rvCreated, showSkeleton)
+        }
     }
 
-    /** 填充单个团队列表项：团队名 + 成员数 + 点击进详情 */
+    /** 填充单个团队列表项：团队头像 + 团队名 + 成员数 + 点击进详情 */
     private fun bindTeamItem(view: View, team: TeamDto, isOwner: Boolean) {
         val item = ItemTeamManageBinding.bind(view)
+        // 团队头像（§28.2）：有则 Glide 圆形加载，无则默认组图标
+        if (team.avatarUrl.isNullOrBlank()) {
+            item.ivTeamAvatar.imageTintList = android.content.res.ColorStateList.valueOf(requireContext().getColor(R.color.navy))
+            item.ivTeamAvatar.setImageResource(R.drawable.ic_group)
+        } else {
+            item.ivTeamAvatar.imageTintList = null
+            com.bumptech.glide.Glide.with(item.ivTeamAvatar)
+                .load(com.example.qgent.data.api.RetrofitClient.resolveMediaUrl(team.avatarUrl))
+                .centerCrop()
+                .placeholder(R.drawable.ic_group)
+                .error(R.drawable.ic_group)
+                .into(item.ivTeamAvatar)
+        }
         item.tvTeamName.text = team.name
         item.tvMemberCount.text = getString(R.string.team_member_count, team.memberCount)
         item.root.setOnClickListener {

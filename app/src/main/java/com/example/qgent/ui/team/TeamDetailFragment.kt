@@ -3,6 +3,7 @@ package com.example.qgent.ui.team
 import android.app.AlertDialog
 import android.app.Dialog
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
@@ -43,6 +44,7 @@ import com.example.qgent.databinding.ItemProjectBinding
 import com.example.qgent.databinding.ItemRepositoryBinding
 import com.example.qgent.ui.personal.bindCollapsibleSection
 import com.example.qgent.ui.personal.fillLinearLayout
+import com.example.qgent.ui.personal.setInlineSkeletonLoading
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -121,23 +123,13 @@ class TeamDetailFragment : Fragment() {
 
         // 项目列表来自 MainViewModel（真实数据流）
         mainViewModel.projects.observe(viewLifecycleOwner) { projects ->
-            fillLinearLayout(binding.rvProjects, projects, R.layout.item_project) { view, name ->
-                ItemProjectBinding.bind(view).apply {
-                    tvProjectName.text = name
-                    // 项目头像（§31.1）：有则显示，无则默认文件夹图标
-                    val avatarUrl = projectAvatarByName[name]
-                    if (avatarUrl.isNullOrBlank()) {
-                        ivProjectAvatar.setImageResource(R.drawable.ic_folder)
-                    } else {
-                        Glide.with(ivProjectAvatar)
-                            .load(RetrofitClient.resolveMediaUrl(avatarUrl))
-                            .centerCrop()
-                            .placeholder(R.drawable.ic_folder)
-                            .error(R.drawable.ic_folder)
-                            .into(ivProjectAvatar)
-                    }
-                }
-            }
+            renderProjects(projects)
+        }
+        mainViewModel.projectsLoading.observe(viewLifecycleOwner) { loading ->
+            setInlineSkeletonLoading(
+                binding.rvProjects,
+                loading && mainViewModel.projects.value.orEmpty().isEmpty()
+            )
         }
 
         if (teamId.isNotEmpty()) {
@@ -165,9 +157,12 @@ class TeamDetailFragment : Fragment() {
      *  排序：创建者（TEAM_OWNER）置顶，其余保持后端返回顺序（产品约定，见 docs/product-notes.md）。 */
     private fun loadMembers(teamId: String, isOwner: Boolean) {
         viewLifecycleOwner.lifecycleScope.launch {
-            userRepository.getTeamMembers(teamId).onSuccess { members ->
-                val sorted = members.sortedByDescending { it.role == "TEAM_OWNER" }
-                fillLinearLayout(binding.rvMembers, sorted, R.layout.item_chat_member) { view, member ->
+            val initialLoad = binding.rvMembers.childCount == 0
+            if (initialLoad) setInlineSkeletonLoading(binding.rvMembers, true)
+            try {
+                userRepository.getTeamMembers(teamId).onSuccess { members ->
+                    val sorted = members.sortedByDescending { it.role == "TEAM_OWNER" }
+                    fillLinearLayout(binding.rvMembers, sorted, R.layout.item_chat_member) { view, member ->
                     val item = ItemChatMemberBinding.bind(view)
                     item.tvMemberName.text = member.displayName
                     // 成员头像（§28.2：members 返回 avatarUrl，可为空；无则默认占位）
@@ -185,8 +180,11 @@ class TeamDetailFragment : Fragment() {
                     item.tvAgentTag.text = "创建者"
                     // 仅我创建的团队可移除成员；创建者行不显示删除按钮
                     item.ivDeleteMember.isVisible = isOwner && member.role != "TEAM_OWNER"
-                    item.ivDeleteMember.setOnClickListener { confirmRemoveMember(teamId, member, isOwner) }
+                        item.ivDeleteMember.setOnClickListener { confirmRemoveMember(teamId, member, isOwner) }
+                    }
                 }
+            } finally {
+                if (initialLoad) setInlineSkeletonLoading(binding.rvMembers, false)
             }
         }
     }
@@ -205,9 +203,11 @@ class TeamDetailFragment : Fragment() {
     private fun loadTeamAvatar(teamId: String) {
         val avatarUrl = mainViewModel.teamDtos.value?.firstOrNull { it.id == teamId }?.avatarUrl
         if (avatarUrl.isNullOrBlank()) {
+            binding.ivTeamAvatar.imageTintList = ColorStateList.valueOf(requireContext().getColor(R.color.blue_tint))
             binding.ivTeamAvatar.setImageResource(R.drawable.ic_group)
             return
         }
+        binding.ivTeamAvatar.imageTintList = null
         Glide.with(binding.ivTeamAvatar)
             .load(RetrofitClient.resolveMediaUrl(avatarUrl))
             .centerCrop()
@@ -246,9 +246,14 @@ class TeamDetailFragment : Fragment() {
             ).onSuccess { avatarUrl ->
                 (requireActivity().application as QgentApp).container.userRepository
                     .updateTeam(teamId, avatarUrl, UUID.randomUUID().toString())
-                mainViewModel.refreshTeams()
-                loadTeamAvatar(teamId)
-                Toast.makeText(requireContext(), "团队头像已更新", Toast.LENGTH_SHORT).show()
+                    .onSuccess { updatedTeam ->
+                        showTeamAvatar(updatedTeam.avatarUrl ?: avatarUrl)
+                        mainViewModel.refreshTeams()
+                        Toast.makeText(requireContext(), "团队头像已更新", Toast.LENGTH_SHORT).show()
+                    }
+                    .onFailure { error ->
+                        Toast.makeText(requireContext(), "头像已上传，但团队头像保存失败：${error.message}", Toast.LENGTH_LONG).show()
+                    }
             }.onFailure { e ->
                 val code = (e as? ApiException)?.code
                 Toast.makeText(
@@ -260,15 +265,53 @@ class TeamDetailFragment : Fragment() {
         }
     }
 
+    private fun showTeamAvatar(avatarUrl: String?) {
+        if (avatarUrl.isNullOrBlank()) {
+            binding.ivTeamAvatar.imageTintList = ColorStateList.valueOf(requireContext().getColor(R.color.blue_tint))
+            binding.ivTeamAvatar.setImageResource(R.drawable.ic_group)
+            return
+        }
+        binding.ivTeamAvatar.imageTintList = null
+        Glide.with(binding.ivTeamAvatar)
+            .load(RetrofitClient.resolveMediaUrl(avatarUrl))
+            .centerCrop()
+            .placeholder(R.drawable.ic_group)
+            .error(R.drawable.ic_group)
+            .into(binding.ivTeamAvatar)
+    }
+
     /** 项目名 → 项目头像 URL 映射（§31.1，项目分组行显示用） */
     private val projectAvatarByName = mutableMapOf<String, String>()
 
-    /** 拉取团队项目列表，建立 项目名 → avatarUrl 映射 */
+    /** 渲染「全部项目」分组：项目名 + 头像（§31.1，有则显示，无则默认文件夹图标） */
+    private fun renderProjects(projects: List<String>) {
+        fillLinearLayout(binding.rvProjects, projects, R.layout.item_project) { view, name ->
+            ItemProjectBinding.bind(view).apply {
+                tvProjectName.text = name
+                val avatarUrl = projectAvatarByName[name]
+                if (avatarUrl.isNullOrBlank()) {
+                    ivProjectAvatar.imageTintList = ColorStateList.valueOf(requireContext().getColor(R.color.text_secondary))
+                    ivProjectAvatar.setImageResource(R.drawable.ic_folder)
+                } else {
+                    ivProjectAvatar.imageTintList = null
+                    Glide.with(ivProjectAvatar)
+                        .load(RetrofitClient.resolveMediaUrl(avatarUrl))
+                        .centerCrop()
+                        .placeholder(R.drawable.ic_folder)
+                        .error(R.drawable.ic_folder)
+                        .into(ivProjectAvatar)
+                }
+            }
+        }
+    }
+
+    /** 拉取团队项目列表，建立 项目名 → avatarUrl 映射；完成后重渲染项目列表（否则头像不显示） */
     private fun loadProjectAvatars(teamId: String) {
         viewLifecycleOwner.lifecycleScope.launch {
             userRepository.getProjects(teamId).getOrNull().orEmpty().forEach { project ->
                 if (!project.avatarUrl.isNullOrBlank()) projectAvatarByName[project.name] = project.avatarUrl!!
             }
+            renderProjects(mainViewModel.projects.value.orEmpty())
         }
     }
 
@@ -291,11 +334,17 @@ class TeamDetailFragment : Fragment() {
 
     private fun loadAuthorizedRepositories(teamId: String, isOwner: Boolean) {
         viewLifecycleOwner.lifecycleScope.launch {
-            if (isOwner) {
-                val repos = githubRepository.getGithubRepositories(teamId).getOrNull().orEmpty()
-                renderTeamAuthorizedRepositories(teamId, repos, isOwner)
-            } else {
-                renderMyProjectRepositories(teamId)
+            val initialLoad = binding.rvRepository.childCount == 0
+            if (initialLoad) setInlineSkeletonLoading(binding.rvRepository, true)
+            try {
+                if (isOwner) {
+                    val repos = githubRepository.getGithubRepositories(teamId).getOrNull().orEmpty()
+                    renderTeamAuthorizedRepositories(teamId, repos, isOwner)
+                } else {
+                    renderMyProjectRepositories(teamId)
+                }
+            } finally {
+                if (initialLoad) setInlineSkeletonLoading(binding.rvRepository, false)
             }
         }
     }

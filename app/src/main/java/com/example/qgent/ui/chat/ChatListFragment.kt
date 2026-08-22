@@ -65,6 +65,12 @@ class ChatListFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentChatListBinding.inflate(inflater, container, false)
+        val loadingSize = (56 * resources.displayMetrics.density).toInt()
+        Glide.with(this)
+            .asGif()
+            .load(R.drawable.blue_robot_loading_animation)
+            .override(loadingSize, loadingSize)
+            .into(_binding!!.ivChatListLoading)
         return binding.root
     }
 

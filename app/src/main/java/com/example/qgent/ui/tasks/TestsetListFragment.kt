@@ -19,6 +19,7 @@ import com.example.qgent.data.model.TestsetResponseDto
 import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.databinding.FragmentTestsetListBinding
 import com.example.qgent.viewmodel.MainViewModel
+import com.example.qgent.ui.personal.setInlineSkeletonLoading
 import kotlinx.coroutines.launch
 
 /** Testset 列表页：展示当前项目全部 Testset（§10，名称/仓库/状态/执行命令） */
@@ -51,16 +52,25 @@ class TestsetListFragment : Fragment() {
     private fun loadTestsets() {
         val projectId = mainViewModel.currentProjectId() ?: return
         viewLifecycleOwner.lifecycleScope.launch {
-            taskRepository.getTestsets(projectId)
-                .onSuccess { list ->
-                    adapter.submitList(list)
-                    binding.tvEmpty.isVisible = list.isEmpty()
-                }
-                .onFailure { e ->
-                    binding.tvEmpty.isVisible = true
-                    binding.tvEmpty.text = "TestSet 加载失败"
-                    Toast.makeText(requireContext(), "加载失败：${e.message}", Toast.LENGTH_SHORT).show()
-                }
+            val initialLoad = adapter.itemCount == 0
+            if (initialLoad) {
+                binding.tvEmpty.isVisible = false
+                setInlineSkeletonLoading(binding.rvTestsetList, true)
+            }
+            try {
+                taskRepository.getTestsets(projectId)
+                    .onSuccess { list ->
+                        adapter.submitList(list)
+                        binding.tvEmpty.isVisible = list.isEmpty()
+                    }
+                    .onFailure { e ->
+                        binding.tvEmpty.isVisible = true
+                        binding.tvEmpty.text = "TestSet 加载失败"
+                        Toast.makeText(requireContext(), "加载失败：${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+            } finally {
+                if (initialLoad) setInlineSkeletonLoading(binding.rvTestsetList, false)
+            }
         }
     }
 

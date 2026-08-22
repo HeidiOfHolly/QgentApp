@@ -18,6 +18,7 @@ import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.UserRepository
 import com.example.qgent.databinding.FragmentTaskCardListBinding
+import com.example.qgent.ui.personal.setSkeletonLoading
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -31,6 +32,8 @@ class TaskCardListFragment : Fragment() {
 
     private var eventStreamJob: Job? = null
     private var pollingJob: Job? = null
+    /** 详情页跳转尚未完成时忽略重复点击，避免连续入栈多个同一任务详情页。 */
+    private var isNavigatingToTaskDetail = false
 
     private val mainViewModel: MainViewModel by activityViewModels {
         (requireActivity().application as QgentApp).container.mainViewModelFactory
@@ -46,13 +49,21 @@ class TaskCardListFragment : Fragment() {
         get() = (requireActivity().application as QgentApp).container.userRepository
 
     private val taskAdapter = TaskCardAdapter { task ->
-        findNavController().navigate(
-            R.id.action_taskCardList_to_taskDetail,
-            Bundle().apply {
-                putString(TaskDetailFragment.ARG_TASK_ID, task.id)
-                putString(TaskDetailFragment.ARG_PROJECT_ID, task.projectId)
-            }
-        )
+        openTaskDetail(task)
+    }
+
+    private fun openTaskDetail(task: com.example.qgent.data.model.TaskListItemDto) {
+        if (isNavigatingToTaskDetail) return
+        isNavigatingToTaskDetail = true
+        runCatching {
+            findNavController().navigate(
+                R.id.action_taskCardList_to_taskDetail,
+                Bundle().apply {
+                    putString(TaskDetailFragment.ARG_TASK_ID, task.id)
+                    putString(TaskDetailFragment.ARG_PROJECT_ID, task.projectId)
+                }
+            )
+        }.onFailure { isNavigatingToTaskDetail = false }
     }
     private val filterAdapter = FilterChipAdapter { type -> showFilterOptions(type) }
 
@@ -86,6 +97,8 @@ class TaskCardListFragment : Fragment() {
         taskListViewModel.uiState.observe(viewLifecycleOwner) { state ->
             taskAdapter.submitList(state.tasks)
             binding.tvEmpty.isVisible = state.tasks.isEmpty() && !state.loading
+            // 骨架屏：首次加载中且无数据时显示（不转圈），数据到位/加载结束隐藏
+            setSkeletonLoading(binding.viewSkeleton.root, state.loading && state.tasks.isEmpty())
             // 刷新筛选行选中值；从当前任务列表提取发起人候选
             refreshFilterRow(state)
             // uiState 更新即视为刷新结束，收起下拉刷新动画
@@ -105,6 +118,8 @@ class TaskCardListFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        // 从详情页返回后恢复任务卡片点击。
+        isNavigatingToTaskDetail = false
         val projectId = mainViewModel.currentProjectId() ?: return
         loadCandidates(projectId)
         taskListViewModel.loadTasks(projectId)

@@ -9,7 +9,6 @@ import okhttp3.Authenticator
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
-import java.io.IOException
 
 /**
  * 收到 401 时用 refresh token 换新 access token 并重试原请求。
@@ -39,18 +38,22 @@ class TokenAuthenticator(
             }
 
             val result = runBlocking {
-                runCatching { refreshService.refresh(RefreshRequest(refreshToken)).toDataOrThrow() }
+                runCatching { refreshService.refresh(RefreshRequest(refreshToken)) }
             }
-            val newAccess = result.getOrNull()?.accessToken
-            if (newAccess.isNullOrEmpty()) {
-                // refresh 失败：网络异常（IO）不视为过期，静默等待下次重试；
-                // 其余（401 / refresh token 失效 / 服务端拒绝）判定会话过期，触发自动退出登录
-                if (result.exceptionOrNull() !is IOException) {
+            val refreshResponse = result.getOrNull() ?: return null
+            if (!refreshResponse.isSuccessful) {
+                if (refreshResponse.code() == 401) {
                     SessionExpiryNotifier.notifyExpired()
                 }
                 return null
             }
-            SessionStore.updateTokens(newAccess, result.getOrNull()?.refreshToken)
+            val refreshed = runCatching { refreshResponse.toDataOrThrow() }.getOrNull()
+            val newAccess = refreshed?.accessToken
+            if (newAccess.isNullOrEmpty()) {
+                // A malformed successful refresh response is retriable; retain local user data.
+                return null
+            }
+            SessionStore.updateTokens(newAccess, refreshed?.refreshToken)
             return response.request.newBuilder()
                 .header("Authorization", "Bearer $newAccess")
                 .build()

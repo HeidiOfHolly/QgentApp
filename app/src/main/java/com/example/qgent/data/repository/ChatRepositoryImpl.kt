@@ -135,6 +135,10 @@ class ChatRepositoryImpl(private val service: QgApiService) : ChatRepository {
         service.markGroupRead(projectId, groupId, idempotencyKey).toDataOrThrow()
     }
 
+    override suspend fun searchGroups(query: String): Result<List<GroupDto>> = apiCall {
+        service.searchGroups(query, "groups").toDataOrThrow()
+    }
+
     override suspend fun sendMessage(
         projectId: String,
         groupId: String,

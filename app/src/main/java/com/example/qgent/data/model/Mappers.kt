@@ -50,7 +50,6 @@ fun GroupMemberDto.toGroupMember(): GroupMember = GroupMember(
  *  TASK_STATUS 消息 content 无 text，从 JSON 解析 taskId/status/node/message 拼可读摘要。 */
 fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String, String>): ChatMessage {
     val parsedType = runCatching { MessageType.valueOf(type) }.getOrDefault(MessageType.TEXT)
-    android.util.Log.d("MsgRaw", "type=$type senderType=$senderType senderId=$senderId seq=$sequence replyText=$replyText mentions=$mentions content=${content?.let { com.google.gson.Gson().toJson(it) }}")
     val displayContent = when {
         parsedType == MessageType.IMAGE || parsedType == MessageType.FILE -> content?.url ?: ""
         parsedType == MessageType.TASK_STATUS -> taskStatusSummary()
@@ -185,6 +184,23 @@ fun GroupLatestMessageDto?.toSummary(): String {
         else -> text ?: ""
     }
     return if (senderName.isNullOrBlank()) body else "$senderName：$body"
+}
+
+/** GroupDto → ChatGroup（搜索/跨项目群展示用；未读/@我 用后端权威值，不排序不拼头像） */
+fun GroupDto.toSearchChatGroup(): com.example.qgent.model.ChatGroup {
+    val lastActive = parseRfc3339(latestActivityAt.orEmpty())
+    return com.example.qgent.model.ChatGroup(
+        id = id,
+        name = title,
+        lastMessage = latestMessage.toSummary(),
+        time = formatGroupTime(lastActive),
+        unread = (unreadCount ?: 0).coerceAtLeast(0),
+        lastActiveTime = lastActive,
+        mentionedMe = (mentionedUnread ?: 0) > 0,
+        type = if (type == "PROJECT_MAIN") com.example.qgent.model.GroupType.PROJECT_MAIN
+        else com.example.qgent.model.GroupType.REQUIREMENT,
+        lastMessageType = latestMessage?.type
+    )
 }
 
 /** 解析 RFC3339 时间到 epoch 毫秒，失败回退当前时间。

@@ -12,7 +12,8 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
-    // Retrofit 要求 baseUrl 以 "/" 结尾（否则启动抛 IllegalArgumentException）
+    // Retrofit 要求 baseUrl 以 "/" 结尾（否则启动抛 IllegalArgumentException）。
+    // 后端 API 在 api 子域（nginx 反代）；qgents/mobile 子域是前端页面域名，不是 API。
     const val BASE_URL = "https://api.qgents.dpdns.org/api/v1/"
 
     // 请求日志：debug 只打请求行/响应行（BASIC），不再完整记录响应体——
@@ -71,6 +72,7 @@ object RetrofitClient {
      * 附件鉴权代理 URL（/projects/{id}/attachments/{id}/content）即使存的是完整地址
      * （如 web 开发环境存的 http://localhost:8080/...），也提取路径段用本端 BASE_URL 重建，
      * 保证「发送方环境地址」对接收方可访问；其余完整 URL（头像 OSS 直链等）原样返回。
+     * /api/v1/... 形式的代理地址须拼 API origin，避免 BASE_URL 再叠加 /api/v1。
      */
     fun resolveMediaUrl(path: String): String {
         return when {
@@ -79,6 +81,8 @@ object RetrofitClient {
                 val p = runCatching { android.net.Uri.parse(path).path }.getOrNull() ?: return path
                 if (p.contains("/attachments/")) rebuildAttachmentPath(p) else path
             }
+            path.startsWith("/api/v1/") -> origin() + path
+            path.startsWith("api/v1/") -> origin() + "/$path"
             else -> BASE_URL.trimEnd('/') + (if (path.startsWith("/")) path else "/$path")
         }
     }

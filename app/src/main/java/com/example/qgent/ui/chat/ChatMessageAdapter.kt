@@ -9,6 +9,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.bumptech.glide.Glide
@@ -42,7 +43,7 @@ sealed class ChatRow {
  * Diff 行通过 [onLoadDiff] 异步拉取文件内容（真实接口优先，失败由数据层 mock 保底）。
  */
 class ChatMessageAdapter(
-    private val rows: List<ChatRow>,
+    initialRows: List<ChatRow>,
     private val onAvatarLongClick: ((String) -> Unit)? = null,
     private val onImageClick: ((String) -> Unit)? = null,
     private val onFileClick: ((ChatMessage) -> Unit)? = null,
@@ -56,6 +57,39 @@ class ChatMessageAdapter(
     /** DIFF 卡「完整 Diff」→ 查看当前选中文件；未选中时由调用方回退完整 Diff */
     private val onViewFullDiff: ((ChatMessage, DiffFile?) -> Unit)? = null
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+    /** 当前行列表（构造快照；后续更新一律走 [submitList] 做 DiffUtil 增量更新） */
+    private var items: List<ChatRow> = initialRows
+
+    /**
+     * 增量更新行列表：DiffUtil 对比新旧列表，只派发变化（新增/更新/删除）的行，
+     * 未变行不重绑（图片不重载、布局不动）——替代全量 notifyDataSetChanged。
+     * 时间行按文本、消息行按 messageId 判同一项；内容用 data class 全等比较。
+     * ⚠️ 必须拷贝 newRows：调用方传入的是 Fragment 持有的 MutableList 引用，
+     * 若直接引用赋值，外部 clear/addAll 会改掉 items（DiffUtil 的 old 列表），
+     * 导致 diff 恒为 no-op、界面不刷新（如发送成功仍显示转圈）。
+     */
+    fun submitList(newRows: List<ChatRow>) {
+        val old = items
+        val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+            override fun getOldListSize(): Int = old.size
+            override fun getNewListSize(): Int = newRows.size
+            override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                val oldRow = old[oldItemPosition]
+                val newRow = newRows[newItemPosition]
+                return when {
+                    oldRow is ChatRow.Time && newRow is ChatRow.Time -> oldRow.text == newRow.text
+                    oldRow is ChatRow.Message && newRow is ChatRow.Message -> oldRow.message.id == newRow.message.id
+                    else -> false
+                }
+            }
+
+            override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean =
+                old[oldItemPosition] == newRows[newItemPosition]
+        })
+        items = newRows.toList()
+        diff.dispatchUpdatesTo(this)
+    }
 
     /** 多选模式下被选中的消息 id（非多选模式为空集，不参与高亮） */
     private var selectedIds: Set<String> = emptySet()
@@ -93,7 +127,7 @@ class ChatMessageAdapter(
         notifyDataSetChanged()
     }
 
-    override fun getItemViewType(position: Int): Int = when (val row = rows[position]) {
+    override fun getItemViewType(position: Int): Int = when (val row = items[position]) {
         is ChatRow.Time -> TYPE_TIME
         is ChatRow.Message -> when (row.message.type) {
             MessageType.SYSTEM -> TYPE_SYSTEM
@@ -132,7 +166,7 @@ class ChatMessageAdapter(
 
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-        val row = rows[position]
+        val row = items[position]
         when (row) {
             is ChatRow.Time -> (holder as TimeVH).binding.tvTime.text = row.text
             is ChatRow.Message -> when (row.message.type) {
@@ -154,7 +188,7 @@ class ChatMessageAdapter(
         )
     }
 
-    override fun getItemCount(): Int = rows.size
+    override fun getItemCount(): Int = items.size
 
     class TimeVH(val binding: ItemMessageTimeBinding) : RecyclerView.ViewHolder(binding.root)
 
@@ -296,6 +330,11 @@ class ChatMessageAdapter(
                     binding.tvFileName.text = message.fileName ?: "[文件]"
                     binding.tvFileSize.text = formatFileSize(message.fileSize)
                     binding.llBubbleFile.setOnClickListener { onFileClick?.invoke(message) }
+                    // 文件气泡可点击（打开），长按同样弹菜单（引用/复制/多选），避免被点击消费
+                    binding.llBubbleFile.setOnLongClickListener {
+                        onMessageLongClick?.invoke(binding.root, message)
+                        true
+                    }
                 }
                 else -> {
                     binding.flBubble.setBackgroundResource(
@@ -406,6 +445,11 @@ class ChatMessageAdapter(
                     }
                 })
             view.setOnClickListener { onImageClick?.invoke(previewUrl ?: uri) }
+            // 图片可点击（全屏预览），长按同样弹菜单（引用/复制/多选），避免被点击消费
+            view.setOnLongClickListener {
+                onMessageLongClick?.invoke(binding.root, message)
+                true
+            }
         }
 
         private fun dp(value: Int): Int =
@@ -432,6 +476,7 @@ class ChatMessageAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         private val pagerAdapter = DiffFilePagerAdapter()
+        private var boundDiffId: String? = null
 
         init {
             binding.viewPagerDiff.adapter = pagerAdapter
@@ -466,16 +511,49 @@ class ChatMessageAdapter(
                 onMessageLongClick?.invoke(it, message)
                 true
             }
+            // 卡片/操作行本身可点击 → 长按被子 view 消费不冒泡，需显式转发同一菜单
+            val cardLongClick = View.OnLongClickListener {
+                onMessageLongClick?.invoke(binding.root, message)
+                true
+            }
+            binding.diffCard.setOnLongClickListener(cardLongClick)
+            binding.tvActionReview.setOnLongClickListener(cardLongClick)
+            binding.tvActionFull.setOnLongClickListener(cardLongClick)
             // 优先用内存中已有的 diff；否则按 diffId 异步拉取（真实接口优先，失败 mock 保底）
             val diffId = message.diffId
             val files = message.diff
+            boundDiffId = diffId
             if (!files.isNullOrEmpty()) {
+                setPreviewLoading(false)
                 render(files)
             } else if (!diffId.isNullOrBlank() && onLoadDiff != null) {
-                onLoadDiff?.let { it(diffId) { loaded -> render(loaded) } }
+                clearPreview()
+                setPreviewLoading(true)
+                onLoadDiff?.let { load ->
+                    load(diffId) callback@{ loaded ->
+                        // RecyclerView 复用后，这个 ViewHolder 可能已经展示了另一张 Diff 卡。
+                        if (boundDiffId != diffId) return@callback
+                        setPreviewLoading(false)
+                        render(loaded)
+                    }
+                }
             } else {
+                setPreviewLoading(false)
                 render(emptyList())
             }
+        }
+
+        private fun setPreviewLoading(loading: Boolean) {
+            binding.diffLoading.isVisible = loading
+            binding.diffPreview.isVisible = !loading
+        }
+
+        private fun clearPreview() {
+            pagerAdapter.submitList(emptyList())
+            binding.llFileChips.removeAllViews()
+            binding.tvDiffFileName.text = ""
+            binding.tvDiffStats.text = ""
+            binding.tvDiffIndicator.text = ""
         }
 
         private fun render(files: List<DiffFile>) {

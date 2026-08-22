@@ -201,6 +201,13 @@ class TeamEntryActivity : AppCompatActivity() {
         ).onSuccess { avatarUrl ->
             (application as QgentApp).container.userRepository
                 .updateTeam(teamId, avatarUrl, UUID.randomUUID().toString())
+                .onFailure { error ->
+                    Toast.makeText(
+                        this@TeamEntryActivity,
+                        "头像已上传，但团队头像保存失败：${error.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
         }.onFailure { e ->
             val code = (e as? ApiException)?.code
             Toast.makeText(

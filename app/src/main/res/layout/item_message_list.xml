@@ -3,7 +3,7 @@
     android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:elevation="5dp"
+    android:elevation="1dp"
     android:background="@drawable/bg_card">
    <LinearLayout
        android:layout_width="match_parent"
@@ -18,11 +18,11 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textStyle="bold"
-            android:textSize="15dp"/>
+            android:textSize="15sp"/>
     </LinearLayout>
     <TextView
         android:id="@+id/tvMessageContent"
-        android:textSize="10dp"
+        android:textSize="10sp"
         android:text="@string/long_test"
         android:paddingHorizontal="10dp"
         android:paddingVertical="10dp"

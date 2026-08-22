@@ -123,8 +123,9 @@ class TaskListViewModel(
      *  与 state.tasks（列表页可筛选）分离，返回主界面时列表页筛选不影响首页展示。
      *  排序：未完成优先（未完成/已完成分组内再按 updatedAt 倒序）。
      *  [groupIds]：当前用户所在需求群（分支群）id。仅当用户未在该项目创建过任务（myTasks 为空）时，
-     *  加载其所在分支群的最近任务（state.groupTasks，按 createdAt 倒序取 MAX_MY_TASKS）。 */
-    fun loadMyTasks(projectId: String?, userId: String?, groupIds: List<String> = emptyList()) {
+     *  加载其所在分支群的最近任务（state.groupTasks，按 createdAt 倒序取 MAX_MY_TASKS）。
+     *  @param onDone 加载完成回调（成功/失败均调用），供页面标记「首次加载完成」收起骨架屏 */
+    fun loadMyTasks(projectId: String?, userId: String?, groupIds: List<String> = emptyList(), onDone: (() -> Unit)? = null) {
         if (projectId == null || userId == null) return
         viewModelScope.launch {
             val tasks = runCatching {
@@ -160,14 +161,16 @@ class TaskListViewModel(
                     .take(MAX_MY_TASKS)
             } else emptyList()
             _uiState.value = _uiState.value.copy(myTasks = sorted, groupTasks = groupTasks)
+            onDone?.invoke()
         }
     }
 
     /** 加载最近被调用的 Agent 及任务：遍历项目内 Agent，查 task-runs（§20.6），
      *  按 createdAt 倒序取最新 MAX_AGENT_ACTIVITIES 条。单个 Agent 查询失败静默跳过。
      *  并发查询所有 Agent（串行会随 Agent 数线性放大耗时）+ 整体 10s 超时，
-     *  避免后端/网络慢时任务页长时间空白；新查询前取消上一次（轮询每 3 秒触发，防旧结果覆盖）。 */
-    fun loadActivities(projectId: String?, agents: List<Agent>) {
+     *  避免后端/网络慢时任务页长时间空白；新查询前取消上一次（轮询每 3 秒触发，防旧结果覆盖）。
+     *  @param onDone 加载完成回调（成功/失败均调用），供页面标记「首次加载完成」收起骨架屏 */
+    fun loadActivities(projectId: String?, agents: List<Agent>, onDone: (() -> Unit)? = null) {
         if (projectId == null) return
         activitiesJob?.cancel()
         activitiesJob = viewModelScope.launch {
@@ -195,6 +198,7 @@ class TaskListViewModel(
             _uiState.value = _uiState.value.copy(
                 agentRuns = all.sortedWith(compareByDescending { it.createdAt }).take(MAX_AGENT_ACTIVITIES)
             )
+            onDone?.invoke()
         }
     }
 
@@ -228,8 +232,9 @@ class TaskListViewModel(
     }
 
     /** MR 列表页专用：只加载 MR（全量），供独立 MR 列表页使用。
-     *  @param force true 时跳过「同项目已加载」防重复（事件触发刷新用，设计要点：事件一律重新查询） */
-    fun loadMergeRequestsForList(projectId: String?, force: Boolean = false) {
+     *  @param force true 时跳过「同项目已加载」防重复（事件触发刷新用，设计要点：事件一律重新查询）
+     *  @param onDone 加载完成回调（成功/失败均调用），供页面标记「首次加载完成」收起骨架屏 */
+    fun loadMergeRequestsForList(projectId: String?, force: Boolean = false, onDone: (() -> Unit)? = null) {
         if (projectId == null) return
         // 独立跟踪 MR 项目：与任务加载共用 loadedProjectId 会串数据（见 loadTasks）
         if (!force && loadedMrProjectId == projectId && _uiState.value.mergeRequests.isNotEmpty()) return
@@ -244,6 +249,7 @@ class TaskListViewModel(
             }
             if (mrs.isEmpty() && _uiState.value.error != null) return@launch
             _uiState.value = _uiState.value.copy(mergeRequests = filterMrByProject(projectId, mrs))
+            onDone?.invoke()
         }
     }
 

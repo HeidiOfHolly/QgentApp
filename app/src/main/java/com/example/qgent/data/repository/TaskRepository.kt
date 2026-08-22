@@ -158,6 +158,9 @@ interface TaskRepository {
     /** Dry Run 预检 CQ+1（§27.10：通过后触发自动创建 MR） */
     suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit>
 
+    /** Dry Run 预检 CQ 拒绝（reason 必填；不会创建 MR） */
+    suspend fun dryRunCqReject(projectId: String, dryRunId: String, reason: String, idempotencyKey: String): Result<Unit>
+
     /** 创建 Dry Run（§12.4/§32.1：repositoryId/sourceRef/targetBranch，taskId 可选；202 受理） */
     suspend fun createDryRun(
         projectId: String,

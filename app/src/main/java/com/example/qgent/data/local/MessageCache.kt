@@ -11,8 +11,8 @@ class MessageCache(private val dao: MessageDao) {
         dao.getByGroup(groupId).map { it.toChatMessage() }
 
     suspend fun save(groupId: String, messages: List<ChatMessage>) {
-        dao.clearByGroup(groupId)
-        dao.insertAll(messages.map { it.toEntity(groupId) })
+        // 增量写入：删残留 + 按 id REPLACE（新增/更新），不再先清空再全量插入（减少 DB 写量）
+        dao.replaceGroupMessages(groupId, messages.map { it.toEntity(groupId) })
     }
 
     private fun MessageEntity.toChatMessage(): ChatMessage = ChatMessage(

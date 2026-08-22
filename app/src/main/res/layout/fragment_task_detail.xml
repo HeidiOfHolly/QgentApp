@@ -5,7 +5,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/light_gray"
+    android:background="@color/off_white"
     android:orientation="vertical"
     tools:context=".ui.tasks.TaskDetailFragment">
 
@@ -62,7 +62,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="@color/text_primary"
-                android:textSize="25sp"
+                android:textSize="22sp"
                 android:textStyle="bold"
                 tools:text="实现邮箱登录" />
 

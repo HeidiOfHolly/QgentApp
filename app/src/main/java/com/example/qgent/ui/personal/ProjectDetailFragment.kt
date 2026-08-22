@@ -1,5 +1,6 @@
 package com.example.qgent.ui.personal
 
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -35,6 +36,7 @@ import com.example.qgent.databinding.ItemChatMemberBinding
 import com.example.qgent.databinding.ItemRepositoryBinding
 import com.example.qgent.ui.chat.GroupMemberPick
 import com.example.qgent.ui.chat.GroupMemberPickAdapter
+import com.example.qgent.ui.personal.setInlineSkeletonLoading
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -72,6 +74,18 @@ class ProjectDetailFragment : Fragment() {
 
     /** 当前项目绑定的仓库数量：仅剩 1 个时禁止解绑（项目至少保留一个仓库） */
     private var boundRepoCount = 0
+
+    /** 按接口文档 §44.3 判断仓库是否可以进入项目绑定流程。 */
+    private fun repositoryBindBlockReason(
+        repository: GitHubRepositoryDto,
+        activeInstallationIds: Set<String>,
+    ): String? = when {
+        repository.authorizationStatus != "AUTHORIZED" -> "GitHub 授权已撤销"
+        repository.archived -> "仓库已归档"
+        repository.defaultBranch.isNullOrBlank() -> "仓库尚未初始化，请先创建初始提交"
+        repository.installationId !in activeInstallationIds -> "GitHub Installation 不可用"
+        else -> null
+    }
 
     /** 成员 userId → 显示名（团队成员表反查） */
     private var memberNameById = emptyMap<String, String>()
@@ -141,9 +155,11 @@ class ProjectDetailFragment : Fragment() {
     /** 项目头像显示：有 URL 用 Glide（公共读地址），无则默认项目图标 */
     private fun loadProjectAvatar(avatarUrl: String?) {
         if (avatarUrl.isNullOrBlank()) {
+            binding.ivProjectAvatar.imageTintList = ColorStateList.valueOf(requireContext().getColor(R.color.blue_tint))
             binding.ivProjectAvatar.setImageResource(R.drawable.ic_folder)
             return
         }
+        binding.ivProjectAvatar.imageTintList = null
         com.bumptech.glide.Glide.with(binding.ivProjectAvatar)
             .load(com.example.qgent.data.api.RetrofitClient.resolveMediaUrl(avatarUrl))
             .centerCrop()
@@ -181,8 +197,13 @@ class ProjectDetailFragment : Fragment() {
             ).onSuccess { avatarUrl ->
                 (requireActivity().application as QgentApp).container.userRepository
                     .updateProject(projectId, avatarUrl, UUID.randomUUID().toString())
-                loadProjectAvatar(avatarUrl)
-                Toast.makeText(requireContext(), "项目头像已更新", Toast.LENGTH_SHORT).show()
+                    .onSuccess { updatedProject ->
+                        loadProjectAvatar(updatedProject.avatarUrl ?: avatarUrl)
+                        Toast.makeText(requireContext(), "项目头像已更新", Toast.LENGTH_SHORT).show()
+                    }
+                    .onFailure { error ->
+                        Toast.makeText(requireContext(), "头像已上传，但项目头像保存失败：${error.message}", Toast.LENGTH_LONG).show()
+                    }
             }.onFailure { e ->
                 val code = (e as? ApiException)?.code
                 Toast.makeText(
@@ -198,6 +219,12 @@ class ProjectDetailFragment : Fragment() {
     private fun loadMembers(projectId: String) {
         val teamId = mainViewModel.currentTeamId()
         viewLifecycleOwner.lifecycleScope.launch {
+            val initialLoad = binding.rvMembers.childCount == 0
+            if (initialLoad) {
+                binding.tvMembersEmpty.isVisible = false
+                setInlineSkeletonLoading(binding.rvMembers, true)
+            }
+            try {
             val teamMembers = if (teamId != null) {
                 userRepository.getTeamMembers(teamId).getOrNull().orEmpty()
             } else emptyList()
@@ -251,6 +278,9 @@ class ProjectDetailFragment : Fragment() {
                 }
             }
             loadRepositories(projectId)
+            } finally {
+                if (initialLoad) setInlineSkeletonLoading(binding.rvMembers, false)
+            }
         }
     }
 
@@ -502,18 +532,27 @@ class ProjectDetailFragment : Fragment() {
     /** 已绑定仓库列表：管理员可解绑（删除） */
     private fun loadRepositories(projectId: String) {
         viewLifecycleOwner.lifecycleScope.launch {
-            val repos = githubRepository.getProjectRepositories(projectId).getOrNull().orEmpty()
-            boundRepoCount = repos.size
-            binding.tvRepositoriesEmpty.isVisible = repos.isEmpty()
-            fillLinearLayout(binding.rvRepositories, repos, R.layout.item_repository) { view, repo ->
-                val item = ItemRepositoryBinding.bind(view)
-                item.tvRepositoryName.text = repo.fullName
-                item.tvBoundStatus.isVisible = false
-                // REVOKED 死绑定标红提示（授权已撤销但仍绑定）
-                item.tvRepositoryStatus.isVisible = repo.authorizationStatus == "REVOKED"
-                // 管理员可解绑
-                item.ivDeleteRepository.isVisible = isAdmin
-                item.ivDeleteRepository.setOnClickListener { unbindRepo(projectId, repo.id, repo.fullName) }
+            val initialLoad = binding.rvRepositories.childCount == 0
+            if (initialLoad) {
+                binding.tvRepositoriesEmpty.isVisible = false
+                setInlineSkeletonLoading(binding.rvRepositories, true)
+            }
+            try {
+                val repos = githubRepository.getProjectRepositories(projectId).getOrNull().orEmpty()
+                boundRepoCount = repos.size
+                binding.tvRepositoriesEmpty.isVisible = repos.isEmpty()
+                fillLinearLayout(binding.rvRepositories, repos, R.layout.item_repository) { view, repo ->
+                    val item = ItemRepositoryBinding.bind(view)
+                    item.tvRepositoryName.text = repo.fullName
+                    item.tvBoundStatus.isVisible = false
+                    // REVOKED 死绑定标红提示（授权已撤销但仍绑定）
+                    item.tvRepositoryStatus.isVisible = repo.authorizationStatus == "REVOKED"
+                    // 管理员可解绑
+                    item.ivDeleteRepository.isVisible = isAdmin
+                    item.ivDeleteRepository.setOnClickListener { unbindRepo(projectId, repo.id, repo.fullName) }
+                }
+            } finally {
+                if (initialLoad) setInlineSkeletonLoading(binding.rvRepositories, false)
             }
         }
     }
@@ -661,8 +700,17 @@ class ProjectDetailFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             val boundIds = githubRepository.getProjectRepositories(projectId).getOrNull().orEmpty()
                 .map { it.repositoryId }.toSet()
+            val installations = githubRepository.getInstallations(teamId).getOrElse {
+                Toast.makeText(requireContext(), "加载 GitHub Installation 失败", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val activeInstallationIds = installations
+                .filter { it.status == "ACTIVE" }
+                .map { it.id }
+                .toSet()
+            // 保留不可绑定仓库用于展示原因，但通过 isEnabled 禁止勾选，和 Web 端一致。
             val candidates = githubRepository.getGithubRepositories(teamId).getOrNull().orEmpty()
-                .filter { it.id !in boundIds && it.authorizationStatus == "AUTHORIZED" }
+                .filter { it.id !in boundIds }
             if (candidates.isEmpty()) {
                 Toast.makeText(requireContext(), "暂无可绑定仓库（需先在团队中授权 GitHub 仓库）", Toast.LENGTH_SHORT).show()
                 return@launch
@@ -673,10 +721,12 @@ class ProjectDetailFragment : Fragment() {
             }
             val checks = mutableListOf<android.widget.CheckBox>()
             candidates.forEach { repo ->
+                val blockReason = repositoryBindBlockReason(repo, activeInstallationIds)
                 val cb = android.widget.CheckBox(requireContext()).apply {
-                    text = repo.fullName
+                    text = if (blockReason == null) repo.fullName else "${repo.fullName}（$blockReason）"
                     textSize = 14f
                     isChecked = false
+                    isEnabled = blockReason == null
                 }
                 checks.add(cb)
                 container.addView(cb)
@@ -698,16 +748,32 @@ class ProjectDetailFragment : Fragment() {
         if (selected.isEmpty()) return
         viewLifecycleOwner.lifecycleScope.launch {
             var ok = 0
+            val failed = mutableListOf<String>()
             selected.forEach { repo ->
                 githubRepository.bindProjectRepository(
                     projectId,
                     UUID.randomUUID().toString(),
                     BindProjectRepositoryRequest(repo.installationId, repo.id, repo.fullName)
                 ).onSuccess { ok++ }
+                    .onFailure { error ->
+                        failed += "${repo.fullName}：${repositoryBindErrorMessage(error)}"
+                    }
             }
-            Toast.makeText(requireContext(), "已绑定 $ok 个仓库", Toast.LENGTH_SHORT).show()
+            val message = when {
+                failed.isEmpty() -> "已绑定 $ok 个仓库"
+                ok == 0 -> "没有仓库绑定成功：${failed.joinToString("；")}"
+                else -> "已绑定 $ok 个仓库，失败：${failed.joinToString("；")}"
+            }
+            Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
             loadRepositories(projectId)
         }
+    }
+
+    private fun repositoryBindErrorMessage(error: Throwable): String = when ((error as? ApiException)?.code) {
+        "GITHUB_REPOSITORY_METADATA_INCOMPLETE" -> "仓库尚未初始化"
+        "REPOSITORY_NOT_AUTHORIZED_FOR_PROJECT" -> "仓库不在有效授权范围"
+        "GITHUB_REPOSITORY_ACCESS_DENIED" -> "没有项目绑定权限"
+        else -> error.message?.takeIf { it.isNotBlank() } ?: "绑定失败"
     }
 
     override fun onDestroyView() {

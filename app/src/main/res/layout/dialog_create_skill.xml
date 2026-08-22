@@ -38,4 +38,34 @@
             android:gravity="top"
             android:minLines="4" />
     </com.google.android.material.textfield.TextInputLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="可见范围"
+        android:textColor="?android:attr/textColorPrimary"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <RadioGroup
+        android:id="@+id/rgVisibility"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:orientation="vertical">
+
+        <RadioButton
+            android:id="@+id/rbPrivate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="仅自己可见" />
+
+        <RadioButton
+            android:id="@+id/rbProjectShared"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="项目共享（成员创建后需审核）" />
+    </RadioGroup>
 </LinearLayout>

@@ -153,6 +153,13 @@ class ChatDetailFragment : Fragment() {
     /** diffId → taskId 反向映射（DIFF 卡点击跳转 Diff 审核用；同源事件填充） */
     private val diffIdToTaskIdMap = mutableMapOf<String, String>()
 
+    /** Diff 审核或完整 Diff 正在解析时只保留一次请求，避免连续点击叠加多个弹窗。 */
+    private var isOpeningDiffDialog = false
+
+    /** Diff 卡片预览仅保留在当前页面内；避免列表重绑时为同一张卡重复请求文件内容。 */
+    private val diffPreviewCache = mutableMapOf<String, List<DiffFile>>()
+    private val diffPreviewCallbacks = mutableMapOf<String, MutableList<(List<DiffFile>) -> Unit>>()
+
     /** delivery.started 事件去重（taskId:operationId）：重复/乱序/晚到事件不重复刷新 */
     private val deliveryStartedSeen = mutableSetOf<String>()
 
@@ -222,6 +229,12 @@ class ChatDetailFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentChatDetailBinding.inflate(inflater, container, false)
+        val loadingSize = (48 * resources.displayMetrics.density).toInt()
+        Glide.with(this)
+            .asGif()
+            .load(R.drawable.blue_robot_loading_animation)
+            .override(loadingSize, loadingSize)
+            .into(_binding!!.ivMessageLoading)
         return binding.root
     }
 
@@ -398,7 +411,7 @@ class ChatDetailFragment : Fragment() {
      * 避免后端因 mention 类型错误（USER 却指向 agentId）拒绝消息。
      */
     private fun extractMentions(text: String): List<MentionDto> {
-        Log.d("Mention", "extract from '$text', memberById=${memberById.map { "${it.value.name}:${it.value.type}" }}")
+        Log.v("Mention", "extract from '$text', memberById=${memberById.map { "${it.value.name}:${it.value.type}" }}")
         if (memberById.isEmpty()) return emptyList()
         val activeAgents = mainViewModel.agents.value.orEmpty()
             .filter { it.status.name != "ARCHIVED" }
@@ -1080,13 +1093,12 @@ class ChatDetailFragment : Fragment() {
         // 引用消息：后端只回 replyToId 无被引用内容，从本地列表反查生成摘要，保证自己发的引用也显示
         val resolved = resolveReplySummary(message)
         messages.add(resolved)
-        val start = rows.size
         val prevTime = messages.getOrNull(messages.size - 2)?.timestamp
         if (prevTime == null || resolved.timestamp - prevTime > TIME_GAP_MS) {
             rows.add(ChatRow.Time(formatTime(resolved.timestamp)))
         }
         rows.add(ChatRow.Message(resolved))
-        adapter.notifyItemRangeInserted(start, rows.size - start)
+        adapter.submitList(rows)
         scrollToBottom()
         saveCache()
     }
@@ -1105,7 +1117,7 @@ class ChatDetailFragment : Fragment() {
     private fun refreshRows() {
         rows.clear()
         rows.addAll(buildRows(messages))
-        adapter.notifyDataSetChanged()
+        adapter.submitList(rows)
         scrollToBottom()
     }
 
@@ -1115,10 +1127,14 @@ class ChatDetailFragment : Fragment() {
     private fun replaceLocalMessage(localId: String, network: ChatMessage) {
         // 防御：后端回显 QUOTE 若缺 replyText（气泡正文空），保留用户刚输入的回复正文，避免显示成「引用：xxx」
         val local = messages.firstOrNull { it.id == localId }
-        val resolved = if (local != null && network.type == MessageType.QUOTE && network.content.isBlank() && local.content.isNotBlank()) {
+        var resolved = if (local != null && network.type == MessageType.QUOTE && network.content.isBlank() && local.content.isNotBlank()) {
             network.copy(content = local.content)
         } else {
             network
+        }
+        if (local?.isMine == true && !resolved.isMine) {
+            Log.w("SendMsg", "Preserving local sender direction for confirmed message ${network.id}")
+            resolved = resolved.copy(isMine = true)
         }
         messages.removeAll { it.id == network.id }
         val idx = messages.indexOfFirst { it.id == localId }
@@ -1292,17 +1308,28 @@ class ChatDetailFragment : Fragment() {
         return message.copy(replyToSummary = summary)
     }
 
-    /**
-     * 拉取 DIFF 消息的文件内容：真实接口优先，失败由数据层 mock 保底（测试完成后移除）。
-     * 结果通过 [onLoaded] 回传给 Diff 卡片渲染。
-     */
+    /** 拉取 DIFF 卡片预览。消息列表不等待该请求；同一 diffId 的并发请求合并为一次。 */
     private fun loadDiff(diffId: String, onLoaded: (List<DiffFile>) -> Unit) {
-        val projectId = mainViewModel.currentProjectId() ?: return
+        diffPreviewCache[diffId]?.let(onLoaded)
+        if (diffPreviewCache.containsKey(diffId)) return
+
+        val pending = diffPreviewCallbacks[diffId]
+        if (pending != null) {
+            pending += onLoaded
+            return
+        }
+
+        val projectId = mainViewModel.currentProjectId()
+        if (projectId == null) {
+            onLoaded(emptyList())
+            return
+        }
+        diffPreviewCallbacks[diffId] = mutableListOf(onLoaded)
         viewLifecycleOwner.lifecycleScope.launch {
-            val files = diffRepo.getDiffFiles(projectId, diffId)
-                .getOrNull().orEmpty()
-                .map { it.toDiffFile() }
-            onLoaded(files)
+            val result = diffRepo.getDiffFiles(projectId, diffId)
+            val files = result.getOrNull().orEmpty().map { it.toDiffFile() }
+            if (result.isSuccess) diffPreviewCache[diffId] = files
+            diffPreviewCallbacks.remove(diffId).orEmpty().forEach { callback -> callback(files) }
         }
     }
 
@@ -1668,62 +1695,88 @@ class ChatDetailFragment : Fragment() {
      * 都拿不到才退化纯 diff 文件查看。修复「diffIdToTaskIdMap 事件缓存未命中时看不到确认按钮」。
      */
     private fun onDiffCardClick(message: ChatMessage) {
-        val projectId = mainViewModel.currentProjectId() ?: return
+        if (isOpeningDiffDialog) return
+        isOpeningDiffDialog = true
+        Toast.makeText(requireContext(), "正在加载 Diff 审核...", Toast.LENGTH_SHORT).show()
+        val projectId = mainViewModel.currentProjectId() ?: run {
+            isOpeningDiffDialog = false
+            return
+        }
         val taskId = message.taskId ?: message.diffId?.let { diffIdToTaskIdMap[it] }
         if (!taskId.isNullOrBlank()) {
-            openTaskDiffReview(projectId, taskId)
+            openTaskDiffReview(projectId, taskId) { isOpeningDiffDialog = false }
             return
         }
         val diffId = message.diffId
         if (!diffId.isNullOrBlank()) {
             showDiffFilesDialog(projectId, diffId, message.diffTitle)
+            isOpeningDiffDialog = false
             return
         }
         Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
+        isOpeningDiffDialog = false
     }
 
     /** 拉取任务详情 → 弹 Diff Review 审核对话框（TASK_STATUS 卡 / DIFF 卡共用） */
-    private fun openTaskDiffReview(projectId: String, taskId: String) {
+    private fun openTaskDiffReview(projectId: String, taskId: String, onFinished: () -> Unit = {}) {
         viewLifecycleOwner.lifecycleScope.launch {
-            taskRepo().getTaskDetail(projectId, taskId)
-                .onSuccess { detail -> showTaskDiffReviewDialog(projectId, taskId, detail) }
-                .onFailure { e ->
-                    Toast.makeText(requireContext(), "加载任务失败：${e.message}", Toast.LENGTH_SHORT).show()
-                }
+            try {
+                taskRepo().getTaskDetail(projectId, taskId)
+                    .onSuccess { detail -> showTaskDiffReviewDialog(projectId, taskId, detail) }
+                    .onFailure { e ->
+                        Toast.makeText(requireContext(), "加载任务失败：${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+            } finally {
+                onFinished()
+            }
         }
     }
 
     /** DIFF 卡「完整 Diff」：优先显示卡片当前选中的文件；未加载时回退全量 Diff。 */
     private fun onViewFullDiffClick(message: ChatMessage, selectedFile: DiffFile?) {
-        val projectId = mainViewModel.currentProjectId() ?: return
+        if (isOpeningDiffDialog) return
+        isOpeningDiffDialog = true
+        Toast.makeText(requireContext(), "正在加载完整 Diff...", Toast.LENGTH_SHORT).show()
+        val projectId = mainViewModel.currentProjectId() ?: run {
+            isOpeningDiffDialog = false
+            return
+        }
         if (selectedFile != null) {
             showDiffFilesDialog(message.diffTitle ?: selectedFile.fileName, listOf(selectedFile))
+            isOpeningDiffDialog = false
             return
         }
         val diffId = message.diffId
         if (!diffId.isNullOrBlank()) {
             showDiffFilesDialog(projectId, diffId, message.diffTitle)
+            isOpeningDiffDialog = false
             return
         }
         val taskId = message.taskId
         if (!taskId.isNullOrBlank()) {
             viewLifecycleOwner.lifecycleScope.launch {
-                taskRepo().getTaskDetail(projectId, taskId)
-                    .onSuccess { detail ->
-                        val resolved = extractDiffId(detail.diffReviewSummary) ?: taskDiffIdMap[taskId]
-                        if (resolved.isNullOrBlank()) {
-                            Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
-                        } else {
-                            showDiffFilesDialog(projectId, resolved, message.diffTitle)
+                try {
+                    taskRepo().getTaskDetail(projectId, taskId)
+                        .onSuccess { detail ->
+                            val resolved = extractDiffId(detail.diffReviewSummary) ?: taskDiffIdMap[taskId]
+                            if (resolved.isNullOrBlank()) {
+                                Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
+                            } else {
+                                showDiffFilesDialog(projectId, resolved, message.diffTitle)
+                            }
                         }
-                    }
-                    .onFailure { e ->
-                        Toast.makeText(requireContext(), "加载任务失败：${e.message}", Toast.LENGTH_SHORT).show()
-                    }
+                        .onFailure { e ->
+                            Toast.makeText(requireContext(), "加载任务失败：${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                } finally {
+                    // 页面销毁导致协程取消时也必须释放锁，避免重进群聊后入口失效。
+                    isOpeningDiffDialog = false
+                }
             }
             return
         }
         Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
+        isOpeningDiffDialog = false
     }
 
     /** 全屏查看 diff 文件：可滑动，绿加红减，文件头显示 basename（卡片点击 / 「完整 Diff」入口） */
@@ -1956,42 +2009,50 @@ class ChatDetailFragment : Fragment() {
             return
         }
 
+        binding.messageLoadingState.isVisible = true
         viewLifecycleOwner.lifecycleScope.launch {
-            // 先读本地缓存秒开，无缓存则等网络
-            val cached = messageCache.load(groupId)
-            if (cached.isNotEmpty()) setMessages(cached)
+            try {
+                // 先读本地缓存秒开，无缓存才展示遮罩等待网络
+                val cached = messageCache.load(groupId)
+                if (cached.isNotEmpty()) {
+                    setMessages(cached)
+                    binding.messageLoadingState.isVisible = false
+                }
 
-            // 并行拉成员表 + 消息（原串行改并发）
-            val membersDeferred = async { chatRepo.getMembers(projectId, groupId) }
-            val messagesDeferred = async { chatRepo.getMessagesPage(projectId, groupId) }
+                // 并行拉成员表 + 消息（原串行改并发）
+                val membersDeferred = async { chatRepo.getMembers(projectId, groupId) }
+                val messagesDeferred = async { chatRepo.getMessagesPage(projectId, groupId) }
 
-            val membersResult = membersDeferred.await()
-            membersResult.onSuccess { dtos ->
-                Log.d("Mention", "getMembers success: ${dtos.map { "${it.id}:${it.resolvedName}:${it.memberType}" }}")
-                // 保存原始群成员；Agent 合并由 rebuildMemberMaps 统一处理（agents 可能异步后加载）
-                baseGroupMembers = dtos.map { it.toGroupMember() }
-                rebuildMemberMaps()
-            }.onFailure {
-                Log.e("Mention", "getMembers FAILED: ${it::class.simpleName} ${it.message}")
-            }
+                val membersResult = membersDeferred.await()
+                membersResult.onSuccess { dtos ->
+                    Log.d("Mention", "getMembers success: ${dtos.map { "${it.id}:${it.resolvedName}:${it.memberType}" }}")
+                    // 保存原始群成员；Agent 合并由 rebuildMemberMaps 统一处理（agents 可能异步后加载）
+                    baseGroupMembers = dtos.map { it.toGroupMember() }
+                    rebuildMemberMaps()
+                }.onFailure {
+                    Log.e("Mention", "getMembers FAILED: ${it::class.simpleName} ${it.message}")
+                }
 
-            val messagesResult = messagesDeferred.await()
-            val myId = SessionStore.user()?.id
-            messagesResult.onSuccess { page ->
-                nextCursor = page.nextCursor
-                hasMoreMessages = page.hasMore
-                val list = page.messages.map { it.toChatMessage(myId, memberNamesById) }
-                // 合并时必须以「当前内存列表」为基准（而非开头读的 cached 快照）：
-                // 若初始 getMessages 较慢，期间用户已发出消息并 append 到 messages，
-                // 用 cached 会把这几天新消息连同网络结果一起覆盖掉，导致「发出后几秒消失」。
-                val merged = mergeWithNetwork(list)
-                setMessages(merged)
-                messageCache.save(groupId, merged)
-                // §7.1 通知直达被 @ 消息：目标在分页窗口内直接滚动高亮，否则单消息 GET 分页外定位
-                locateTargetMessage(projectId, groupId)
-            }.onFailure {
-                // 网络失败但已有缓存时保留缓存显示，不清空
-                if (messages.isEmpty()) setMessages(emptyList())
+                val messagesResult = messagesDeferred.await()
+                val myId = SessionStore.user()?.id
+                messagesResult.onSuccess { page ->
+                    nextCursor = page.nextCursor
+                    hasMoreMessages = page.hasMore
+                    val list = page.messages.map { it.toChatMessage(myId, memberNamesById) }
+                    // 合并时必须以「当前内存列表」为基准（而非开头读的 cached 快照）：
+                    // 若初始 getMessages 较慢，期间用户已发出消息并 append 到 messages，
+                    // 用 cached 会把这几天新消息连同网络结果一起覆盖掉，导致「发出后几秒消失」。
+                    val merged = mergeWithNetwork(list)
+                    setMessages(merged)
+                    messageCache.save(groupId, merged)
+                    // §7.1 通知直达被 @ 消息：目标在分页窗口内直接滚动高亮，否则单消息 GET 分页外定位
+                    locateTargetMessage(projectId, groupId)
+                }.onFailure {
+                    // 网络失败但已有缓存时保留缓存显示，不清空
+                    if (messages.isEmpty()) setMessages(emptyList())
+                }
+            } finally {
+                binding.messageLoadingState.isVisible = false
             }
         }
     }
@@ -2053,11 +2114,23 @@ class ChatDetailFragment : Fragment() {
         val teamAgents = if (isMainGroup) {
             emptyList()
         } else {
-            // 群里只合并一个 Agent（取团队第一个 ACTIVE；角色已收敛为 4 种执行角色，@ 触发任务逻辑不变）
-            // 显示名统一为「编排助手」（与后端编排回复方 senderName 对齐），id/头像仍指向该 Agent
+            // 群聊中的唯一 @ 入口必须与后端发送任务通知/Diff 卡的 ORCHESTRATOR 使用同一 Agent ID。
+            // 没有可用编排助手时不以普通执行 Agent 冒充，避免 @ 到错误的对象。
             mainViewModel.agents.value.orEmpty()
-                .firstOrNull { it.status.name != "ARCHIVED" }
-                ?.let { listOf(GroupMember(id = it.id, name = getString(R.string.chat_group_agent_name), type = MemberType.AGENT)) }
+                .firstOrNull {
+                    it.roleWire?.equals("ORCHESTRATOR", ignoreCase = true) == true &&
+                        it.status.name == "ACTIVE" && it.visibility.name == "TEAM"
+                }
+                ?.let {
+                    listOf(
+                        GroupMember(
+                            id = it.id,
+                            name = getString(R.string.chat_group_agent_name),
+                            type = MemberType.AGENT,
+                            avatar = it.avatar
+                        )
+                    )
+                }
                 .orEmpty()
         }
         val agentIds = teamAgents.map { it.id }.toSet()
@@ -2080,7 +2153,7 @@ class ChatDetailFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             chatRepo.getMembers(projectId, groupId)
                 .onSuccess { dtos ->
-                    Log.d("ChatMember", "刷新群成员成功: ${dtos.size} 人 ${dtos.map { it.resolvedName }}")
+                    Log.v("ChatMember", "刷新群成员成功: ${dtos.size} 人 ${dtos.map { it.resolvedName }}")
                     baseGroupMembers = dtos.map { it.toGroupMember() }
                     rebuildMemberMaps()
                 }
@@ -2118,7 +2191,7 @@ class ChatDetailFragment : Fragment() {
             // 诊断日志：SYSTEM 消息（"XXX 加入群聊"）是否存在；无 SYSTEM 时为 verbose 级避免刷屏
             val systemMsgs = list.filter { it.type == MessageType.SYSTEM }
             if (systemMsgs.isNotEmpty()) {
-                Log.d("ChatPoll", "SYSTEM消息 ${systemMsgs.size} 条: ${systemMsgs.joinToString { it.content }}")
+                Log.v("ChatPoll", "SYSTEM消息 ${systemMsgs.size} 条: ${systemMsgs.joinToString { it.content }}")
             } else {
                 Log.v("ChatPoll", "本次拉取 ${list.size} 条，无 SYSTEM 消息")
             }
@@ -2259,7 +2332,7 @@ class ChatDetailFragment : Fragment() {
         messages.addAll(resolved)
         rows.clear()
         rows.addAll(buildRows(messages))
-        adapter.notifyDataSetChanged()
+        adapter.submitList(rows)
         if (pinned) scrollToBottom()
         // 消息列表变化 → 重算未读「有人@你」提示条
         updateMentionBar()
@@ -2318,7 +2391,7 @@ class ChatDetailFragment : Fragment() {
                         SseEventType.MESSAGE_CREATED,
                         SseEventType.MESSAGE_UPDATED -> {
                             val targetGroup = parseGroupId(event.data)
-                            Log.d("ChatSSE", "${event.type.wire} payload=${event.data} targetGroup=$targetGroup currentGroup=$groupId")
+                            Log.v("ChatSSE", "${event.type.wire} payload=${event.data} targetGroup=$targetGroup currentGroup=$groupId")
                             if (targetGroup == null || targetGroup == groupId) {
                                 if (event.type == SseEventType.MESSAGE_CREATED) {
                                     syncMessagesIncrementally(projectId, groupId)
@@ -2331,7 +2404,7 @@ class ChatDetailFragment : Fragment() {
                         // 立即刷新消息让注释实时出现（不等 3s 轮询），并刷新成员表让 @ 列表包含新成员
                         SseEventType.GROUP_MEMBER_UPDATED -> {
                             val targetGroup = parseGroupId(event.data)
-                            Log.d("ChatSSE", "group.member.updated payload=${event.data} targetGroup=$targetGroup currentGroup=$groupId")
+                            Log.v("ChatSSE", "group.member.updated payload=${event.data} targetGroup=$targetGroup currentGroup=$groupId")
                             if (targetGroup == groupId) {
                                 pollMessages(projectId, groupId)
                                 refreshGroupMembers()
@@ -2373,7 +2446,7 @@ class ChatDetailFragment : Fragment() {
                     when (frame.type) {
                         "message.created", "message.updated" -> {
                             val targetGroup = frame.groupId
-                            Log.d("ChatSSE", "ws ${frame.type} groupId=$targetGroup currentGroup=$groupId")
+                            Log.v("ChatSSE", "ws ${frame.type} groupId=$targetGroup currentGroup=$groupId")
                             if (targetGroup == null || targetGroup == groupId) {
                                 if (frame.type == "message.created") {
                                     syncMessagesIncrementally(projectId, groupId)
@@ -2439,6 +2512,7 @@ class ChatDetailFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        diffPreviewCallbacks.clear()
         super.onDestroyView()
         binding.etInput.removeTextChangedListener(mentionWatcher)
         _binding = null

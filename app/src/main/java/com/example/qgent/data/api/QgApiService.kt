@@ -420,6 +420,13 @@ interface QgApiService {
         @Query("limit") limit: Int = 100
     ): Response<ApiResponse<List<GroupMessageDto>>>
 
+    /** 群搜索（/search?type=groups）：按关键字搜当前用户可访问的群（跨项目），返回群摘要列表 */
+    @GET("search")
+    suspend fun searchGroups(
+        @Query("q") q: String,
+        @Query("type") type: String
+    ): Response<ApiResponse<List<GroupDto>>>
+
     /** v2.0.6 §1.3：按消息 ID 拉取单条群消息（通知直达被 @ 消息定位用） */
     @GET("projects/{projectId}/groups/{groupId}/messages/{messageId}")
     suspend fun getMessage(
@@ -914,6 +921,15 @@ interface QgApiService {
     /** Dry Run 预检 CQ+1（§27.10：通过后触发自动创建 MR） */
     @POST("projects/{projectId}/dry-runs/{dryRunId}/cq-approvals")
     suspend fun dryRunCqApprove(
+        @Path("projectId") projectId: String,
+        @Path("dryRunId") dryRunId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: CqActionRequest
+    ): Response<ApiResponse<Unit>>
+
+    /** Dry Run 预检 CQ 拒绝（reason 必填；不会创建 MR） */
+    @POST("projects/{projectId}/dry-runs/{dryRunId}/cq-rejections")
+    suspend fun dryRunCqReject(
         @Path("projectId") projectId: String,
         @Path("dryRunId") dryRunId: String,
         @Header("Idempotency-Key") idempotencyKey: String,

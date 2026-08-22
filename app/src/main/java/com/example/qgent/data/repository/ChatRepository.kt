@@ -36,6 +36,8 @@ interface ChatRepository {
     suspend fun getMessage(projectId: String, groupId: String, messageId: String): Result<GroupMessageDto>
     /** v2.0.6 §1.2：进群全读（后端已读游标推进，前端不再本地假已读） */
     suspend fun markGroupRead(projectId: String, groupId: String, idempotencyKey: String): Result<GroupReadResponse>
+    /** 群搜索（/search?type=groups）：按关键字搜当前用户可访问的群（跨项目） */
+    suspend fun searchGroups(query: String): Result<List<GroupDto>>
     // v2.0.6 §1.4：消息体恢复 mentions（@用户通知 / @Agent 自动触发任务）；QUOTE 回复正文走顶层 replyText
     suspend fun sendMessage(projectId: String, groupId: String, type: String, content: MessageContentDto, clientMessageId: String? = null, mentions: List<MentionDto>? = null, replyText: String? = null, replyToId: String? = null, idempotencyKey: String): Result<GroupMessageDto>
     /** 附件内联预览元数据 + 签名预览 URL（契约 v0.1 §4：/preview-url，Authorization 头鉴权） */

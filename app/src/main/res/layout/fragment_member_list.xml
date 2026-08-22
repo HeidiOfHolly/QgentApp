@@ -68,14 +68,19 @@
         android:layout_weight="1"
         android:fillViewport="true">
 
-        <LinearLayout
-            android:id="@+id/rvMembers"
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:paddingBottom="16dp" />
+            android:paddingBottom="16dp">
+
+            <LinearLayout
+                android:id="@+id/rvMembers"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp" />
+        </FrameLayout>
     </ScrollView>
 
 </LinearLayout>

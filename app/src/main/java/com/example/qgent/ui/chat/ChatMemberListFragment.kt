@@ -24,6 +24,7 @@ import com.example.qgent.databinding.FragmentMemberListBinding
 import com.example.qgent.databinding.ItemChatMemberBinding
 import com.example.qgent.model.GroupType
 import com.example.qgent.ui.personal.fillLinearLayout
+import com.example.qgent.ui.personal.setInlineSkeletonLoading
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
@@ -104,19 +105,25 @@ class ChatMemberListFragment : Fragment() {
         val groupId = arguments?.getString("groupId").orEmpty()
         if (groupId.isEmpty()) return
         viewLifecycleOwner.lifecycleScope.launch {
-            chatRepo.getGroup(projectId, groupId).onSuccess { dto ->
-                groupCreatorId = dto.createdBy
-            }
-            roleByUserId = userRepository.getProjectMembers(projectId).getOrNull().orEmpty()
-                .associate { it.userId to it.role }
-            // 团长 = 团队 TEAM_OWNER；团长被后端兜底为 PROJECT_ADMIN，但可能无 project_members 行，故从团队成员表独立识别
-            teamOwnerIds = mainViewModel.currentTeamId()?.let { teamId ->
-                userRepository.getTeamMembers(teamId).getOrNull().orEmpty()
-                    .filter { it.role == "TEAM_OWNER" }.map { it.userId }.toSet()
-            }.orEmpty()
-            chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
-                lastRawMembers = dtos
-                renderMembers(mergeAgents(projectId, groupId, dtos))
+            val initialLoad = binding.rvMembers.childCount == 0
+            if (initialLoad) setInlineSkeletonLoading(binding.rvMembers, true)
+            try {
+                chatRepo.getGroup(projectId, groupId).onSuccess { dto ->
+                    groupCreatorId = dto.createdBy
+                }
+                roleByUserId = userRepository.getProjectMembers(projectId).getOrNull().orEmpty()
+                    .associate { it.userId to it.role }
+                // 团长 = 团队 TEAM_OWNER；团长被后端兜底为 PROJECT_ADMIN，但可能无 project_members 行，故从团队成员表独立识别
+                teamOwnerIds = mainViewModel.currentTeamId()?.let { teamId ->
+                    userRepository.getTeamMembers(teamId).getOrNull().orEmpty()
+                        .filter { it.role == "TEAM_OWNER" }.map { it.userId }.toSet()
+                }.orEmpty()
+                chatRepo.getMembers(projectId, groupId).onSuccess { dtos ->
+                    lastRawMembers = dtos
+                    renderMembers(mergeAgents(projectId, groupId, dtos))
+                }
+            } finally {
+                if (initialLoad) setInlineSkeletonLoading(binding.rvMembers, false)
             }
         }
     }
@@ -139,10 +146,12 @@ class ChatMemberListFragment : Fragment() {
             ?.type == GroupType.PROJECT_MAIN
         if (isMainGroup) return dtos
         val allAgents = mainViewModel.agents.value.orEmpty()
-        // 群里只合并一个 Agent（取团队第一个 ACTIVE；角色已收敛为 4 种执行角色）
-        // 显示名统一为「编排助手」（与后端编排回复方 senderName 对齐），id/头像仍指向该 Agent
+        // 与聊天详情使用相同的真实编排助手；不能按列表顺序把任意执行 Agent 显示为「编排助手」。
         val teamAgents = allAgents
-            .firstOrNull { it.status.name != "ARCHIVED" }
+            .firstOrNull {
+                it.roleWire?.equals("ORCHESTRATOR", ignoreCase = true) == true &&
+                    it.status.name == "ACTIVE" && it.visibility.name == "TEAM"
+            }
             ?.let {
                 listOf(GroupMemberDto(
                     id = it.id,
