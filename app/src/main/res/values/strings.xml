@@ -103,6 +103,7 @@
     <string name="start_task_no_active_repos">项目暂无可用仓库，请先绑定或创建仓库</string>
     <string name="task_realtime_preview">🛠 实时预览</string>
     <string name="view_task_run_logs">查看执行日志</string>
+    <string name="task_run_retried">已重试</string>
     <string name="task_run_logs_title">执行日志</string>
     <string name="task_run_logs_empty">暂无日志</string>
     <string name="confirm_diff">确认 Diff</string>
@@ -139,6 +140,7 @@
     <string name="auto_create_repo_oauth_locked">个人建仓需先绑定 GitHub</string>
     <string name="auto_create_repo_bind">去绑定 GitHub</string>
     <string name="auto_create_repo_scope_private_hint">当前授权 scope 不足，仅可创建公开仓库</string>
+    <string name="auto_create_repo_scope_public_hint">当前 GitHub 授权无法创建仓库，请重新绑定后重试</string>
     <string name="profile_github_unbound">未绑定</string>
     <string name="profile_github_bound">已绑定 @%1$s</string>
     <!-- 群里合并的单一 Agent 统一显示名：与后端编排回复方 senderName 对齐（id 仍指向团队第一个 ACTIVE Agent） -->
@@ -230,6 +232,10 @@
     <string name="team_entry_subtitle">创建你的团队开始协作，或加入已有的团队</string>
     <string name="team_entry_create">创建团队</string>
     <string name="team_entry_join">加入团队</string>
+    <string name="team_entry_back_to_login">返回登录</string>
+    <string name="logout_confirm_title">退出登录</string>
+    <string name="logout_confirm_message">确定退出登录吗？</string>
+    <string name="logout_confirm_action">确定</string>
 
     <string name="github_authorize_title">GitHub 授权</string>
     <string name="github_authorize_icon_desc">GitHub</string>
@@ -275,6 +281,9 @@
     <string name="personal_github_oauth_bind_hint">将跳转到 GitHub 完成授权，不会获取你的登录密码</string>
     <string name="personal_github_oauth_authorized_title">已绑定 GitHub</string>
     <string name="personal_github_oauth_authorized_desc">已关联个人 GitHub 账号，可在创建项目时自动新建仓库</string>
+    <string name="personal_github_oauth_reauthorize_title">需要重新授权 GitHub</string>
+    <string name="personal_github_oauth_reauthorize_desc">当前 GitHub 授权已失效、权限不足或账号不匹配，请重新授权后再创建仓库</string>
+    <string name="personal_github_oauth_reauthorize_hint">请使用正确的 GitHub 账号重新授权</string>
     <string name="personal_github_oauth_scope_text">授权范围：%1$s</string>
     <string name="personal_github_oauth_scope_repo">私有与公开仓库</string>
     <string name="personal_github_oauth_scope_public_repo">公开仓库</string>
@@ -413,7 +422,7 @@
     <string name="invite_send_network_error">网络异常，请检查网络后重试</string>
     <string name="join_team_network_error">网络异常，请检查网络后重试</string>
     <string name="join_team_expired">邀请已过期，请联系邀请人重新发送</string>
-    <string name="join_team_processed">该邀请已处理，无法重复接受</string>
+    <string name="join_team_unavailable">该邀请已撤销或已失效，无法加入团队</string>
 
     <string name="chat_input_hint">输入消息…</string>
     <string name="send">发送</string>

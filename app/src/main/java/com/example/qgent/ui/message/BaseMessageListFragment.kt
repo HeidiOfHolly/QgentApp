@@ -224,7 +224,7 @@ abstract class BaseMessageListFragment : Fragment() {
 
     /**
      * 点击团队邀请通知：查收件人的待处理邀请列表，该团队邀请仍为 PENDING 时弹窗；
-     * 已处理（接受/撤销/过期）则提示且不再弹窗，避免重复操作。
+     * 已撤销、过期或已接受则提示且不再弹窗，避免对失效邀请继续操作。
      */
     private fun handleInvitation(notification: NotificationDto) {
         if (notification.id in rejectedInvitationIds) {
@@ -238,7 +238,7 @@ abstract class BaseMessageListFragment : Fragment() {
                         it.teamId == notification.resourceId && it.status == "PENDING"
                     }
                     if (pending == null) {
-                        Toast.makeText(requireContext(), R.string.invitation_processed, Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), R.string.join_team_unavailable, Toast.LENGTH_SHORT).show()
                         return@onSuccess
                     }
                     showAcceptInvitationDialog(notification, pending)

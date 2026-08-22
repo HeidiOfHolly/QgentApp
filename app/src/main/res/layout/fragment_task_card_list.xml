@@ -67,7 +67,7 @@
     <!-- 加载占位（骨架屏，无转圈）：首次加载时显示，数据到位隐藏 -->
     <include
         android:id="@+id/viewSkeleton"
-        layout="@layout/view_skeleton_rows"
+        layout="@layout/view_skeleton_rows_compact"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"

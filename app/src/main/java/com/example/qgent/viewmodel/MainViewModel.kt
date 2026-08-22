@@ -163,6 +163,13 @@ class MainViewModel(
     private val _createProjectState = MutableStateFlow<CreateProjectState>(CreateProjectState.Idle)
     val createProjectState: LiveData<CreateProjectState> = _createProjectState.asLiveData()
 
+    /** 创建失败由表单消费一次，避免从 OAuth 绑定页返回后重复弹窗或重复跳转。 */
+    fun consumeCreateProjectState() {
+        if (_createProjectState.value !is CreateProjectState.Loading) {
+            _createProjectState.value = CreateProjectState.Idle
+        }
+    }
+
     // ── 未读的团队邀请通知（kind=INVITED 且未读），抽屉铃铛 / 群聊列表头像 / GitHub 页头像红点 ──
 
     private val _unreadInvitations = MutableStateFlow(false)
@@ -467,10 +474,11 @@ class MainViewModel(
      * 轮询/SSE 高频调用：上一次加载仍在途（接口慢于轮询间隔）时跳过本次，
      * 避免 loadGroupsJob 被反复 cancel 导致请求永远完不成（列表/未读永不刷新）。
      */
-    fun refreshGroups() {
-        if (currentProjectId() == null) return
-        if (loadGroupsJob?.isActive == true) return
-        loadGroups(_currentProject.value)
+    fun refreshGroups(showLoading: Boolean = false): Boolean {
+        if (currentProjectId() == null) return false
+        if (loadGroupsJob?.isActive == true) return false
+        loadGroups(_currentProject.value, showLoading)
+        return true
     }
 
     /** 标记群聊为已读（v2.0.6 §1.2）：调用后端 read 接口推进已读游标，本地立即清未读/@我。
@@ -704,9 +712,11 @@ class MainViewModel(
     }
 
     /** 刷新当前团队的 Agent 列表（创建/编辑/发布/下线后调用） */
-    fun refreshAgents() {
+    fun refreshAgents(): Boolean {
         val team = _currentTeam.value
-        if (team.isNotEmpty()) loadAgents(team)
+        if (team.isEmpty()) return false
+        loadAgents(team)
+        return true
     }
 
     /**
@@ -746,7 +756,10 @@ class MainViewModel(
                     finishCreateProject(teamName, name)
                 }
                 .onFailure { e ->
-                    _createProjectState.value = CreateProjectState.Error(createProjectErrorMessage(e))
+                    _createProjectState.value = CreateProjectState.Error(
+                        createProjectErrorMessage(e),
+                        (e as? ApiException)?.code
+                    )
                 }
         }
     }
@@ -794,7 +807,10 @@ class MainViewModel(
                 )
             }
             val project = last ?: run {
-                _createProjectState.value = CreateProjectState.Error(createProjectErrorMessage(lastError))
+                _createProjectState.value = CreateProjectState.Error(
+                    createProjectErrorMessage(lastError),
+                    (lastError as? ApiException)?.code
+                )
                 return@launch
             }
             finishCreateProject(teamName, name)
@@ -816,6 +832,8 @@ class MainViewModel(
             "GitHub 拒绝创建仓库，请稍后重试"
         e is ApiException && e.code == "GITHUB_PERSONAL_REPOSITORY_CREATION_NOT_SUPPORTED" ->
             "当前部署未配置个人 GitHub OAuth，无法自动建仓"
+        e is ApiException && e.code == "GITHUB_OAUTH_REQUIRED" ->
+            "请先绑定个人 GitHub 后再自动建仓"
         e is ApiException && e.code == "GITHUB_OAUTH_SCOPE_INSUFFICIENT" ->
             "GitHub 授权 scope 不足，无法创建该类型的仓库，请到 GitHub 绑定页重新授权"
         e is ApiException && e.code == "GITHUB_OAUTH_REVOKED" ->
@@ -867,5 +885,5 @@ sealed interface CreateProjectState {
     data object Idle : CreateProjectState
     data object Loading : CreateProjectState
     data class Success(val projectName: String, val groupId: String, val groupName: String) : CreateProjectState
-    data class Error(val message: String) : CreateProjectState
+    data class Error(val message: String, val code: String? = null) : CreateProjectState
 }

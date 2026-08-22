@@ -126,7 +126,10 @@ class TaskListViewModel(
      *  加载其所在分支群的最近任务（state.groupTasks，按 createdAt 倒序取 MAX_MY_TASKS）。
      *  @param onDone 加载完成回调（成功/失败均调用），供页面标记「首次加载完成」收起骨架屏 */
     fun loadMyTasks(projectId: String?, userId: String?, groupIds: List<String> = emptyList(), onDone: (() -> Unit)? = null) {
-        if (projectId == null || userId == null) return
+        if (projectId == null || userId == null) {
+            onDone?.invoke()
+            return
+        }
         viewModelScope.launch {
             val tasks = runCatching {
                 withTimeout(ACTIVITIES_TIMEOUT_MS) { repo.getTasks(projectId, createdBy = userId).getOrThrow() }
@@ -161,8 +164,7 @@ class TaskListViewModel(
                     .take(MAX_MY_TASKS)
             } else emptyList()
             _uiState.value = _uiState.value.copy(myTasks = sorted, groupTasks = groupTasks)
-            onDone?.invoke()
-        }
+        }.invokeOnCompletion { onDone?.invoke() }
     }
 
     /** 加载最近被调用的 Agent 及任务：遍历项目内 Agent，查 task-runs（§20.6），
@@ -171,7 +173,10 @@ class TaskListViewModel(
      *  避免后端/网络慢时任务页长时间空白；新查询前取消上一次（轮询每 3 秒触发，防旧结果覆盖）。
      *  @param onDone 加载完成回调（成功/失败均调用），供页面标记「首次加载完成」收起骨架屏 */
     fun loadActivities(projectId: String?, agents: List<Agent>, onDone: (() -> Unit)? = null) {
-        if (projectId == null) return
+        if (projectId == null) {
+            onDone?.invoke()
+            return
+        }
         activitiesJob?.cancel()
         activitiesJob = viewModelScope.launch {
             val all = runCatching {
@@ -198,7 +203,8 @@ class TaskListViewModel(
             _uiState.value = _uiState.value.copy(
                 agentRuns = all.sortedWith(compareByDescending { it.createdAt }).take(MAX_AGENT_ACTIVITIES)
             )
-            onDone?.invoke()
+        }.also { job ->
+            job.invokeOnCompletion { onDone?.invoke() }
         }
     }
 

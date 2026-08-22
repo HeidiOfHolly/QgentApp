@@ -1,5 +1,6 @@
 package com.example.qgent.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
@@ -62,17 +63,26 @@ class NewProjectViewModel(
     fun refreshOAuthStatus() {
         viewModelScope.launch {
             githubRepo.getPersonalOAuthStatus()
-                .onSuccess { _oauthStatus.value = it }
-                .onFailure {
-                    // 查询失败保持原状态（null=未加载），自动建仓区按未授权置灰处理
+                .onSuccess {
+                    Log.d(TAG, "OAuth status loaded: authorized=${it.authorized}, setup=${it.personalRepositorySetup}, canPublic=${it.canCreatePublicPersonalRepository}, canPrivate=${it.canCreatePrivatePersonalRepository}, scopes=${it.scopes}")
+                    _oauthStatus.value = it
+                }
+                .onFailure { e ->
+                    Log.e(TAG, "OAuth status request failed: ${e::class.java.simpleName}: ${e.message}")
+                    // 刷新失败不能继续使用旧授权缓存，自动建仓区按未授权置灰处理。
+                    _oauthStatus.value = null
                 }
         }
     }
 
     /** 自动建仓是否可用：已授权且 READY（§50.4，仅作前端交互控制，后端仍会强校验） */
     fun canAutoCreateRepo(): Boolean {
-        val s = _oauthStatus.value ?: return false
-        return s.authorized && s.personalRepositorySetup == "READY"
+        val s = _oauthStatus.value
+        val result = s != null && s.authorized &&
+            s.personalRepositorySetup == "READY" &&
+            s.canCreatePublicPersonalRepository
+        Log.d(TAG, "Auto-create check: result=$result, isPrivate=${_draft.value.isPrivate}, authorized=${s?.authorized}, setup=${s?.personalRepositorySetup}, canPublic=${s?.canCreatePublicPersonalRepository}, canPrivate=${s?.canCreatePrivatePersonalRepository}")
+        return result
     }
 
     /** 候选列表加载失败提示一次性事件，UI 观察后消费 */
@@ -117,17 +127,20 @@ class NewProjectViewModel(
             // 文档 §6：只允许绑定 AUTHORIZED、未归档、默认分支非空且对应 Installation ACTIVE 的仓库
             val installations = githubRepo.getInstallations(teamId)
             if (installations.isFailure) {
+                Log.e(TAG, "Repository load failed at installations: ${installations.exceptionOrNull()?.message}")
                 _loadError.value = installations.exceptionOrNull()?.message ?: "加载 GitHub 安装信息失败，请稍后重试"
                 return@launch
             }
             val repos = githubRepo.getGithubRepositories(teamId)
             if (repos.isFailure) {
+                Log.e(TAG, "Repository load failed at repositories: ${repos.exceptionOrNull()?.message}")
                 _loadError.value = repos.exceptionOrNull()?.message ?: "加载授权仓库失败，请稍后重试"
                 return@launch
             }
             // 排除已绑定到本团队任一项目的仓库：只展示已授权且未绑定的
             val projects = userRepo.getProjects(teamId)
             if (projects.isFailure) {
+                Log.e(TAG, "Repository load failed at projects: ${projects.exceptionOrNull()?.message}")
                 _loadError.value = projects.exceptionOrNull()?.message ?: "加载项目失败，请稍后重试"
                 return@launch
             }
@@ -147,7 +160,13 @@ class NewProjectViewModel(
                 .flatten()
                 .map { it.repositoryId }
                 .toSet()
-            _repos.value = authorized.filter { it.id !in boundIds }
+            val available = authorized.filter { it.id !in boundIds }
+            Log.d(TAG, "Repository filter: installations=${installations.getOrThrow().size}, activeInstallations=${activeInstallationIds.size}, allRepos=${repos.getOrThrow().size}, authorizedReady=${authorized.size}, projects=${projects.getOrThrow().size}, bound=${boundIds.size}, available=${available.size}")
+            _repos.value = available
         }
+    }
+
+    companion object {
+        private const val TAG = "NewProjectGitHub"
     }
 }

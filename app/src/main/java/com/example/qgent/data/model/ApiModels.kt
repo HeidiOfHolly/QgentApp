@@ -1179,6 +1179,7 @@ data class TaskRunDetailListItemDto(
     val agent: TaskRunAgentDto?,
     val status: String,                 // QUEUED/RUNNING/SUCCEEDED/FAILED/WAITING_INPUT/...
     @SerializedName("statusSummary") val statusSummary: String?,
+    @SerializedName("retryOfTaskRunId") val retryOfTaskRunId: String?,
     @SerializedName("statusReason") val statusReason: TaskRunStatusReasonDto?,
     @SerializedName("startedAt") val startedAt: String?,
     @SerializedName("finishedAt") val finishedAt: String?,

@@ -20,7 +20,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.view.inputmethod.EditorInfo
 import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
@@ -241,6 +240,9 @@ class ChatDetailFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // Edge-to-edge 下由 IME inset 驱动整页平移，避免只把输入栏抬起而标题固定。
+        requireActivity().window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+
         binding.tvGroupName.text = arguments?.getString("groupName") ?: ""
 
         binding.btnBack.setOnClickListener { findNavController().popBackStack() }
@@ -258,17 +260,9 @@ class ChatDetailFragment : Fragment() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-            binding.inputBar.setPadding(0, 0, 0, bars.bottom + ime.bottom)
+            binding.inputBar.setPadding(0, 0, 0, bars.bottom)
+            binding.root.translationY = -ime.bottom.toFloat()
             insets
-        }
-
-        binding.etInput.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_SEND) {
-                sendTextMessage()
-                true
-            } else {
-                false
-            }
         }
 
         rows = buildRows(messages).toMutableList()
@@ -308,6 +302,7 @@ class ChatDetailFragment : Fragment() {
         binding.btnCancelMultiSelect.setOnClickListener { exitMultiSelect() }
         binding.btnCreateMemoryDraft.setOnClickListener { createMemoryDraftFromSelection() }
 
+        observeSearchTargetMessage()
         loadInitialData()
 
         // 团队 Agent 异步加载完成后重建成员映射（@ 弹窗始终包含 Agent）
@@ -1947,6 +1942,21 @@ class ChatDetailFragment : Fragment() {
         }
     }
 
+    /** 从群设置的搜索结果返回时，定位并高亮被点击的消息。 */
+    private fun observeSearchTargetMessage() {
+        val entry = findNavController().currentBackStackEntry ?: return
+        entry.savedStateHandle
+            .getLiveData<String>(RESULT_SEARCH_TARGET_MESSAGE_ID)
+            .observe(viewLifecycleOwner) { messageId ->
+                if (messageId.isNullOrBlank()) return@observe
+                entry.savedStateHandle.remove<String>(RESULT_SEARCH_TARGET_MESSAGE_ID)
+                val projectId = mainViewModel.currentProjectId() ?: return@observe
+                if (groupId.isEmpty()) return@observe
+                arguments?.putString(ARG_TARGET_MESSAGE_ID, messageId)
+                locateTargetMessage(projectId, groupId)
+            }
+    }
+
     // ── §7.1 通知直达被 @ 消息：滚动 + 高亮 ──
 
     /**
@@ -2562,9 +2572,11 @@ class ChatDetailFragment : Fragment() {
 
     override fun onDestroyView() {
         diffPreviewCallbacks.clear()
-        super.onDestroyView()
         binding.etInput.removeTextChangedListener(mentionWatcher)
+        binding.root.translationY = 0f
+        requireActivity().window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         _binding = null
+        super.onDestroyView()
     }
 
     companion object {
@@ -2577,6 +2589,9 @@ class ChatDetailFragment : Fragment() {
 
         /** §7.1 通知直达：目标消息 id 参数（跳群后滚动高亮到该消息） */
         const val ARG_TARGET_MESSAGE_ID = "targetMessageId"
+
+        /** 群设置搜索结果返回群聊详情页时使用的目标消息 id。 */
+        const val RESULT_SEARCH_TARGET_MESSAGE_ID = "searchTargetMessageId"
 
         /** §7.1 通知直达：来源是否为 @ 提及（resourceId 缺失时兜底滚到最上面一条被 @ 的消息） */
         const val ARG_FROM_MENTION = "fromMention"

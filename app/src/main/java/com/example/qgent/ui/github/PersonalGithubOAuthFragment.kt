@@ -42,8 +42,11 @@ class PersonalGithubOAuthFragment : Fragment() {
     }
 
     /** 回调回跳地址：{FRONTEND_URL}/app/settings/integrations/github（§50.3 固定页面） */
-    private val callbackHost = "api.qgents.dpdns.org"
+    private val callbackHost = "mobile.qgents.dpdns.org"
     private val callbackPath = "/app/settings/integrations/github"
+
+    /** 建仓错误触发重新授权时显示授权入口，即使旧 OAuth 记录仍存在。 */
+    private var forceReauthorization = false
 
     /** 防止 shouldOverrideUrlLoading 与 onPageStarted 重复处理同一次回跳 */
     private var callbackHandled = false
@@ -70,6 +73,7 @@ class PersonalGithubOAuthFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        forceReauthorization = arguments?.getBoolean(ARG_FORCE_REAUTH) == true
 
         binding.ivBack.setOnClickListener {
             if (binding.webView.isVisible) hideWebView() else findNavController().popBackStack()
@@ -106,19 +110,26 @@ class PersonalGithubOAuthFragment : Fragment() {
 
     /** 按授权状态渲染：未绑定 → 去绑定 + 前置引导；已绑定 → 账号信息 + 撤销 */
     private fun renderStatus(status: PersonalGithubOAuthDto) {
+        val accountMismatch = status.personalRepositorySetup == "ACCOUNT_MISMATCH"
+        val needsReauthorization = forceReauthorization || accountMismatch
         binding.tvStatusTitle.setText(
-            if (status.authorized) R.string.personal_github_oauth_authorized_title
+            if (needsReauthorization) R.string.personal_github_oauth_reauthorize_title
+            else if (status.authorized) R.string.personal_github_oauth_authorized_title
             else R.string.personal_github_oauth_unauthorized_title
         )
         binding.tvStatusDesc.setText(
-            if (status.authorized) R.string.personal_github_oauth_authorized_desc
+            if (needsReauthorization) R.string.personal_github_oauth_reauthorize_desc
+            else if (status.authorized) R.string.personal_github_oauth_authorized_desc
             else R.string.personal_github_oauth_unauthorized_desc
         )
         if (status.authorized) {
-            binding.bnBind.isVisible = false
+            binding.bnBind.isVisible = needsReauthorization
             binding.authorizedSection.isVisible = true
-            binding.bnRevoke.isVisible = true
-            binding.tvSetupHint.isVisible = false
+            binding.bnRevoke.isVisible = !needsReauthorization
+            val setupHint = setupHint(status.personalRepositorySetup, status.expectedInstallationLogin)
+                ?: if (needsReauthorization) getString(R.string.personal_github_oauth_reauthorize_hint) else null
+            binding.tvSetupHint.isVisible = !setupHint.isNullOrBlank()
+            binding.tvSetupHint.text = setupHint
             binding.tvGithubLogin.text = status.githubLogin?.let { "@$it" } ?: ""
             val scopeText = scopeText(status.scopes)
             binding.tvGithubScopes.isVisible = !scopeText.isNullOrBlank()
@@ -225,7 +236,10 @@ class PersonalGithubOAuthFragment : Fragment() {
         hideWebView()
         val result = uri.getQueryParameter("githubOAuth")
         when (result) {
-            "authorized" -> viewModel.onAuthorized()
+            "authorized" -> {
+                forceReauthorization = false
+                viewModel.onAuthorized()
+            }
             "failed" -> {
                 val code = uri.getQueryParameter("code")
                 Toast.makeText(
@@ -258,5 +272,9 @@ class PersonalGithubOAuthFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    companion object {
+        const val ARG_FORCE_REAUTH = "forceGithubReauthorization"
     }
 }

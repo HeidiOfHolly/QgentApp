@@ -21,6 +21,7 @@ import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.model.ApiException
 import com.example.qgent.databinding.FragmentProfileBinding
 import com.example.qgent.ui.auth.LoginActivity
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -68,12 +69,23 @@ class ProfileFragment : Fragment() {
             findNavController().navigate(R.id.personalGithubOAuthFragment)
         }
 
-        // 退出登录：清空会话并回到登录页
-        binding.btnLogout.setOnClickListener {
-            SessionStore.clear()
-            startActivity(Intent(requireContext(), LoginActivity::class.java))
-            requireActivity().finish()
-        }
+        binding.btnLogout.setOnClickListener { confirmLogout() }
+    }
+
+    private fun confirmLogout() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.logout_confirm_title)
+            .setMessage(R.string.logout_confirm_message)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.logout_confirm_action) { _, _ -> logout() }
+            .show()
+    }
+
+    /** 确认退出后清空会话并回到登录页。 */
+    private fun logout() {
+        SessionStore.clear()
+        startActivity(Intent(requireContext(), LoginActivity::class.java))
+        requireActivity().finish()
     }
 
     override fun onResume() {

@@ -344,11 +344,19 @@ class TaskDetailFragment : Fragment() {
                 .onSuccess { runs ->
                     if (showIndicator) hideLoading()
                     binding.tvRunsEmpty.isVisible = runs.isEmpty()
+                    val retriedSourceIds = runs.mapNotNull { it.retryOfTaskRunId }.toSet()
                     fillLinearLayout(binding.rvRuns, runs, R.layout.item_task_run) { view, run ->
                         val item = ItemTaskRunBinding.bind(view)
+                        val retried = run.status == "FAILED" && run.id in retriedSourceIds
                         item.tvRunTitle.text = run.taskStepTitle ?: run.role
-                        item.tvRunStatus.text = run.statusSummary ?: runStatusLabel(run.status)
-                        item.tvRunStatus.setTextColor(view.context.getColor(taskStatusColorRes(run.status)))
+                        item.tvRunStatus.text = if (retried) {
+                            getString(R.string.task_run_retried)
+                        } else {
+                            run.statusSummary ?: runStatusLabel(run.status)
+                        }
+                        item.tvRunStatus.setTextColor(view.context.getColor(
+                            if (retried) R.color.text_secondary else taskStatusColorRes(run.status)
+                        ))
                         item.tvRunAgent.text = run.agent?.name ?: run.agentId
                         // 查看执行日志：失败/完成的运行可看具体执行过程（§12.2）
                         val logLoading = loadingRunLogId == run.id

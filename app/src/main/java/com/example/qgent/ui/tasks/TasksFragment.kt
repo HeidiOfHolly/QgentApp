@@ -71,6 +71,8 @@ class TasksFragment : Fragment() {
 
     private var pollingJob: Job? = null
     private var eventStreamJob: Job? = null
+    private var manualRefreshGeneration = 0
+    private var pendingManualRefreshes = 0
 
     /** 项目级 SSE：任务/MR/分支事件到达 → 立即刷新（减少对 3s 轮询的依赖） */
     private val eventStream: com.example.qgent.data.sse.ProjectEventStream
@@ -113,7 +115,7 @@ class TasksFragment : Fragment() {
         binding.rvRecentTaskList.adapter = recentTaskAdapter
 
         // 下拉刷新：重新拉取任务 / MR / 最近动态
-        binding.swipeRefresh.setOnRefreshListener { refreshAllData() }
+        binding.swipeRefresh.setOnRefreshListener { refreshAllData(isManualRefresh = true) }
 
         // 未读任务类通知 → 铃铛右上角红点
         mainViewModel.unreadTaskNotifications.observe(viewLifecycleOwner) { hasUnread ->
@@ -125,7 +127,10 @@ class TasksFragment : Fragment() {
             binding.tvTeamName.text = team
         }
         mainViewModel.currentProject.observe(viewLifecycleOwner) { project ->
-            binding.tvProjectName.text = project.ifEmpty { getString(R.string.short_test) }
+            val projectName = project.ifEmpty { getString(R.string.short_test) }
+            binding.tvProjectName.text = projectName.take(8).let { prefix ->
+                if (projectName.length > 8) "$prefix..." else prefix
+            }
             // 切项目立即按新项目重新加载任务与最近动态（轮询每次也现取项目 id，双保险防串项目）
             if (project.isNotEmpty()) {
                 loadMyTasks()
@@ -164,8 +169,6 @@ class TasksFragment : Fragment() {
             state.error?.let {
                 taskListViewModel.consumeError()
             }
-            // 刷新完成 → 收起下拉刷新动画（uiState 更新即视为刷新结束）
-            binding.swipeRefresh.isRefreshing = false
         }
     }
 
@@ -210,13 +213,16 @@ class TasksFragment : Fragment() {
      *  （已按群成员过滤，仅含当前用户所在的群；PROJECT_MAIN 总群不算分支群）。
      *  任务列表展示规则见 TaskListViewModel.loadMyTasks：
      *  已创建任务 → 按「未完成优先、再按最近」展示本人任务；未创建 → 展示所加入分支群的最近任务。 */
-    private fun loadMyTasks() {
+    private fun loadMyTasks(onDone: (() -> Unit)? = null) {
         val projectId = mainViewModel.currentProjectId()
         val userId = com.example.qgent.data.SessionStore.user()?.id
         val groupIds = mainViewModel.groups.value.orEmpty()
             .filter { it.type == GroupType.REQUIREMENT }
             .map { it.id }
-        taskListViewModel.loadMyTasks(projectId, userId, groupIds, onDone = ::markTasksLoaded)
+        taskListViewModel.loadMyTasks(projectId, userId, groupIds) {
+            markTasksLoaded()
+            onDone?.invoke()
+        }
     }
 
     /** 首页数据首次加载完成标记（onDone 回调）：控制整页骨架屏显示 */
@@ -225,9 +231,27 @@ class TasksFragment : Fragment() {
     }
 
     /** 下拉刷新：重新拉取任务 / 最近动态 */
-    private fun refreshAllData() {
-        loadMyTasks()
-        taskListViewModel.loadActivities(mainViewModel.currentProjectId(), mainViewModel.agents.value.orEmpty())
+    private fun refreshAllData(isManualRefresh: Boolean = false) {
+        if (!isManualRefresh) {
+            loadMyTasks()
+            taskListViewModel.loadActivities(mainViewModel.currentProjectId(), mainViewModel.agents.value.orEmpty())
+            return
+        }
+
+        val generation = ++manualRefreshGeneration
+        pendingManualRefreshes = 2
+        val finishPart = {
+            if (generation == manualRefreshGeneration) {
+                pendingManualRefreshes -= 1
+                if (pendingManualRefreshes <= 0) _binding?.swipeRefresh?.isRefreshing = false
+            }
+        }
+        loadMyTasks(onDone = finishPart)
+        taskListViewModel.loadActivities(
+            mainViewModel.currentProjectId(),
+            mainViewModel.agents.value.orEmpty(),
+            onDone = finishPart
+        )
     }
 
     override fun onResume() {

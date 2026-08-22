@@ -42,8 +42,20 @@ class TeamEntryActivity : AppCompatActivity() {
         binding = ActivityTeamEntryBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        binding.btnBackToLogin.setOnClickListener { returnToLogin() }
         binding.btnCreateTeam.setOnClickListener { showCreateTeamDialog() }
         binding.btnJoinTeam.setOnClickListener { showJoinTeamDialog() }
+    }
+
+    /** 团队引导页没有保留登录页返回栈，返回登录即退出当前账户，避免已登录会话与登录页并存。 */
+    private fun returnToLogin() {
+        SessionStore.clear()
+        startActivity(
+            Intent(this, LoginActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+        )
+        finish()
     }
 
     override fun onResume() {
