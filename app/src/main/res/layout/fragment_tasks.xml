@@ -30,7 +30,7 @@
             android:orientation="vertical"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toStartOf="@+id/btnNotification">
+            app:layout_constraintEnd_toStartOf="@+id/notificationContainer">
 
             <TextView
                 android:id="@+id/tvTeamName"
@@ -45,7 +45,6 @@
                 android:id="@+id/tvProjectName"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:ellipsize="end"
                 android:maxLines="1"
                 android:text="@string/short_test"
                 android:textColor="@color/white"
@@ -54,6 +53,7 @@
                 tools:text="登录项目" />
         </LinearLayout>
         <FrameLayout
+            android:id="@id/notificationContainer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginBottom="5dp"
