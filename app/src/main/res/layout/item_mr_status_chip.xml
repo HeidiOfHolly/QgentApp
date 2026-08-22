@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MR 状态筛选 chip：选中态蓝色圆角，未选中浅色边框 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="8dp"
+    android:background="@drawable/bg_mr_status_chip"
+    android:gravity="center"
+    android:paddingStart="12dp"
+    android:paddingTop="5dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="5dp"
+    android:textColor="@color/navy_light"
+    android:textSize="13sp" />

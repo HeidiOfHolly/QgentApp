@@ -1,11 +1,11 @@
 package com.example.qgent.ui.tasks
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.isVisible
@@ -30,7 +30,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-/** MR 详情页：MR 基础信息 + 交付流程（DryRun/CQ+1/合并/同步）+ diff 完整代码块（§13 + §12.3） */
+/** MR 详情页：MR 基础信息 + 交付流程（门禁/合并/同步）+ diff 完整代码块（§13 + §12.3） */
 class MergeRequestDetailFragment : Fragment() {
 
     private var _binding: FragmentMrDetailBinding? = null
@@ -49,6 +49,9 @@ class MergeRequestDetailFragment : Fragment() {
     private val mergeRequestId: String by lazy { arguments?.getString(ARG_MR_ID).orEmpty() }
     private val projectId: String by lazy { arguments?.getString(ARG_PROJECT_ID).orEmpty() }
 
+    /** 当前 MR 所属仓库的 GitHub 主页 URL（如 https://github.com/owner/repo），用于拼 MR 链接 */
+    private var repoGithubUrl: String? = null
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -61,8 +64,6 @@ class MergeRequestDetailFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
-        binding.btnCqApprove.setOnClickListener { cqApprove() }
-        binding.btnCqReject.setOnClickListener { showCqRejectDialog() }
         binding.btnMerge.setOnClickListener { confirmMerge() }
         binding.btnSync.setOnClickListener { syncStatus() }
         loadDetail()
@@ -75,7 +76,7 @@ class MergeRequestDetailFragment : Fragment() {
             taskRepository.getMergeRequestDetail(projectId, mergeRequestId)
                 .onSuccess { detail ->
                     bindDetail(detail)
-                    loadFlow(projectId, mergeRequestId, detail.status)
+                    loadFlow(projectId, detail)
                 }
                 .onFailure { e ->
                     binding.loading.isVisible = false
@@ -84,89 +85,77 @@ class MergeRequestDetailFragment : Fragment() {
         }
     }
 
-    /** 交付流程：门禁检查 + CQ 审查 + 操作按钮（按状态/权限显示）；不阻塞基础详情 loading */
-    private fun loadFlow(projectId: String, mrId: String, mrStatus: String) {
-        val open = mrStatus == "OPEN"
+    /** 交付流程：CQ+1 通过者 + 操作按钮（按状态/权限显示）；不阻塞基础详情 loading */
+    private fun loadFlow(projectId: String, detail: MergeRequestDetailDto) {
+        val open = detail.status == "OPEN"
         viewLifecycleOwner.lifecycleScope.launch {
-            // 门禁检查（10s 超时：接口未就绪/网络差时快速显示空态，不让详情页一直转圈）
-            val checks = runCatching {
-                kotlinx.coroutines.withTimeout(10_000) { taskRepository.getMergeRequestChecks(projectId, mrId).getOrThrow() }
-            }.getOrNull().orEmpty()
-            binding.tvFlowChecks.text = if (checks.isEmpty()) {
-                "暂无门禁检查"
-            } else {
-                checks.joinToString(" · ") { c ->
-                    val label = when (c.type) {
-                        "TESTSET" -> "测试集"
-                        "AI_REVIEW" -> "AI 审查"
-                        "DRY_RUN" -> "DryRun"
-                        "CQ_PLUS_ONE" -> "CQ+1"
-                        else -> c.type
-                    }
-                    val mark = when (c.status) {
-                        "PASSED" -> "✓"
-                        "FAILED" -> "✗"
-                        else -> "…"
-                    }
-                    "$label $mark"
-                }
-            }
-            // CQ 审查摘要（10s 超时）
-            val reviews = runCatching {
-                kotlinx.coroutines.withTimeout(10_000) { taskRepository.getMergeRequestReviews(projectId, mrId).getOrThrow() }
-            }.getOrNull().orEmpty()
-            binding.tvFlowReviews.text = if (reviews.isEmpty()) {
-                "暂无 CQ 审批"
-            } else {
-                reviews.joinToString(" · ") { r ->
-                    "${r.reviewer?.displayName ?: "成员"} ${if (r.cqPlusOne == true || r.decision == "APPROVED") "✓" else "✗"}"
-                }
-            }
-            // 操作按钮：OPEN 时显示 CQ+1 / 拒绝 / 同步；合并仅 Project Admin
-            binding.btnCqApprove.isVisible = open
-            binding.btnCqReject.isVisible = open
+            // CQ+1 通过者：来自预检状态（发起 MR 前的预检 CQ+1，cqReviewerUserId），而非 MR 门禁审查。
+            // MR 详情只有 MR_ID，无 taskId；通过 repositoryId + MR number 遍历项目任务预检匹配当前 MR。
+            binding.tvFlowReviews.text = "CQ+1 通过者：" + loadCqPasser(projectId, detail)
+            // 合并请求 MR 链接卡片（跳 GitHub）：优先 MR 详情 webUrl，兜底仓库 githubUrl + number 拼
+            loadMrEntry(detail)
+            // 操作按钮：OPEN 时显示 同步；合并仅 Project Admin
             binding.btnSync.isVisible = open
             if (open) {
                 binding.btnMerge.isVisible = mainViewModel.isProjectAdmin(projectId)
             } else {
                 binding.btnMerge.isVisible = false
             }
+            // 交付流程（最慢，含遍历预检）完成后再隐藏 loading，避免 diff 先渲染导致指示器提前消失
+            binding.loading.isVisible = false
         }
     }
 
-    /** CQ+1 */
-    private fun cqApprove() {
-        if (projectId.isEmpty() || mergeRequestId.isEmpty()) return
-        viewLifecycleOwner.lifecycleScope.launch {
-            taskRepository.cqApprove(projectId, mergeRequestId, null, UUID.randomUUID().toString())
-                .onSuccess { Toast.makeText(requireContext(), "已提交 CQ+1", Toast.LENGTH_SHORT).show() }
-                .onFailure { e -> Toast.makeText(requireContext(), "CQ+1 失败：${e.message}", Toast.LENGTH_LONG).show() }
-            loadDetail()
+    /**
+     * 查找当前 MR 对应的预检记录：遍历项目全部任务的预检
+     * （GET /tasks/{taskId}/merge-request-preflight），用预检 mergeRequest.id 精确匹配当前 MR id
+     * （= 导航 ARG_MR_ID / MR 详情 id），repositoryId 作为辅助校验。
+     * MR 详情只有 MR_ID 无 taskId，故需遍历；数据源为预检 CQ+1（发起 MR 前的独立成员审批）。
+     */
+    private suspend fun findMatchingPreflight(projectId: String, detail: MergeRequestDetailDto): com.example.qgent.data.model.MergeRequestPreflightDto? {
+        val mrId = detail.id
+        val mrRepositoryId = detail.repositoryId
+        val tasks = taskRepository.getTasks(projectId).getOrNull().orEmpty()
+        for (task in tasks) {
+            val preflights = taskRepository.getTaskMergeRequestPreflight(projectId, task.id).getOrNull().orEmpty()
+            preflights.firstOrNull {
+                it.mergeRequest?.id == mrId || (it.repositoryId == mrRepositoryId && it.mergeRequest?.number == detail.number)
+            }?.let { return it }
         }
+        return null
     }
 
-    /** 拒绝 CQ（必填原因） */
-    private fun showCqRejectDialog() {
-        val input = layoutInflater.inflate(R.layout.dialog_cq_reject, null) as android.widget.EditText
-        MaterialAlertDialogBuilder(requireContext())
-            .setTitle("拒绝 CQ")
-            .setView(input)
-            .setNegativeButton("取消", null)
-            .setPositiveButton("确认拒绝") { _, _ ->
-                val reason = input.text?.toString()?.trim()
-                if (reason.isNullOrEmpty()) {
-                    Toast.makeText(requireContext(), "请填写修改意见", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                viewLifecycleOwner.lifecycleScope.launch {
-                    taskRepository.cqReject(projectId, mergeRequestId, reason, UUID.randomUUID().toString())
-                        .onSuccess { Toast.makeText(requireContext(), "已拒绝 CQ", Toast.LENGTH_SHORT).show() }
-                        .onFailure { e -> Toast.makeText(requireContext(), "拒绝失败：${e.message}", Toast.LENGTH_LONG).show() }
-                    loadDetail()
+    /** CQ+1 通过者姓名：取匹配预检的 cqReviewerUserId 反查成员 displayName；未命中返回「暂无」 */
+    private suspend fun loadCqPasser(projectId: String, detail: MergeRequestDetailDto): String {
+        val hit = findMatchingPreflight(projectId, detail) ?: return "暂无"
+        val passerId = hit.cqReviewerUserId
+        if (passerId.isNullOrBlank()) return "暂无"
+        return userRepository().getTeamMembers(mainViewModel.currentTeamId().orEmpty())
+            .getOrNull().orEmpty().firstOrNull { it.userId == passerId }?.displayName ?: "成员"
+    }
+
+    /** 填充「合并请求」MR 链接卡片：优先用 MR 详情返回的 webUrl（对齐交付物详情方式，§13/§21.2）；
+     *  后端未返回时用仓库 GitHub URL + MR number 拼（https://github.com/{owner}/{repo}/pull/{number}）。
+     *  点击外部打开 GitHub MR。 */
+    private fun loadMrEntry(detail: MergeRequestDetailDto) {
+        val builtUrl = repoGithubUrl?.let { g -> detail.number.takeIf { it > 0 }?.let { "$g/pull/$it" } }
+        val url = detail.webUrl?.takeIf { it.isNotBlank() } ?: builtUrl
+        binding.tvMrEntry.isVisible = url != null
+        binding.tvMrEmpty.isVisible = url == null
+        if (url != null) {
+            binding.tvMrEntry.text = "🔀 MR #${detail.number} ${detail.title.orEmpty()} ›"
+            binding.tvMrEntry.setOnClickListener {
+                runCatching {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }.onFailure {
+                    Toast.makeText(requireContext(), "无法打开链接", Toast.LENGTH_SHORT).show()
                 }
             }
-            .show()
+        }
     }
+
+    private fun userRepository(): com.example.qgent.data.repository.UserRepository =
+        (requireActivity().application as QgentApp).container.userRepository
 
     /** Project Admin 合并 */
     private fun confirmMerge() {
@@ -203,15 +192,15 @@ class MergeRequestDetailFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             githubRepository.getProjectRepositories(projectId)
                 .onSuccess { repos ->
-                    binding.tvMrRepo.text = repos.firstOrNull { it.id == detail.repositoryId }?.displayName
-                        ?: detail.repositoryId
+                    val repo = repos.firstOrNull { it.id == detail.repositoryId }
+                    binding.tvMrRepo.text = repo?.displayName ?: detail.repositoryId
+                    repoGithubUrl = repo?.githubUrl?.takeIf { it.isNotBlank() }
                 }
         }
-        // 加载 diff
+        // 加载 diff（loading 由 loadFlow 结束时统一隐藏，避免提前消失）
         val diffId = detail.diffId
         if (diffId.isNullOrEmpty()) {
             binding.tvDiffEmpty.isVisible = true
-            binding.loading.isVisible = false
             return
         }
         loadDiffFiles(diffId)
@@ -223,14 +212,12 @@ class MergeRequestDetailFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             diffRepository.getDiffFiles(projectId, diffId)
                 .onSuccess { files ->
-                    binding.loading.isVisible = false
                     binding.tvDiffEmpty.isVisible = files.isEmpty()
                     fillLinearLayout(binding.containerDiffFiles, files.map { it.toDiffFile() }, R.layout.item_mr_diff_file) { view, file ->
                         bindDiffFile(view, file)
                     }
                 }
                 .onFailure { e ->
-                    binding.loading.isVisible = false
                     binding.tvDiffEmpty.isVisible = true
                     Toast.makeText(requireContext(), "加载代码变更失败：${e.message}", Toast.LENGTH_SHORT).show()
                 }
@@ -245,7 +232,7 @@ class MergeRequestDetailFragment : Fragment() {
         item.root.setOnClickListener { showDiffFileDialog(file) }
     }
 
-    /** 弹窗展示单个文件 diff：ScrollView 内文件头（basename + 增删）+ 代码行（+ 绿底 / - 红底、monospace） */
+    /** 弹窗展示单个文件 diff：外层垂直滚动（文件头/多行），内层横向滚动（长代码行可左右滑动） */
     private fun showDiffFileDialog(file: DiffFile) {
         val binding = com.example.qgent.databinding.DialogDiffFileBinding.inflate(layoutInflater)
         MaterialAlertDialogBuilder(requireContext())
@@ -262,7 +249,8 @@ class MergeRequestDetailFragment : Fragment() {
             return
         }
         file.lines.forEach { line ->
-            val row = com.example.qgent.databinding.ItemDiffLineBinding.inflate(layoutInflater, binding.container, false)
+            // 用 item_mr_diff_line（tvCode 不截断、按内容撑宽），配合 HorizontalScrollView 横向滚动
+            val row = com.example.qgent.databinding.ItemMrDiffLineBinding.inflate(layoutInflater, binding.codeContainer, false)
             row.tvSign.text = when (line.type) {
                 DiffLineType.ADD -> "+"
                 DiffLineType.DELETE -> "-"
@@ -279,7 +267,7 @@ class MergeRequestDetailFragment : Fragment() {
                 DiffLineType.DELETE -> R.color.diff_del_bg
                 else -> R.color.white
             }))
-            binding.container.addView(row.root)
+            binding.codeContainer.addView(row.root)
         }
     }
 

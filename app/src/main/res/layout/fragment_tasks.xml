@@ -142,7 +142,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="20dp"
                 android:layout_marginVertical="15dp"
-                android:text="📋 暂无最近任务"
+                android:text="📋 最近暂无我创建的任务"
                 android:textColor="@color/text_secondary"
                 android:textSize="15dp" />
 

@@ -98,7 +98,6 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
-import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -798,6 +797,7 @@ interface QgApiService {
     @GET("projects/{projectId}/merge-requests")
     suspend fun getMergeRequests(
         @Path("projectId") projectId: String,
+        @Query("status") status: String? = null,
         @Query("cursor") cursor: String? = null,
         @Query("limit") limit: Int = 20
     ): Response<ApiResponse<List<MergeRequestDto>>>

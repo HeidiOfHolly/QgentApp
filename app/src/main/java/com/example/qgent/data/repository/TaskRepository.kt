@@ -1,22 +1,17 @@
 package com.example.qgent.data.repository
 
 import com.example.qgent.data.model.ActivityDto
-import com.example.qgent.data.model.CqActionRequest
-import com.example.qgent.data.model.CreateDryRunRequest
 import com.example.qgent.data.model.CreateDryRunResponse
-import com.example.qgent.data.model.CreateMergeRequestRequest
 import com.example.qgent.data.model.CreateMergeRequestResponse
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.DiffFileResponseDto
 import com.example.qgent.data.model.DryRunListItemDto
 import com.example.qgent.data.model.DryRunReportDto
 import com.example.qgent.data.model.DryRunRetryResponse
-import com.example.qgent.data.model.EmptyBody
 import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
 import com.example.qgent.data.model.MergeRequestPreflightDto
-import com.example.qgent.data.model.RequestMergeRequestPreflightRequest
 import com.example.qgent.data.model.RequestMergeRequestPreflightResponse
 import com.example.qgent.data.model.TestsetResponseDto
 import com.example.qgent.data.model.MergeRequestReviewDto
@@ -67,9 +62,10 @@ interface TaskRepository {
         limit: Int = 20
     ): Result<List<ActivityDto>>
 
-    /** 查询项目关联 MR（§13） */
+    /** 查询项目关联 MR（§13/§43：status 传 PENDING_CREATE 只返回待创建占位；不传返回真实 MR + 占位） */
     suspend fun getMergeRequests(
         projectId: String,
+        status: String? = null,
         cursor: String? = null,
         limit: Int = 20
     ): Result<List<MergeRequestDto>>

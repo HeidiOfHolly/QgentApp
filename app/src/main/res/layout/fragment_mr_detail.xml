@@ -110,25 +110,47 @@
                 android:layout_marginTop="16dp"
                 android:background="@color/divider" />
 
-            <!-- 交付流程（diff 审核之后：DryRun / CQ+1 / 合并 / 同步） -->
+            <!-- 合并请求：MR 链接卡片（点击外部打开 GitHub MR） -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="合并请求"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvMrEntry"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_card"
+                android:padding="12dp"
+                android:textColor="@color/primary"
+                android:textSize="14sp"
+                android:visibility="gone"
+                tools:text="🔀 MR #128 feat: implement login API ›" />
+
+            <TextView
+                android:id="@+id/tvMrEmpty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="暂无合并请求"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <!-- 交付流程（diff 审核之后：门禁 / 合并 / 同步） -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:text="交付流程"
                 android:textColor="@color/text_primary"
-                android:textSize="20sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvFlowChecks"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:lineSpacingExtra="3dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp"
-                tools:text="DryRun ✓ · AI Review ✓ · CQ+1 待审批" />
 
             <TextView
                 android:id="@+id/tvFlowReviews"
@@ -137,7 +159,7 @@
                 android:layout_marginTop="4dp"
                 android:textColor="@color/text_secondary"
                 android:textSize="13sp"
-                tools:text="CQ+1：张三 ✓" />
+                tools:text="CQ+1 通过者：张三" />
 
             <!-- 操作按钮（按状态/权限显示；后端鉴权兜底） -->
             <LinearLayout
@@ -145,37 +167,6 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/btnCqApprove"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/bg_status_tag"
-                    android:gravity="center"
-                    android:paddingStart="12dp"
-                    android:paddingTop="6dp"
-                    android:paddingEnd="12dp"
-                    android:paddingBottom="6dp"
-                    android:text="CQ+1"
-                    android:textColor="@color/white"
-                    android:textSize="13sp"
-                    android:visibility="gone" />
-
-                <TextView
-                    android:id="@+id/btnCqReject"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:background="@drawable/bg_status_tag"
-                    android:gravity="center"
-                    android:paddingStart="12dp"
-                    android:paddingTop="6dp"
-                    android:paddingEnd="12dp"
-                    android:paddingBottom="6dp"
-                    android:text="拒绝 CQ"
-                    android:textColor="@color/white"
-                    android:textSize="13sp"
-                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/btnMerge"
@@ -223,7 +214,7 @@
                 android:layout_marginTop="10dp"
                 android:text="代码变更"
                 android:textColor="@color/text_primary"
-                android:textSize="20sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
 
             <TextView

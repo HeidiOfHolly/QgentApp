@@ -37,7 +37,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- GitHub 安装回调 App Link：https://mobile.qgents.dpdns.org/app/integrations/github?teamId=...&installed=1 -->
+            <!-- GitHub 安装回调 App Link：https://api.qgents.dpdns.org/app/integrations/github?teamId=...&installed=1 -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
 
@@ -46,7 +46,7 @@
 
                 <data
                     android:scheme="https"
-                    android:host="mobile.qgents.dpdns.org"
+                    android:host="api.qgents.dpdns.org"
                     android:pathPrefix="/app/integrations/github" />
             </intent-filter>
         </activity>

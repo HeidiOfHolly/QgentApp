@@ -9,17 +9,42 @@
     android:orientation="vertical"
     android:padding="12dp">
 
-    <!-- 标题：任务展示码 + 标题（超长单行省略号） -->
-    <TextView
-        android:id="@+id/tvTitle"
+    <!-- 标题行：标题 + MR 状态标签 -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:textColor="@color/text_primary"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        tools:text="(T-76) 实现邮箱登录" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            tools:text="(T-76) 实现邮箱登录" />
+
+        <!-- 是否已创建 MR 标签 -->
+        <TextView
+            android:id="@+id/tvMrLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_status_tag"
+            android:gravity="center"
+            android:paddingStart="6dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="6dp"
+            android:paddingBottom="2dp"
+            android:textColor="@color/white"
+            android:textSize="11sp"
+            android:visibility="gone"
+            tools:text="已创建 MR" />
+    </LinearLayout>
 
     <!-- 仓库 / 分支 -->
     <TextView

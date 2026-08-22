@@ -6,7 +6,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.databinding.ItemFilterBinding
 
 /** 任务筛选条件项定义 */
-enum class TaskFilterType { GROUP, STATUS, CREATED_BY, REPOSITORY }
+enum class TaskFilterType { GROUP, STATUS, CREATED_BY, REPOSITORY, MR_CREATED }
 
 /** 单个筛选项的数据：类型 + 显示标签 + 当前选中值文本（空表示未筛） */
 data class FilterChip(

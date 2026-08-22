@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 单个文件 Diff 弹窗：垂直滚动内容容器 -->
+<!-- 单个文件 Diff 弹窗：外层垂直滚动（文件头/多行），内层横向滚动（代码行完整显示） -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
@@ -12,5 +12,20 @@
         android:paddingStart="16dp"
         android:paddingTop="12dp"
         android:paddingEnd="16dp"
-        android:paddingBottom="12dp" />
+        android:paddingBottom="12dp">
+
+        <!-- 代码行横向滚动区：长行不省略，可左右滑动查看完整代码 -->
+        <HorizontalScrollView
+            android:id="@+id/horizontalScroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="horizontal">
+
+            <LinearLayout
+                android:id="@+id/codeContainer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </HorizontalScrollView>
+    </LinearLayout>
 </ScrollView>

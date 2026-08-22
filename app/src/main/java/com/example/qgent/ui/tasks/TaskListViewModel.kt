@@ -10,8 +10,12 @@ import com.example.qgent.data.model.TaskListItemDto
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.model.Agent
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 /** 任务页/任务卡片列表 ViewModel：任务、Agent 近况、MR 三列表 + 任务筛选 */
 class TaskListViewModel(
@@ -24,6 +28,8 @@ class TaskListViewModel(
         const val MAX_MY_TASKS = 5
         const val MAX_AGENT_ACTIVITIES = 5
         const val MAX_MR = 2
+        /** 最近动态/任务/合并请求加载整体超时（ms）：后端/网络慢时快速回落空态，避免任务页长时间空白 */
+        private const val ACTIVITIES_TIMEOUT_MS = 10_000L
 
         /** 任务终态（任务首页「未完成优先」排序：不在终态集合的视为未完成） */
         private val TERMINAL_STATUSES = setOf("SUCCEEDED", "FAILED", "DELIVERY_FAILED", "CANCELLED", "CANCELLING")
@@ -65,6 +71,9 @@ class TaskListViewModel(
         val tasks: List<TaskListItemDto> = emptyList(),
         /** 任务首页专用：当前用户的最近任务（不受列表页筛选影响，仅按创建者过滤） */
         val myTasks: List<TaskListItemDto> = emptyList(),
+        /** 任务首页任务列表专用：当前用户所在分支群（需求群）的最近任务。
+         *  仅当用户未在该项目创建过任务时加载（由 loadMyTasks 依据 myTasks 为空判定），不受列表页筛选影响 */
+        val groupTasks: List<TaskListItemDto> = emptyList(),
         val agentRuns: List<AgentRun> = emptyList(),
         val mergeRequests: List<MergeRequestDto> = emptyList(),
         val filter: TaskFilter = TaskFilter(),
@@ -112,45 +121,75 @@ class TaskListViewModel(
 
     /** 任务首页：仅加载当前用户创建的任务（createdBy=userId，无列表页筛选），
      *  与 state.tasks（列表页可筛选）分离，返回主界面时列表页筛选不影响首页展示。
-     *  排序：未完成优先（未完成/已完成分组内再按 updatedAt 倒序）。 */
-    fun loadMyTasks(projectId: String?, userId: String?) {
+     *  排序：未完成优先（未完成/已完成分组内再按 updatedAt 倒序）。
+     *  [groupIds]：当前用户所在需求群（分支群）id。仅当用户未在该项目创建过任务（myTasks 为空）时，
+     *  加载其所在分支群的最近任务（state.groupTasks，按 createdAt 倒序取 MAX_MY_TASKS）。 */
+    fun loadMyTasks(projectId: String?, userId: String?, groupIds: List<String> = emptyList()) {
         if (projectId == null || userId == null) return
         viewModelScope.launch {
-            repo.getTasks(projectId, createdBy = userId)
-                .onSuccess { tasks ->
-                    val sorted = tasks.sortedWith(
-                        compareByDescending<TaskListItemDto> { it.status !in TERMINAL_STATUSES }
-                            .thenByDescending { it.updatedAt }
-                    )
-                    _uiState.value = _uiState.value.copy(myTasks = sorted)
+            val tasks = runCatching {
+                withTimeout(ACTIVITIES_TIMEOUT_MS) { repo.getTasks(projectId, createdBy = userId).getOrThrow() }
+            }.getOrElse {
+                android.util.Log.e("TaskPoll", "loadMyTasks timeout/failed: ${it.message}")
+                emptyList()
+            }
+            val sorted = tasks.sortedWith(
+                compareByDescending<TaskListItemDto> { it.status !in TERMINAL_STATUSES }
+                    .thenByDescending { it.updatedAt }
+            )
+            // 分支群任务：仅当用户未在该项目创建过任务（sorted 为空）且存在所在需求群时加载。
+            // 按群过滤逐个查询（每群取 MAX_MY_TASKS），避免拉全量按页截断漏掉较旧的分支群任务。
+            val groupTasks = if (sorted.isEmpty() && groupIds.isNotEmpty()) {
+                runCatching {
+                    withTimeout(ACTIVITIES_TIMEOUT_MS) {
+                        coroutineScope {
+                            groupIds.map { gid ->
+                                async {
+                                    repo.getTasks(projectId, groupId = gid, limit = MAX_MY_TASKS)
+                                        .getOrElse { emptyList() }
+                                }
+                            }.awaitAll().flatten()
+                        }
+                    }
+                }.getOrElse {
+                    android.util.Log.e("TaskPoll", "loadMyGroupTasks timeout/failed: ${it.message}")
+                    emptyList()
                 }
-                .onFailure { e ->
-                    android.util.Log.e("TaskPoll", "loadMyTasks FAILED: ${e.message}")
-                }
+                    .distinctBy { it.id }
+                    .sortedByDescending { it.createdAt }
+                    .take(MAX_MY_TASKS)
+            } else emptyList()
+            _uiState.value = _uiState.value.copy(myTasks = sorted, groupTasks = groupTasks)
         }
     }
 
-    /** 加载最近被调用的 Agent 及任务：遍历项目内 Agent，逐个查 task-runs（§20.6），
+    /** 加载最近被调用的 Agent 及任务：遍历项目内 Agent，查 task-runs（§20.6），
      *  按 createdAt 倒序取最新 MAX_AGENT_ACTIVITIES 条。单个 Agent 查询失败静默跳过。
-     *  新查询前取消上一次：轮询每 3 秒触发，多 agent 串行查询慢，不取消会导致旧协程晚到覆盖新结果。 */
+     *  并发查询所有 Agent（串行会随 Agent 数线性放大耗时）+ 整体 10s 超时，
+     *  避免后端/网络慢时任务页长时间空白；新查询前取消上一次（轮询每 3 秒触发，防旧结果覆盖）。 */
     fun loadActivities(projectId: String?, agents: List<Agent>) {
         if (projectId == null) return
         activitiesJob?.cancel()
         activitiesJob = viewModelScope.launch {
-            val all = mutableListOf<AgentRun>()
-            agents.forEach { agent ->
-                repo.getTaskRuns(projectId, agent.id)
-                    .getOrElse { emptyList() }
-                    .forEach { run ->
-                        all.add(
-                            AgentRun(
-                                agentName = agent.name,
-                                taskTitle = run.taskTitle ?: "执行任务",
-                                createdAt = run.createdAt
-                            )
-                        )
+            val all = runCatching {
+                withTimeout(ACTIVITIES_TIMEOUT_MS) {
+                    coroutineScope {
+                        agents.map { agent ->
+                            async {
+                                repo.getTaskRuns(projectId, agent.id)
+                                    .getOrElse { emptyList() }
+                                    .map { run ->
+                                        AgentRun(
+                                            agentName = agent.name,
+                                            taskTitle = run.taskTitle ?: "执行任务",
+                                            createdAt = run.createdAt
+                                        )
+                                    }
+                            }
+                        }.awaitAll().flatten()
                     }
-            }
+                }
+            }.getOrElse { emptyList() }
             android.util.Log.d("Activities", "loadActivities agents=${agents.size} runs=${all.size} " +
                 "top=${all.sortedWith(compareByDescending { it.createdAt }).take(MAX_AGENT_ACTIVITIES).map { "${it.agentName}:${it.taskTitle}" }}")
             _uiState.value = _uiState.value.copy(
@@ -167,21 +206,24 @@ class TaskListViewModel(
      * 仓库列表拉取失败时不过滤（避免把有效 MR 误隐藏）。
      */
     private suspend fun filterMrByProject(projectId: String, mrs: List<MergeRequestDto>): List<MergeRequestDto> {
-        val repoIds = githubRepo.getProjectRepositories(projectId).getOrNull().orEmpty().map { it.id }.toSet()
+        val repoIds = runCatching {
+            withTimeout(ACTIVITIES_TIMEOUT_MS) { githubRepo.getProjectRepositories(projectId).getOrThrow() }
+        }.getOrNull().orEmpty().map { it.id }.toSet()
         if (repoIds.isEmpty()) return mrs
         return mrs.filter { it.repositoryId in repoIds }
     }
 
     private fun loadMergeRequests(projectId: String) {
         viewModelScope.launch {
-            repo.getMergeRequests(projectId)
-                .onSuccess { mrs ->
-                    // 存全量（仅当前项目）；任务页展示时自行 take(MAX_MR)，MR 列表页用全量
-                    _uiState.value = _uiState.value.copy(mergeRequests = filterMrByProject(projectId, mrs))
-                }
-                .onFailure { e ->
-                    _uiState.value = _uiState.value.copy(error = e.message ?: "加载合并请求失败")
-                }
+            val mrs = runCatching {
+                withTimeout(ACTIVITIES_TIMEOUT_MS) { repo.getMergeRequests(projectId).getOrThrow() }
+            }.getOrElse {
+                android.util.Log.e("TaskPoll", "loadMergeRequests timeout/failed: ${it.message}")
+                _uiState.value = _uiState.value.copy(error = it.message ?: "加载合并请求失败")
+                emptyList()
+            }
+            if (mrs.isEmpty() && _uiState.value.error != null) return@launch
+            _uiState.value = _uiState.value.copy(mergeRequests = filterMrByProject(projectId, mrs))
         }
     }
 
@@ -193,13 +235,15 @@ class TaskListViewModel(
         if (!force && loadedMrProjectId == projectId && _uiState.value.mergeRequests.isNotEmpty()) return
         loadedMrProjectId = projectId
         viewModelScope.launch {
-            repo.getMergeRequests(projectId)
-                .onSuccess { mrs ->
-                    _uiState.value = _uiState.value.copy(mergeRequests = filterMrByProject(projectId, mrs))
-                }
-                .onFailure { e ->
-                    _uiState.value = _uiState.value.copy(error = e.message ?: "加载合并请求失败")
-                }
+            val mrs = runCatching {
+                withTimeout(ACTIVITIES_TIMEOUT_MS) { repo.getMergeRequests(projectId).getOrThrow() }
+            }.getOrElse {
+                android.util.Log.e("TaskPoll", "loadMergeRequests timeout/failed: ${it.message}")
+                _uiState.value = _uiState.value.copy(error = it.message ?: "加载合并请求失败")
+                emptyList()
+            }
+            if (mrs.isEmpty() && _uiState.value.error != null) return@launch
+            _uiState.value = _uiState.value.copy(mergeRequests = filterMrByProject(projectId, mrs))
         }
     }
 

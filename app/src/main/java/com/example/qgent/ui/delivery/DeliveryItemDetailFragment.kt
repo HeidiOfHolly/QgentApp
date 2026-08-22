@@ -1,13 +1,9 @@
 package com.example.qgent.ui.delivery
 
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
@@ -101,7 +97,7 @@ class DeliveryItemDetailFragment : Fragment() {
     /**
      * 统一创建 MR 自动预检流程（计划 §4.2/§4.3）：
      * 按 Task 查全部仓库预检状态，按状态展示操作按钮：
-     * - 无预检记录 → 只读提示（MR_FIRST 交付后后端自动发起预检，不提供手动「创建 MR」）
+     * - 无预检记录 → DIFF_FIRST 显示手动「创建 MR」；MR_FIRST 只读提示（后端自动发起预检）
      * - REQUESTED/DRY_RUN_QUEUED/DRY_RUN_RUNNING → 「预检中」，禁用
      * - WAITING_CQ → 显示「CQ+1」
      * - CQ_REJECTED → 显示「重新预检」
@@ -119,10 +115,20 @@ class DeliveryItemDetailFragment : Fragment() {
             val status = taskRepository.getTaskMergeRequestPreflight(projectId, taskId)
                 .getOrNull()?.firstOrNull()   // 交付物详情按首个仓库展示
             if (status == null) {
-                // MR_FIRST 交付后由后端自动发起 Dry Run（§27.10/§46），前端无需手动「创建 MR」；
-                // 未查到预检记录时只读提示，交由后端自动推进（SSE preflight.updated 到达后自动刷新）
+                // DIFF_FIRST：用户确认 Diff 后需手动创建 MR（§46），无预检记录时提供「创建 MR」入口启动 Dry Run；
+                // MR_FIRST：交付后由后端自动发起 Dry Run（§27.10/§46），前端无需手动创建，只读等待自动推进。
+                val deliveryMode = taskRepository.getTaskDetail(projectId, taskId).getOrNull()?.deliveryMode
                 binding.tvPreflightStatus.isVisible = true
-                binding.tvPreflightStatus.text = "等待后端自动发起预检"
+                if (deliveryMode == "DIFF_FIRST") {
+                    binding.tvPreflightStatus.text = "尚未创建 MR，可手动申请预检"
+                    binding.btnCreateMr.isVisible = true
+                    binding.btnCreateMr.text = "创建 MR"
+                    binding.btnCreateMr.setOnClickListener {
+                        requestPreflight(projectId, taskId, itemDto)
+                    }
+                } else {
+                    binding.tvPreflightStatus.text = "等待后端自动发起预检"
+                }
                 return@launch
             }
             // 真实 MR 已创建 → 展示链接，无操作按钮
@@ -135,10 +141,17 @@ class DeliveryItemDetailFragment : Fragment() {
             when (status.status) {
                 // Dry Run 通过，等待 CQ+1
                 "WAITING_CQ" -> {
-                    binding.btnCqApprove.isVisible = true
+                    // CQ+1 权限由后端派生（canCqApprove：Dry Run 通过 + 非发起人/作者/Agent，§46）：
+                    // 当前用户是发起人时不能审批自己的任务，只读提示、不显示按钮，避免点了才被 403 拒绝。
+                    val canCq = status.canCqApprove ?: true   // 缺省按 true 兜底（旧后端未回填时回归原行为）
+                    binding.btnCqApprove.isVisible = canCq
                     binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "DryRun 通过，等待独立成员 CQ+1"
-                    binding.btnCqApprove.setOnClickListener { doCqApprove(projectId, status.dryRunId) }
+                    binding.tvPreflightStatus.text = if (canCq) {
+                        "DryRun 通过，等待独立成员 CQ+1"
+                    } else {
+                        "DryRun 通过，等待其他成员 CQ+1"
+                    }
+                    if (canCq) binding.btnCqApprove.setOnClickListener { doCqApprove(projectId, status.dryRunId) }
                 }
                 // 正在创建 MR（CQ+1 已通过，后端异步创建）
                 "CREATING_MR" -> {
@@ -241,16 +254,6 @@ class DeliveryItemDetailFragment : Fragment() {
         // 逐仓库交付进度
         fillRepos(it.repositoryDeliveries.orEmpty())
 
-        // MR 摘要入口：webUrl 外部打开
-        val mr = it.mergeRequest
-        binding.tvMrEntry.isVisible = mr != null
-        binding.tvMrEmpty.isVisible = mr == null
-        if (mr != null) {
-            val mrText = "🔀 MR #${mr.number ?: "?"} ${mr.title.orEmpty()}"
-            binding.tvMrEntry.text = "$mrText ›"
-            binding.tvMrEntry.setOnClickListener { openExternalUrl(mr.webUrl) }
-        }
-
         // 关联任务入口
         val taskId = it.source?.taskId
         binding.tvTaskEntry.isVisible = !taskId.isNullOrBlank()
@@ -276,26 +279,7 @@ class DeliveryItemDetailFragment : Fragment() {
                 layoutInflater, binding.containerRepos, false
             )
             row.tvRepoStatus.text = "• ${rd.repositoryName ?: rd.repositoryId ?: "仓库"}：$status$reason"
-            // 单仓库 MR 链接
-            val repoMr = rd.mergeRequest
-            if (repoMr != null && !repoMr.webUrl.isNullOrBlank()) {
-                row.tvMrLink.isVisible = true
-                row.tvMrLink.text = "   查看 MR #${repoMr.number ?: "?"} ↗"
-                row.tvMrLink.setOnClickListener { openExternalUrl(repoMr.webUrl) }
-            }
             binding.containerRepos.addView(row.root)
-        }
-    }
-
-    private fun openExternalUrl(url: String?) {
-        if (url.isNullOrBlank()) {
-            Toast.makeText(requireContext(), "暂无 MR 链接", Toast.LENGTH_SHORT).show()
-            return
-        }
-        runCatching {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-        }.onFailure {
-            Toast.makeText(requireContext(), "无法打开链接", Toast.LENGTH_SHORT).show()
         }
     }
 

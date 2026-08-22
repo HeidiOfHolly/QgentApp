@@ -13,6 +13,7 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.qgent.QgentApp
 import com.example.qgent.R
+import com.example.qgent.data.model.MergeRequestDto
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.sse.ProjectEventStream
 import com.example.qgent.data.sse.SseEventType
@@ -35,6 +36,12 @@ class MergeRequestListFragment : Fragment() {
     }
     private val githubRepository: GitHubRepository
         get() = (requireActivity().application as QgentApp).container.githubRepository
+
+    /** MR 状态筛选项：null=全部，其余=状态枚举（OPEN/MERGED/CLOSED/PENDING_CREATE） */
+    private var selectedStatus: String? = null
+
+    /** 最近一次加载的全量 MR（供状态筛选过滤） */
+    private var allMergeRequests: List<MergeRequestDto> = emptyList()
 
     /** 项目级 SSE 事件流：MR/分支/交付/仓库状态事件到达 → 刷新 MR 列表与仓库名映射 */
     private val eventStream: ProjectEventStream
@@ -71,15 +78,73 @@ class MergeRequestListFragment : Fragment() {
         binding.ivBack.setOnClickListener { findNavController().navigateUp() }
         binding.rvMrList.layoutManager = LinearLayoutManager(requireContext())
         binding.rvMrList.adapter = mrAdapter
+        buildStatusChips()
 
         taskListViewModel.uiState.observe(viewLifecycleOwner) { state ->
-            mrAdapter.submitList(state.mergeRequests)
-            binding.tvEmpty.isVisible = state.mergeRequests.isEmpty()
+            allMergeRequests = state.mergeRequests
+            applyStatusFilter()
             state.error?.let {
                 Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
                 taskListViewModel.consumeError()
             }
         }
+    }
+
+    /** 状态筛选项：null=全部，OPEN/MERGED/CLOSED/PENDING_CREATE=对应状态 */
+    private data class StatusChip(val status: String?, val label: String)
+
+    private fun buildStatusChips() {
+        val chips = listOf(
+            StatusChip(null, "全部"),
+            StatusChip("OPEN", "进行中"),
+            StatusChip("MERGED", "已合并"),
+            StatusChip("CLOSED", "已关闭"),
+            StatusChip("PENDING_CREATE", "待创建")
+        )
+        binding.chipContainer.removeAllViews()
+        chips.forEach { chip ->
+            val tv = layoutInflater.inflate(R.layout.item_mr_status_chip, binding.chipContainer, false) as android.widget.TextView
+            tv.text = chip.label
+            renderChip(tv, chip.status == selectedStatus)
+            tv.setOnClickListener {
+                selectedStatus = chip.status
+                // 刷新所有 chip 选中态
+                var i = 0
+                while (i < binding.chipContainer.childCount) {
+                    val child = binding.chipContainer.getChildAt(i) as android.widget.TextView
+                    renderChip(child, chips[i].status == selectedStatus)
+                    i++
+                }
+                applyStatusFilter()
+            }
+            binding.chipContainer.addView(tv)
+        }
+    }
+
+    /** chip 选中态：选中 = 蓝底白字；未选中 = 透明底深灰字 */
+    private fun renderChip(tv: android.widget.TextView, selected: Boolean) {
+        tv.setBackgroundResource(R.drawable.bg_mr_status_chip)
+        if (selected) {
+            tv.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                androidx.core.content.ContextCompat.getColor(requireContext(), R.color.primary)
+            )
+            tv.setTextColor(android.graphics.Color.WHITE)
+        } else {
+            tv.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                androidx.core.content.ContextCompat.getColor(requireContext(), R.color.light_gray)
+            )
+            tv.setTextColor(
+                androidx.core.content.ContextCompat.getColor(requireContext(), R.color.text_secondary)
+            )
+        }
+    }
+
+    /** 按选中状态过滤并刷新列表 */
+    private fun applyStatusFilter() {
+        val filtered = if (selectedStatus == null) allMergeRequests
+            else allMergeRequests.filter { it.status == selectedStatus }
+        mrAdapter.submitList(filtered)
+        binding.tvEmpty.isVisible = filtered.isEmpty()
     }
 
     override fun onResume() {

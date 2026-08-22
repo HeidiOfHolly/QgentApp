@@ -40,8 +40,8 @@ class GitHubAuthorizeFragment : Fragment() {
     private val teamId: String by lazy { arguments?.getString("teamId").orEmpty() }
     private val teamName: String by lazy { arguments?.getString("teamName").orEmpty() }
 
-    /** 移动端回调回跳地址：{FRONTEND_URL_MOBILE}/app/integrations/github */
-    private val callbackHost = "mobile.qgents.dpdns.org"
+    /** 回调回跳地址：{FRONTEND_URL}/app/integrations/github */
+    private val callbackHost = "api.qgents.dpdns.org"
     private val callbackPath = "/app/integrations/github"
 
     /** 防止 shouldOverrideUrlLoading 与 onPageStarted 重复处理同一次回跳 */

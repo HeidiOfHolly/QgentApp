@@ -16,6 +16,7 @@ import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.databinding.FragmentTasksBinding
+import com.example.qgent.model.GroupType
 import com.example.qgent.ui.common.CreateTaskDialog
 import com.example.qgent.viewmodel.MainViewModel
 import kotlinx.coroutines.Job
@@ -128,17 +129,26 @@ class TasksFragment : Fragment() {
             taskListViewModel.loadActivities(mainViewModel.currentProjectId(), agents)
         }
 
+        // 所在需求群（分支群）变化（加入/离开群、切项目后群列表加载完成）时刷新任务列表
+        mainViewModel.groups.observe(viewLifecycleOwner) {
+            loadMyTasks()
+        }
+
         // 两列表数据
         taskListViewModel.uiState.observe(viewLifecycleOwner) { state ->
-            // 任务页仅展示当前用户最近 MAX_MY_TASKS 条（myTasks 已按创建者过滤且不受列表页筛选影响）
-            taskAdapter.submitList(state.myTasks.take(TaskListViewModel.MAX_MY_TASKS))
+            // 任务列表：用户已创建过任务 → 按「未完成优先、再按最近」展示本人最近 MAX_MY_TASKS 条；
+            // 未创建任何任务 → 展示所加入分支群的最近任务（groupTasks 已按创建时间倒序取 MAX_MY_TASKS）
+            val taskList = if (state.myTasks.isNotEmpty())
+                state.myTasks.take(TaskListViewModel.MAX_MY_TASKS)
+            else state.groupTasks
+            taskAdapter.submitList(taskList)
             activityAdapter.submitList(state.agentRuns)
             // 最近任务：当前用户最近创建的 MAX_RECENT_TASKS 个（myTasks 未完成优先排序，此处按创建时间倒序取最近）
             val recent = state.myTasks.sortedByDescending { it.createdAt }.take(MAX_RECENT_TASKS)
             recentTaskAdapter.submitList(recent)
             binding.tvRecentTaskEmpty.isVisible = recent.isEmpty()
             // 空状态：列表为空时展示提示，非空时隐藏
-            binding.tvTaskEmpty.isVisible = state.myTasks.isEmpty()
+            binding.tvTaskEmpty.isVisible = taskList.isEmpty()
             // 最近动态：未加载出来前/无数据时统一显示空态提示
             binding.tvAgentEmpty.isVisible = state.agentRuns.isEmpty()
             state.error?.let {
@@ -185,10 +195,18 @@ class TasksFragment : Fragment() {
         }
     }
 
-    /** 加载任务首页数据：当前用户的任务（不读列表页筛选状态，返回后列表筛选不影响首页） */
+    /** 加载任务首页数据：当前用户的任务 + 所在分支群（需求群）的最近任务
+     *  （不读列表页筛选状态，返回后列表筛选不影响首页）。分支群取自 mainViewModel.groups
+     *  （已按群成员过滤，仅含当前用户所在的群；PROJECT_MAIN 总群不算分支群）。
+     *  任务列表展示规则见 TaskListViewModel.loadMyTasks：
+     *  已创建任务 → 按「未完成优先、再按最近」展示本人任务；未创建 → 展示所加入分支群的最近任务。 */
     private fun loadMyTasks() {
         val projectId = mainViewModel.currentProjectId()
-        taskListViewModel.loadMyTasks(projectId, com.example.qgent.data.SessionStore.user()?.id)
+        val userId = com.example.qgent.data.SessionStore.user()?.id
+        val groupIds = mainViewModel.groups.value.orEmpty()
+            .filter { it.type == GroupType.REQUIREMENT }
+            .map { it.id }
+        taskListViewModel.loadMyTasks(projectId, userId, groupIds)
     }
 
     /** 下拉刷新：重新拉取任务 / 最近动态 */
@@ -256,7 +274,7 @@ class TasksFragment : Fragment() {
                 delay(POLL_INTERVAL_MS)
                 val projectId = mainViewModel.currentProjectId()
                 if (projectId == null) continue
-                taskListViewModel.loadMyTasks(projectId, com.example.qgent.data.SessionStore.user()?.id)
+                loadMyTasks()
                 taskListViewModel.loadActivities(projectId, mainViewModel.agents.value.orEmpty())
             }
         }

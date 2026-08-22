@@ -222,13 +222,13 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * 处理 GitHub 安装回调的 App Link（后端 302 回跳）：
-     * https://mobile.qgents.dpdns.org/app/integrations/github?teamId=...&installed=1
+     * https://api.qgents.dpdns.org/app/integrations/github?teamId=...&installed=1
      * 解析 teamId 跳授权页，installed=1 时提示安装完成。
      * 返回是否命中深链；未命中时走常规路由门控。
      */
     private fun handleDeepLink(intent: Intent?): Boolean {
         val data = intent?.data ?: return false
-        if (data.scheme != "https" || data.host != "mobile.qgents.dpdns.org") return false
+        if (data.scheme != "https" || data.host != "api.qgents.dpdns.org") return false
         val teamId = data.getQueryParameter("teamId").orEmpty()
         if (teamId.isEmpty()) return false
 

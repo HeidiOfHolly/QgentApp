@@ -40,6 +40,21 @@
             android:textStyle="bold" />
     </LinearLayout>
 
+    <!-- 状态筛选 chip 行：全部 / 进行中 / 已合并 / 已关闭 / 待创建 -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:paddingHorizontal="10dp"
+        android:paddingTop="8dp">
+
+        <LinearLayout
+            android:id="@+id/chipContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
     <TextView
         android:id="@+id/tvEmpty"
         android:layout_width="match_parent"

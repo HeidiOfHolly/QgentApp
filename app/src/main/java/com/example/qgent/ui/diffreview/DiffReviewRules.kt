@@ -1,5 +1,6 @@
 package com.example.qgent.ui.diffreview
 
+import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.RepositoryDeliveryMergeRequestDto
 
 /**
@@ -120,6 +121,28 @@ object DiffReviewRules {
             errorCode?.contains("409") == true ||
             errorCode?.contains("CONFLICT", ignoreCase = true) == true ||
             errorCode?.let { it in CONFLICT_CODES } == true
+
+    // ── 分支存在未合并 MR 的 409（§27.3/§27.4 Workspace 续作限制） ──
+
+    /** 创建/续作 Task 时分支存在未合并 MR（§27.3） */
+    const val BLOCKED_BY_OPEN_MR = "WORKSPACE_CONTINUATION_BLOCKED_BY_OPEN_MR"
+    /** Diff confirm/retry 交付时分支存在未合并 MR（§27.4） */
+    const val DELIVERY_BLOCKED_BY_OPEN_MR = "DIFF_DELIVERY_BLOCKED_BY_OPEN_MR"
+
+    /** 是否"存在未合并 MR"引导类错误：应提示用户查看 MR，而非当作普通失败/冲突刷新 */
+    fun isOpenMrBlocked(errorCode: String?): Boolean =
+        errorCode == BLOCKED_BY_OPEN_MR || errorCode == DELIVERY_BLOCKED_BY_OPEN_MR
+
+    /** 从错误详情（对象数组）提取第一个 mergeRequestId，供跳转 MR 详情（§27.3 details 元素结构） */
+    fun openMrMergeRequestId(e: ApiException?): String? {
+        e?.details.orEmpty().forEach { el ->
+            if (el.isJsonObject) {
+                val v = el.asJsonObject.get("mergeRequestId")
+                if (v != null && v.isJsonPrimitive && v.asString.isNotBlank()) return v.asString
+            }
+        }
+        return null
+    }
 
     // ── delivery.started SSE 事件 ──
 

@@ -2,8 +2,6 @@ package com.example.qgent.ui.common
 
 import android.content.Context
 import android.widget.CheckBox
-import android.widget.EditText
-import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.isVisible
@@ -13,6 +11,7 @@ import com.example.qgent.data.model.TaskCreateRequest
 import com.example.qgent.data.model.TaskTriggerRequest
 import com.example.qgent.data.repository.GitHubRepository
 import com.example.qgent.data.repository.TaskRepository
+import com.example.qgent.ui.diffreview.DiffReviewRules
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -195,6 +194,11 @@ class CreateTaskDialog(
                 ).onSuccess {
                     Toast.makeText(context, R.string.start_task_success, Toast.LENGTH_LONG).show()
                 }.onFailure { e ->
+                    // §27.3：分支存在未合并 MR 时引导查看 MR（而非普通失败 toast）
+                    if (e is com.example.qgent.data.model.ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                        OpenMrGuidance.show(context, projectId, e)
+                        return@onFailure
+                    }
                     val rid = if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("HTTP_500")) {
                         e.requestId?.let { "\nrequestId: $it" }.orEmpty()
                     } else {
@@ -231,6 +235,11 @@ class CreateTaskDialog(
                 ).onSuccess {
                     Toast.makeText(context, R.string.start_task_success, Toast.LENGTH_LONG).show()
                 }.onFailure { e ->
+                    // §27.3：分支存在未合并 MR 时引导查看 MR（而非普通失败 toast）
+                    if (e is com.example.qgent.data.model.ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                        OpenMrGuidance.show(context, projectId, e)
+                        return@onFailure
+                    }
                     val rid = if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("HTTP_500")) {
                         e.requestId?.let { "\nrequestId: $it" }.orEmpty()
                     } else {

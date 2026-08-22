@@ -3,6 +3,7 @@ package com.example.qgent.ui.delivery
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.view.isVisible
 import com.example.qgent.R
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.DeliveryRepositoryDeliveryDto
@@ -28,6 +29,15 @@ object DeliveryItemCardBuilder {
         // 标题：任务展示码 + 标题
         val title = item.source?.taskDisplayCode?.let { "($it) " }.orEmpty() + item.title
         binding.tvTitle.text = title
+
+        // 是否已创建 MR 标签（mergeRequest 非空 = 已创建，§20.1）；保持 bg_status_tag 圆角，用 tint 染色
+        val hasMr = item.mergeRequest != null
+        binding.tvMrLabel.isVisible = true
+        binding.tvMrLabel.text = if (hasMr) "已创建 MR" else "未创建 MR"
+        binding.tvMrLabel.backgroundTintList = android.content.res.ColorStateList.valueOf(
+            androidx.core.content.ContextCompat.getColor(context,
+                if (hasMr) R.color.teal else R.color.status_yellow)
+        )
 
         // 仓库/分支
         val repos = item.repositories?.joinToString("、") { "${it.name} / ${it.branch}" }.orEmpty()

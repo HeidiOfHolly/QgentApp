@@ -85,6 +85,9 @@
     <string name="start_task_group_empty">暂无已加入的需求群，请先在群聊中创建需求群</string>
     <string name="start_task_group_required">请选择分支群</string>
     <string name="start_task_quoting_diff_hint">将复用源工作区，无需选择仓库</string>
+    <!-- §27.3/§27.4：分支存在未合并 MR 时引导查看 MR -->
+    <string name="open_mr_blocked_title">存在未合并的合并请求</string>
+    <string name="open_mr_blocked_view">查看合并请求</string>
     <string name="task_realtime_preview">🛠 实时预览</string>
     <string name="view_task_run_logs">查看执行日志</string>
     <string name="task_run_logs_title">执行日志</string>

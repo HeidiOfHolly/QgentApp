@@ -9,8 +9,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
-import android.widget.ScrollView
-import android.widget.TextView
 import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
@@ -34,6 +32,7 @@ import com.example.qgent.databinding.FragmentTaskDetailBinding
 import com.example.qgent.databinding.ItemRepoDeliveryBinding
 import com.example.qgent.databinding.ItemTaskRunBinding
 import com.example.qgent.databinding.ItemTaskStepBinding
+import com.example.qgent.ui.common.OpenMrGuidance
 import com.example.qgent.ui.diffreview.DiffReviewRules
 import com.example.qgent.ui.personal.fillLinearLayout
 import com.example.qgent.viewmodel.MainViewModel
@@ -665,7 +664,10 @@ class TaskDetailFragment : Fragment() {
                     loadDetail()
                 }
                 .onFailure { e ->
-                    if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
+                    // §27.4：分支存在未合并 MR 时引导查看 MR（不得转为普通失败/DELIVERY_FAILED）
+                    if (e is ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                        OpenMrGuidance.show(requireContext(), projectId, e)
+                    } else if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
                         loadDetail()
                     } else {
                         Toast.makeText(requireContext(), "确认失败：${e.message}", Toast.LENGTH_LONG).show()
@@ -689,7 +691,9 @@ class TaskDetailFragment : Fragment() {
                             loadDetail()
                         }
                         .onFailure { e ->
-                            if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
+                            if (e is ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                                OpenMrGuidance.show(requireContext(), projectId, e)
+                            } else if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
                                 loadDetail()
                             } else {
                                 Toast.makeText(requireContext(), "拒绝失败：${e.message}", Toast.LENGTH_LONG).show()
@@ -781,8 +785,12 @@ class TaskDetailFragment : Fragment() {
                     loadDetail()
                 }
                 .onFailure { e ->
-                    // 409 冲突：刷新 Task 与 DiffReview 后再决定按钮状态（B 方案）
-                    if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
+                    // §27.4：分支存在未合并 MR 时引导查看 MR
+                    if (e is ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                        binding.btnRetryDelivery.isEnabled = true
+                        OpenMrGuidance.show(requireContext(), projectId, e)
+                    } else if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
+                        // 409 冲突：刷新 Task 与 DiffReview 后再决定按钮状态（B 方案）
                         binding.btnRetryDelivery.isEnabled = true
                         loadDetail()
                     } else {

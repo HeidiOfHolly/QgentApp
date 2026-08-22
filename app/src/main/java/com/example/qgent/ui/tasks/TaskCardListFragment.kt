@@ -253,6 +253,8 @@ class TaskCardListFragment : Fragment() {
                 repoOptions.entries.map { it.value to it.key },
                 current?.repositoryId
             ) { id -> applyFilter(projectId, current?.copy(repositoryId = id)) }
+
+            TaskFilterType.MR_CREATED -> Unit // 任务列表页不提供 MR 已创建筛选
         }
     }
 

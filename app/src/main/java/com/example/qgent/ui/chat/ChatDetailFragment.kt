@@ -6,7 +6,6 @@ import android.net.Uri
 import android.webkit.MimeTypeMap
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
@@ -37,7 +36,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.viewpager2.widget.ViewPager2
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.LazyHeaders
@@ -50,7 +48,6 @@ import com.example.qgent.data.api.RetrofitClient
 import com.example.qgent.data.local.MessageCache
 import com.example.qgent.data.model.ApiException
 import com.example.qgent.data.model.AttachmentPreviewDto
-import com.example.qgent.data.model.CreateMemoryRequest
 import com.example.qgent.data.model.MentionDto
 import com.example.qgent.data.model.MessageContentDto
 import com.example.qgent.data.model.TaskCreateRequest
@@ -64,6 +61,7 @@ import com.example.qgent.data.repository.AttachmentUploader
 import com.example.qgent.data.repository.ChatRepository
 import com.example.qgent.data.sse.ProjectEventStream
 import com.example.qgent.ui.common.CreateTaskDialog
+import com.example.qgent.ui.common.OpenMrGuidance
 import com.example.qgent.data.sse.SseEventType
 import com.example.qgent.databinding.BottomSheetMentionMemberBinding
 import com.example.qgent.databinding.DialogImagePreviewBinding
@@ -987,6 +985,11 @@ class ChatDetailFragment : Fragment() {
             ).onSuccess {
                 Toast.makeText(requireContext(), R.string.start_task_success, Toast.LENGTH_LONG).show()
             }.onFailure { e ->
+                // §27.3：分支存在未合并 MR 时引导查看 MR（而非普通失败 toast）
+                if (e is com.example.qgent.data.model.ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                    OpenMrGuidance.show(requireContext(), projectId, e)
+                    return@onFailure
+                }
                 val rid = if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("HTTP_500")) {
                     e.requestId?.let { "\nrequestId: $it" }.orEmpty()
                 } else {
@@ -1023,6 +1026,11 @@ class ChatDetailFragment : Fragment() {
                 Toast.makeText(requireContext(), R.string.start_task_success, Toast.LENGTH_LONG).show()
             }.onFailure { e ->
                 // C3：续作引用异常（QUOTED_DIFF_INVALID / QUOTED_DIFF_NOT_ACCESSIBLE 等）toast 展示 message，不静默重试
+                // §27.3：分支存在未合并 MR 时引导查看 MR（而非普通失败 toast）
+                if (e is com.example.qgent.data.model.ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                    OpenMrGuidance.show(requireContext(), projectId, e)
+                    return@onFailure
+                }
                 val rid = if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("HTTP_500")) {
                     e.requestId?.let { "\nrequestId: $it" }.orEmpty()
                 } else {
@@ -1579,7 +1587,10 @@ class ChatDetailFragment : Fragment() {
                     Toast.makeText(requireContext(), "已确认 Diff，Agent 提交合并请求等待审核", Toast.LENGTH_LONG).show()
                 }
                 .onFailure { e ->
-                    if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
+                    // §27.4：分支存在未合并 MR 时引导查看 MR（不得转为普通失败/DELIVERY_FAILED）
+                    if (e is ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                        OpenMrGuidance.show(requireContext(), projectId, e)
+                    } else if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
                         refreshTaskDiffReviewAfterConflict(projectId, taskId)
                     } else {
                         Toast.makeText(requireContext(), "确认失败：${e.message}", Toast.LENGTH_LONG).show()
@@ -1603,7 +1614,9 @@ class ChatDetailFragment : Fragment() {
                             Toast.makeText(requireContext(), "已拒绝 Diff，Agent 重新修改", Toast.LENGTH_LONG).show()
                         }
                         .onFailure { e ->
-                            if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
+                            if (e is ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                                OpenMrGuidance.show(requireContext(), projectId, e)
+                            } else if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
                                 refreshTaskDiffReviewAfterConflict(projectId, taskId)
                             } else {
                                 Toast.makeText(requireContext(), "拒绝失败：${e.message}", Toast.LENGTH_LONG).show()
@@ -1623,7 +1636,9 @@ class ChatDetailFragment : Fragment() {
                     Toast.makeText(requireContext(), "已重试交付", Toast.LENGTH_LONG).show()
                 }
                 .onFailure { e ->
-                    if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
+                    if (e is ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                        OpenMrGuidance.show(requireContext(), projectId, e)
+                    } else if (e is ApiException && DiffReviewRules.isConflict(e.code)) {
                         refreshTaskDiffReviewAfterConflict(projectId, taskId)
                     } else {
                         Toast.makeText(requireContext(), "重试交付失败：${e.message}", Toast.LENGTH_LONG).show()

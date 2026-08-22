@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
 
     // Retrofit 要求 baseUrl 以 "/" 结尾（否则启动抛 IllegalArgumentException）
-    const val BASE_URL = "http://47.113.224.195:32500/api/v1/"
+    const val BASE_URL = "https://api.qgents.dpdns.org/api/v1/"
 
     // 请求日志：debug 只打请求行/响应行（BASIC），不再完整记录响应体——
     // BODY 级会让 OkHttp 先把大响应体（群列表/消息列表）完整读一遍再交给 Gson 解析，

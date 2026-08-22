@@ -55,8 +55,7 @@
                 android:layout_height="10dp"
                 android:layout_gravity="top|end"
                 android:background="@drawable/bg_unread_badge"
-                android:visibility="gone"
-                tools:visibility="visible" />
+                android:visibility="gone" />
         </FrameLayout>
         <!-- TestSet（仅管理员可见，点击进 TestSet 列表） -->
         <ImageView
@@ -142,47 +141,55 @@
                     android:layout_marginTop="16dp"
                     android:background="@color/divider" />
 
-                <!-- MR 区 -->
+                <!-- MR 区（仅项目管理员可见） -->
                 <LinearLayout
+                    android:id="@+id/mrSection"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:text="🔀 合并请求"
-                        android:textColor="@color/text_primary"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+                    <LinearLayout
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content">
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="🔀 合并请求"
+                            android:textColor="@color/text_primary"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
 
-                    <!-- 更多交付物（>5 条时显示，跳转全量列表页） -->
+                        <!-- 更多 MR（>5 条时显示，跳转全量列表页） -->
+                        <TextView
+                            android:id="@+id/tvMRMore"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:padding="8dp"
+                            android:text="更多 MR ›"
+                            android:textColor="@color/primary"
+                            android:textSize="14sp"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
                     <TextView
-                        android:id="@+id/tvMRMore"
-                        android:layout_width="wrap_content"
+                        android:id="@+id/tvMREmpty"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:padding="8dp"
-                        android:text="更多交付物 ›"
-                        android:textColor="@color/primary"
-                        android:textSize="14sp"
-                        android:visibility="gone" />
+                        android:layout_marginTop="8dp"
+                        android:gravity="center"
+                        android:text="暂无合并请求"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="14sp" />
+
+                    <LinearLayout
+                        android:id="@+id/rvMRList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:orientation="vertical" />
                 </LinearLayout>
-
-                <TextView
-                    android:id="@+id/tvMREmpty"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:gravity="center"
-                    android:text="暂无合并请求"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="14sp" />
-
-                <LinearLayout
-                    android:id="@+id/rvMRList"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:orientation="vertical" />
             </LinearLayout>
         </ScrollView>
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>

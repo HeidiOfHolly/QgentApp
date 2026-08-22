@@ -6,6 +6,8 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.repository.DiffRepository
+import com.example.qgent.ui.common.OpenMrGuidance
+import com.example.qgent.ui.diffreview.DiffReviewRules
 import com.example.qgent.viewmodel.MainViewModel
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
@@ -69,7 +71,14 @@ class DeliveryItemActions(
         fragment.viewLifecycleOwner.lifecycleScope.launch {
             diffRepo.confirmDiffReview(projectId, taskId, UUID.randomUUID().toString())
                 .onSuccess { fragment.toast("已确认交付") }
-                .onFailure { e -> fragment.toast("确认失败：${e.message}") }
+                .onFailure { e ->
+                    // §27.4：分支存在未合并 MR 时引导查看 MR
+                    if (e is com.example.qgent.data.model.ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                        OpenMrGuidance.show(fragment.requireContext(), projectId, e)
+                    } else {
+                        fragment.toast("确认失败：${e.message}")
+                    }
+                }
             onChanged()
         }
     }
@@ -90,7 +99,13 @@ class DeliveryItemActions(
                         input.text?.toString()?.trim()?.ifEmpty { null },
                         UUID.randomUUID().toString()
                     ).onSuccess { fragment.toast("已拒绝交付") }
-                        .onFailure { e -> fragment.toast("拒绝失败：${e.message}") }
+                        .onFailure { e ->
+                            if (e is com.example.qgent.data.model.ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                                OpenMrGuidance.show(fragment.requireContext(), projectId, e)
+                            } else {
+                                fragment.toast("拒绝失败：${e.message}")
+                            }
+                        }
                     onChanged()
                 }
             }
@@ -104,7 +119,13 @@ class DeliveryItemActions(
         fragment.viewLifecycleOwner.lifecycleScope.launch {
             diffRepo.retryDiffDelivery(projectId, taskId, UUID.randomUUID().toString())
                 .onSuccess { fragment.toast("已重新发起交付") }
-                .onFailure { e -> fragment.toast("重试失败：${e.message}") }
+                .onFailure { e ->
+                    if (e is com.example.qgent.data.model.ApiException && DiffReviewRules.isOpenMrBlocked(e.code)) {
+                        OpenMrGuidance.show(fragment.requireContext(), projectId, e)
+                    } else {
+                        fragment.toast("重试失败：${e.message}")
+                    }
+                }
             onChanged()
         }
     }

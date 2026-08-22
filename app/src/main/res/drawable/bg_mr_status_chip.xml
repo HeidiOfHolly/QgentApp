@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MR 状态 chip 背景：选中 = 蓝底白字；未选中 = 浅灰底 + 深灰字（选中态由代码切 backgroundTint / 文字色控制） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/blue_tint" />
+    <corners android:radius="14dp" />
+</shape>

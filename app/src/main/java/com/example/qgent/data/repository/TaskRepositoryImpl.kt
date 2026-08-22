@@ -80,8 +80,8 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
     override suspend fun getActivities(teamId: String, cursor: String?, limit: Int): Result<List<ActivityDto>> =
         apiCall { service.getActivities(teamId, cursor = cursor, limit = limit).toDataOrThrow() }
 
-    override suspend fun getMergeRequests(projectId: String, cursor: String?, limit: Int): Result<List<MergeRequestDto>> =
-        apiCall { service.getMergeRequests(projectId, cursor = cursor, limit = limit).toDataOrThrow() }
+    override suspend fun getMergeRequests(projectId: String, status: String?, cursor: String?, limit: Int): Result<List<MergeRequestDto>> =
+        apiCall { service.getMergeRequests(projectId, status = status, cursor = cursor, limit = limit).toDataOrThrow() }
 
     override suspend fun getTaskRuns(projectId: String, agentId: String, cursor: String?, limit: Int): Result<List<TaskRunListItemDto>> =
         apiCall { service.getTaskRuns(projectId, agentId = agentId, cursor = cursor, limit = limit).toDataOrThrow() }

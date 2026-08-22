@@ -4,8 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
@@ -78,13 +76,14 @@ class DeliveryCenterFragment : Fragment() {
         refreshAll()
     }
 
-    /** 顶栏按钮（TestSet / 通知）仅项目管理员可见：管理员身份后端权威（GET /projects/{id}.role，Team Owner 兜底） */
+    /** 顶栏按钮（TestSet / 通知）与 MR 区仅项目管理员可见：管理员身份后端权威（GET /projects/{id}.role，Team Owner 兜底） */
     private fun loadAdminButtons() {
         val projectId = mainViewModel.currentProjectId() ?: return
         viewLifecycleOwner.lifecycleScope.launch {
             val isAdmin = mainViewModel.isProjectAdmin(projectId)
             binding.btnTestset.isVisible = isAdmin
             binding.btnNotification.isVisible = isAdmin
+            binding.mrSection.isVisible = isAdmin
         }
     }
 
@@ -132,6 +131,9 @@ class DeliveryCenterFragment : Fragment() {
         val projectId = mainViewModel.currentProjectId() ?: return
         // 立即收起下拉刷新，避免新接口（delivery-items）在沙箱/后端未就绪时超时导致一直转圈
         binding.swipeRefresh.isRefreshing = false
+        // 加载期间显示占位，避免长时间空白被误认为卡死
+        binding.tvDeliveriesEmpty.isVisible = true
+        binding.tvDeliveriesEmpty.text = "加载中…"
         viewLifecycleOwner.lifecycleScope.launch {
             // 10s 超时：接口未就绪/网络差时快速显示空态，不阻塞页面
             val items = runCatching {
@@ -149,7 +151,15 @@ class DeliveryCenterFragment : Fragment() {
 
     private fun loadMRs() {
         val projectId = mainViewModel.currentProjectId() ?: return
+        // 加载期间显示占位，避免长时间空白被误认为卡死
+        binding.tvMREmpty.isVisible = true
+        binding.tvMREmpty.text = "加载中…"
         viewLifecycleOwner.lifecycleScope.launch {
+            // MR 区仅项目管理员可见：非管理员隐藏并跳过加载
+            if (!mainViewModel.isProjectAdmin(projectId)) {
+                binding.mrSection.isVisible = false
+                return@launch
+            }
             val mrs = runCatching {
                 kotlinx.coroutines.withTimeout(10_000) { taskRepo.getMergeRequests(projectId).getOrThrow() }
             }.getOrNull()
@@ -166,11 +176,16 @@ class DeliveryCenterFragment : Fragment() {
     // ── 交付物卡片（共享构建器，交付中心最多展示 5 条，完整列表走「更多交付物」） ──
 
     private fun fillDeliveries(items: List<DeliveryItemDto>) {
+        // 排序：未创建 MR（mergeRequest==null）优先 → 已创建 MR 殿后，同级内按创建时间倒序（最新优先）
+        val sorted = items.sortedWith(
+            compareByDescending<DeliveryItemDto> { it.mergeRequest == null }
+                .thenByDescending { it.createdAt }
+        )
         binding.rvDeliveries.removeAllViews()
-        val showMore = items.size > MAX_DELIVERIES
+        val showMore = sorted.size > MAX_DELIVERIES
         // 交付物区标题行右侧「更多交付物 ›」（>5 条才显示），点击跳转全量列表页
         binding.tvDeliveriesMore.isVisible = showMore
-        items.take(MAX_DELIVERIES).forEach { item ->
+        sorted.take(MAX_DELIVERIES).forEach { item ->
             binding.rvDeliveries.addView(
                 DeliveryItemCardBuilder.build(requireContext(), item, deliveryActions, ::openTaskDetail)
             )
@@ -187,9 +202,20 @@ class DeliveryCenterFragment : Fragment() {
 
     // ── MR 区 ──
 
+    /**
+     * 填充 MR 列表：排序 = 未完成(OPEN) > 已完成(MERGED/CLOSED) > 待创建(PENDING_CREATE)，
+     * 同级内按 createdAt 倒序（最新优先）；最多展示 MAX_MR_DISPLAY 条，超出显示「更多 MR」。
+     */
     private fun fillMRs(mrs: List<MergeRequestDto>) {
+        val sorted = mrs.sortedWith(
+            compareByDescending<MergeRequestDto> { it.status == "OPEN" }               // 未完成优先
+                .thenBy { it.status == "PENDING_CREATE" }                               // 已创建 > 未创建
+                .thenByDescending { it.createdAt }                                      // 最新优先
+        )
+        val showMore = sorted.size > MAX_MR_DISPLAY
+        binding.tvMRMore.isVisible = showMore
         binding.rvMRList.removeAllViews()
-        mrs.forEach { mr ->
+        sorted.take(MAX_MR_DISPLAY).forEach { mr ->
             val row = com.example.qgent.databinding.ItemMrRowBinding.inflate(layoutInflater, binding.rvMRList, false)
             row.root.setOnClickListener {
                 // PENDING_CREATE 是列表投影占位（§43：number=0/webUrl=null，真实 MR 未创建），
@@ -236,5 +262,7 @@ class DeliveryCenterFragment : Fragment() {
     companion object {
         /** 交付中心展示交付物数量上限，超出走「更多交付物」全量列表页 */
         const val MAX_DELIVERIES = 5
+        /** 交付中心 MR 展示数量上限，超出显示「更多 MR」跳全量列表页 */
+        const val MAX_MR_DISPLAY = 5
     }
 }

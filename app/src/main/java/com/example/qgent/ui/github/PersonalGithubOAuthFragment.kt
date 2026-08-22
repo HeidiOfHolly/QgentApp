@@ -41,8 +41,8 @@ class PersonalGithubOAuthFragment : Fragment() {
         (requireActivity().application as QgentApp).container.personalGithubOAuthViewModelFactory
     }
 
-    /** 移动端回调回跳地址：{FRONTEND_URL_MOBILE}/app/settings/integrations/github（§50.3 固定页面） */
-    private val callbackHost = "mobile.qgents.dpdns.org"
+    /** 回调回跳地址：{FRONTEND_URL}/app/settings/integrations/github（§50.3 固定页面） */
+    private val callbackHost = "api.qgents.dpdns.org"
     private val callbackPath = "/app/settings/integrations/github"
 
     /** 防止 shouldOverrideUrlLoading 与 onPageStarted 重复处理同一次回跳 */

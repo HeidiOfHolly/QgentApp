@@ -12,11 +12,16 @@ data class ApiResponse<T>(
     val page: PageInfo?
 )
 
-/** API 错误：{ code, message, details } */
+/**
+ * API 错误：{ code, message, details }。
+ * details 元素可能为字符串或结构化对象（如 §27.3 WORKSPACE_CONTINUATION_BLOCKED_BY_OPEN_MR
+ * 返回 {projectRepositoryId, sourceBranch, mergeRequestId, providerNumber, status} 数组），
+ * 故用 JsonElement 保留原始结构，供前端按码解析。
+ */
 data class ApiError(
     val code: String,
     val message: String,
-    val details: List<String>?
+    val details: List<com.google.gson.JsonElement>?
 )
 
 /** 游标分页信息 */
@@ -44,11 +49,15 @@ class ApiException(
     val code: String,
     override val message: String,
     val requestId: String? = null,
-    val details: List<String>? = null
+    val details: List<com.google.gson.JsonElement>? = null
 ) : Exception(buildString {
     append("[$code] ").append(message)
-    if (!details.isNullOrEmpty()) append(" | ").append(details.joinToString("; "))
+    if (!details.isNullOrEmpty()) append(" | ").append(details.joinToString("; ") { it.renderDetail() })
 })
+
+/** 错误详情元素渲染：JsonPrimitive 原样取字符串，结构化对象取 JSON 文本（§27.3 等对象数组） */
+private fun com.google.gson.JsonElement.renderDetail(): String =
+    if (this.isJsonPrimitive && asJsonPrimitive.isString) asString else toString()
 
 /** 解析统一响应：优先抛服务端错误，其次要求 data 非空 */
 fun <T> ApiResponse<T>.requireData(): T {
@@ -1239,7 +1248,9 @@ data class MergeRequestDetailDto(
     @SerializedName("headCommit") val headCommit: String?,
     @SerializedName("qualityGate") val qualityGate: MergeRequestQualityGateDto?,
     @SerializedName("diffId") val diffId: String?,
-    @SerializedName("createdAt") val createdAt: String?
+    @SerializedName("createdAt") val createdAt: String?,
+    /** GitHub MR 链接（§13/§21.2 详情应返回；webUrl 为空时前端不渲染链接） */
+    @SerializedName("webUrl") val webUrl: String? = null
 )
 
 /** Diff 文件行（GET /diffs/{diffId}/files 的 lines 项） */
@@ -1282,7 +1293,10 @@ data class DeliveryItemDto(
     val repositories: List<DeliveryRepositoryDto>?,
     @SerializedName("repositoryDeliveries") val repositoryDeliveries: List<DeliveryRepositoryDeliveryDto>?,
     @SerializedName("mergeRequest") val mergeRequest: DeliveryMergeRequestSummaryDto?,
-    val capabilities: DeliveryCapabilitiesDto?
+    val capabilities: DeliveryCapabilitiesDto?,
+    /** ISO8601 UTC（§20.1 公共字段）：交付物创建/更新时间，「最新优先」排序依据 */
+    @SerializedName("createdAt") val createdAt: String? = null,
+    @SerializedName("updatedAt") val updatedAt: String? = null
 )
 
 data class DeliveryGroupDto(val id: String?, val name: String?)
@@ -1304,6 +1318,8 @@ data class DeliveryRepositoryDeliveryDto(
 )
 
 data class DeliveryMergeRequestSummaryDto(
+    /** MR 本地 id（与 MergeRequestDetailDto.id / 导航 ARG_MR_ID 一致，用于预检→MR 精确匹配） */
+    val id: String? = null,
     val number: Int?,
     val title: String?,
     @SerializedName("webUrl") val webUrl: String?

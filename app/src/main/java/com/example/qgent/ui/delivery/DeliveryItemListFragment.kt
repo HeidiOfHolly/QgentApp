@@ -57,6 +57,8 @@ class DeliveryItemListFragment : Fragment() {
     private var groupId: String? = null
     private var createdBy: String? = null
     private var repositoryId: String? = null
+    /** MR 已创建筛选：null=全部，true=已创建，false=未创建（后端接口无此参数，客户端本地过滤） */
+    private var mrCreated: Boolean? = null
 
     // 候选值缓存
     private var groupOptions: Map<String, String> = emptyMap()       // id -> 群名
@@ -118,7 +120,8 @@ class DeliveryItemListFragment : Fragment() {
             listOf(
                 FilterChip(TaskFilterType.GROUP, "需求群", groupId?.let { groupOptions[it] }),
                 FilterChip(TaskFilterType.CREATED_BY, "发起人", createdBy?.let { creatorLabel(it) }),
-                FilterChip(TaskFilterType.REPOSITORY, "仓库", repositoryId?.let { repoOptions[it] })
+                FilterChip(TaskFilterType.REPOSITORY, "仓库", repositoryId?.let { repoOptions[it] }),
+                FilterChip(TaskFilterType.MR_CREATED, "MR", mrCreated?.let { if (it) "已创建" else "未创建" })
             )
         )
     }
@@ -145,6 +148,12 @@ class DeliveryItemListFragment : Fragment() {
                 repoOptions.entries.map { it.value to it.key },
                 repositoryId
             ) { id -> repositoryId = id; loadDeliveries() }
+
+            TaskFilterType.MR_CREATED -> showChoiceDialog(
+                "按是否创建 MR 筛选",
+                listOf("已创建" to "true", "未创建" to "false"),
+                mrCreated?.toString()
+            ) { value -> mrCreated = value?.toBoolean(); loadDeliveries() }
 
             TaskFilterType.STATUS -> Unit // 交付物列表不提供状态筛选
         }
@@ -193,8 +202,11 @@ class DeliveryItemListFragment : Fragment() {
                 binding.tvEmpty.isVisible = true
                 binding.tvEmpty.text = "交付物暂不可用"
             } else {
-                binding.tvEmpty.isVisible = items.isEmpty()
-                items.forEach { item ->
+                // MR 已创建筛选：后端接口无此参数，客户端本地过滤（mergeRequest 非空 = 已创建）
+                val filtered = if (mrCreated == null) items
+                    else items.filter { (it.mergeRequest != null) == mrCreated }
+                binding.tvEmpty.isVisible = filtered.isEmpty()
+                filtered.forEach { item ->
                     binding.rvDeliveries.addView(
                         DeliveryItemCardBuilder.build(requireContext(), item, deliveryActions, ::openTaskDetail)
                     )
