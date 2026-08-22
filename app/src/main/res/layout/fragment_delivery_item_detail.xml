@@ -97,6 +97,33 @@
                 android:textSize="15sp"
                 tools:text="Review ACCEPTED · Delivery DELIVERED" />
 
+            <!-- 交付被拒绝（REJECTED）：拒绝意见 + 回群继续修改入口 -->
+            <TextView
+                android:id="@+id/tvRejectedReason"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="@color/exit_red"
+                android:textSize="14sp"
+                android:visibility="gone"
+                tools:text="已拒绝：请补充边界条件测试" />
+
+            <TextView
+                android:id="@+id/btnContinueModify"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_status_tag"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="6dp"
+                android:text="回群继续修改 ›"
+                android:textColor="@color/white"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
@@ -191,6 +218,22 @@
                 android:textSize="13sp"
                 android:visibility="gone"
                 tools:text="DryRun 通过，等待 CQ+1" />
+
+            <!-- CQ+1 被拒原因：CQ_REJECTED 时突出展示拒绝意见（区别于状态行小字） -->
+            <TextView
+                android:id="@+id/tvCqRejectReason"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_card"
+                android:paddingStart="10dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="8dp"
+                android:textColor="@color/exit_red"
+                android:textSize="14sp"
+                android:visibility="gone"
+                tools:text="CQ+1 被拒原因：认证逻辑需补充错误密码场景测试" />
 
             <!-- 关联任务入口 -->
             <TextView

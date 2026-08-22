@@ -39,6 +39,11 @@ class DeliveryItemDetailFragment : Fragment() {
     }
     private var eventStreamJob: kotlinx.coroutines.Job? = null
 
+    /** CQ+1 操作后的乐观状态：提交成功但后端尚未落库推进时，loadPreflight 刷新不覆盖"正在创建/已拒绝"文案，
+     *  避免点击后状态短暂回 WAITING_CQ 让用户误以为操作无效。 */
+    private var cqActionPending = false
+    private var cqActionPendingText = ""
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentDeliveryItemDetailBinding.inflate(inflater, container, false)
         return binding.root
@@ -113,20 +118,26 @@ class DeliveryItemDetailFragment : Fragment() {
             binding.btnCqApprove.isVisible = false
             binding.btnCqReject.isVisible = false
             binding.btnCreateMr.isVisible = false
+            binding.tvCqRejectReason.isVisible = false
             val status = taskRepository.getTaskMergeRequestPreflight(projectId, taskId)
                 .getOrNull()?.firstOrNull()   // 交付物详情按首个仓库展示
+            android.util.Log.d("Preflight", "loadPreflight status=$status cqPlusOneStatus=${status?.cqPlusOneStatus} cqPlusOne=${status?.cqPlusOne} canCqApprove=${status?.canCqApprove} dryRunId=${status?.dryRunId}")
             if (status == null) {
                 // DIFF_FIRST：用户确认 Diff 后需手动创建 MR（§46），无预检记录时提供「创建 MR」入口启动 Dry Run；
                 // MR_FIRST：交付后由后端自动发起 Dry Run（§27.10/§46），前端无需手动创建，只读等待自动推进。
+                // 未交付（diff 未确认，reviewStatus != ACCEPTED）时无法申请创建 MR
                 val deliveryMode = taskRepository.getTaskDetail(projectId, taskId).getOrNull()?.deliveryMode
                 binding.tvPreflightStatus.isVisible = true
-                if (deliveryMode == "DIFF_FIRST") {
+                val diffConfirmed = itemDto.reviewStatus == "ACCEPTED"
+                if (deliveryMode == "DIFF_FIRST" && diffConfirmed) {
                     binding.tvPreflightStatus.text = "尚未创建 MR，可手动申请预检"
                     binding.btnCreateMr.isVisible = true
                     binding.btnCreateMr.text = "创建 MR"
                     binding.btnCreateMr.setOnClickListener {
                         requestPreflight(projectId, taskId, itemDto)
                     }
+                } else if (deliveryMode == "DIFF_FIRST") {
+                    binding.tvPreflightStatus.text = "请先确认 Diff 后再申请创建 MR"
                 } else {
                     binding.tvPreflightStatus.text = "等待后端自动发起预检"
                 }
@@ -139,35 +150,66 @@ class DeliveryItemDetailFragment : Fragment() {
                 binding.tvPreflightStatus.text = "MR 已创建：MR #${mr?.number ?: "?"} ${mr?.title.orEmpty()}"
                 return@launch
             }
+            // CQ+1 操作刚提交、后端尚未落库推进（仍返回 WAITING_CQ）：保留乐观文案，不恢复按钮/回退状态
+            if (cqActionPending && status.status == "WAITING_CQ") {
+                binding.tvPreflightStatus.isVisible = true
+                binding.tvPreflightStatus.text = cqActionPendingText
+                return@launch
+            }
+            // CQ+1 已操作判定：后端顶层 status 可能未同步推进（仍 WAITING_CQ），综合 cqPlusOne 状态容错——
+            // APPROVED=已同意、REJECTED=已拒绝，均不再显示 CQ 操作按钮
+            val cqStatus = status.cqPlusOne?.status?.takeIf { it.isNotBlank() } ?: status.cqPlusOneStatus
+            if (cqStatus == "APPROVED") {
+                cqActionPending = false
+                binding.tvPreflightStatus.isVisible = true
+                binding.tvPreflightStatus.text = "CQ+1 已通过，正在创建 MR…"
+                return@launch
+            }
+            if (cqStatus == "REJECTED") {
+                cqActionPending = false
+                binding.tvPreflightStatus.isVisible = true
+                binding.tvPreflightStatus.text = "CQ 被拒绝${status.failureCode?.let { "（$it）" } ?: ""}"
+                val rejectReason = status.cqPlusOne?.reason?.takeIf { it.isNotBlank() }
+                    ?: status.reviewReason?.takeIf { it.isNotBlank() }
+                    ?: status.failureReason?.takeIf { it.isNotBlank() }
+                binding.tvCqRejectReason.isVisible = rejectReason != null
+                if (rejectReason != null) binding.tvCqRejectReason.text = "CQ+1 被拒原因：$rejectReason"
+                binding.btnCreateMr.isVisible = true
+                binding.btnCreateMr.text = "重新预检"
+                binding.btnCreateMr.setOnClickListener { requestPreflight(projectId, taskId, itemDto) }
+                return@launch
+            }
             when (status.status) {
-                // Dry Run 通过，等待 CQ+1：可批准（CQ+1）或拒绝（拒绝 CQ，reason 必填）
+                // Dry Run 通过，等待 CQ+1：可批准（CQ+1）或拒绝（拒绝 CQ，reason 必填）。
+                // CQ+1 按钮始终可见；点击时在 doCqApprove 内检查权限（非独立成员/发起人 → 直接 Toast，不发请求）
                 "WAITING_CQ" -> {
-                    // CQ+1 权限由后端派生（canCqApprove：Dry Run 通过 + 非发起人/作者/Agent，§46）：
-                    // 当前用户是发起人时不能审批自己的任务，只读提示、不显示按钮，避免点了才被 403 拒绝。
-                    val canCq = status.canCqApprove ?: true   // 缺省按 true 兜底（旧后端未回填时回归原行为）
-                    binding.btnCqApprove.isVisible = canCq
                     binding.btnCqApprove.isVisible = true
                     binding.btnCqReject.isVisible = true
                     binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = if (canCq) {
-                        "DryRun 通过，等待独立成员 CQ+1"
-                    } else {
-                        "DryRun 通过，等待其他成员 CQ+1"
-                    }
-                    if (canCq) binding.btnCqApprove.setOnClickListener { doCqApprove(projectId, status.dryRunId) }
                     binding.tvPreflightStatus.text = "DryRun 通过，等待独立成员 CQ+1"
                     binding.btnCqApprove.setOnClickListener { doCqApprove(projectId, status.dryRunId) }
                     binding.btnCqReject.setOnClickListener { doCqReject(projectId, status.dryRunId) }
                 }
-                // 正在创建 MR（CQ+1 已通过，后端异步创建）
+                // 正在创建 MR（CQ+1 已通过，后端异步创建）：真实状态推进，清除乐观标记
                 "CREATING_MR" -> {
+                    cqActionPending = false
                     binding.tvPreflightStatus.isVisible = true
                     binding.tvPreflightStatus.text = "CQ+1 已通过，正在创建 MR…"
                 }
-                // CQ 被拒绝
+                // CQ 被拒绝：状态行 + 独立拒绝原因突出展示
+                // 拒绝原因来源优先 cqPlusOne.reason（§46 嵌套对象），兜底 failureReason
                 "CQ_REJECTED" -> {
+                    cqActionPending = false
+                    android.util.Log.d("Preflight", "CQ_REJECTED status=$status cqPlusOne=${status.cqPlusOne} reviewReason=${status.reviewReason} failureReason=${status.failureReason}")
                     binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "CQ 被拒绝：${status.failureReason ?: "见审查意见"}${status.failureCode?.let { "（$it）" } ?: ""}"
+                    binding.tvPreflightStatus.text = "CQ 被拒绝${status.failureCode?.let { "（$it）" } ?: ""}"
+                    val rejectReason = status.cqPlusOne?.reason?.takeIf { it.isNotBlank() }
+                        ?: status.reviewReason?.takeIf { it.isNotBlank() }
+                        ?: status.failureReason?.takeIf { it.isNotBlank() }
+                    binding.tvCqRejectReason.isVisible = rejectReason != null
+                    if (rejectReason != null) {
+                        binding.tvCqRejectReason.text = "CQ+1 被拒原因：$rejectReason"
+                    }
                     binding.btnCreateMr.isVisible = true
                     binding.btnCreateMr.text = "重新预检"
                     binding.btnCreateMr.setOnClickListener {
@@ -216,30 +258,67 @@ class DeliveryItemDetailFragment : Fragment() {
         }
     }
 
-    /** CQ+1：对 Dry Run 提交审批，通过后服务端自动创建 MR（计划 §4.3） */
+    /** CQ+1：对 Dry Run 提交审批，通过后服务端自动创建 MR（计划 §4.3）。
+     *  无权限（当前用户是 MR 申请者或任务发起者）时点击只弹 Toast，禁止发起请求。
+     *  权限判断基于 MR 申请者/任务创建者与当前用户比对（不依赖不可靠的 canCqApprove 字段）。 */
     private fun doCqApprove(projectId: String, dryRunId: String?) {
         if (dryRunId.isNullOrBlank()) {
             Toast.makeText(requireContext(), "暂无可审批的 DryRun", Toast.LENGTH_SHORT).show()
             return
         }
+        val taskId = item?.source?.taskId
         viewLifecycleOwner.lifecycleScope.launch {
+            // 权限检查：MR 申请者或任务发起人不能给自己审批 CQ+1（§46），无权限直接 Toast，不发请求
+            val me = com.example.qgent.data.SessionStore.user()?.id
+            val requester = taskId?.let {
+                taskRepository.getTaskMergeRequestPreflight(projectId, it)
+                    .getOrNull()?.firstOrNull()?.requestedByUserId
+            }
+            val author = taskId?.let {
+                taskRepository.getTaskDetail(projectId, it).getOrNull()?.createdByUser?.id
+            }
+            val noPermission = me != null && (me == requester || me == author)
+            android.util.Log.d("Preflight", "doCqApprove me=$me requester=$requester author=$author noPermission=$noPermission")
+            if (noPermission) {
+                Toast.makeText(requireContext(), "无权操作 CQ+1", Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            android.util.Log.d("Preflight", "doCqApprove SEND projectId=$projectId dryRunId=$dryRunId")
             taskRepository.dryRunCqApprove(projectId, dryRunId, null, UUID.randomUUID().toString())
                 .onSuccess {
+                    android.util.Log.d("Preflight", "doCqApprove SUCCESS")
                     Toast.makeText(requireContext(), "已提交 CQ+1", Toast.LENGTH_SHORT).show()
+                    // 乐观更新：立即隐藏 CQ 操作按钮并提示推进中，再拉最新预检状态（后端可能异步进入 CREATING_MR）
+                    binding.btnCqApprove.isVisible = false
+                    binding.btnCqReject.isVisible = false
+                    binding.tvPreflightStatus.isVisible = true
+                    binding.tvPreflightStatus.text = "CQ+1 已提交，正在创建 MR…"
+                    cqActionPending = true
+                    cqActionPendingText = "CQ+1 已提交，正在创建 MR…"
                     item?.let { loadPreflight(it) }
                 }
                 .onFailure { e ->
+                    android.util.Log.e("Preflight", "doCqApprove FAILED: ${e.message}")
+                    // 后端 403 PREFLIGHT_CQ_AUTHOR_FORBIDDEN（发起人审批自己）：统一无权限提示
+                    if (e is com.example.qgent.data.model.ApiException &&
+                        e.code == "PREFLIGHT_CQ_AUTHOR_FORBIDDEN"
+                    ) {
+                        Toast.makeText(requireContext(), "无权操作 CQ+1", Toast.LENGTH_LONG).show()
+                        return@onFailure
+                    }
                     Toast.makeText(requireContext(), "CQ+1 失败：${e.message}", Toast.LENGTH_LONG).show()
                 }
         }
     }
 
-    /** 拒绝 CQ：对 Dry Run 提交拒绝并给出修改意见（reason 必填；不会创建 MR） */
+    /** 拒绝 CQ：对 Dry Run 提交拒绝并给出修改意见（reason 必填；不会创建 MR）。
+     *  无权限（当前用户是任务发起人/作者）时点击只弹 Toast，禁止发起请求。 */
     private fun doCqReject(projectId: String, dryRunId: String?) {
         if (dryRunId.isNullOrBlank()) {
             Toast.makeText(requireContext(), "暂无可拒绝的 DryRun", Toast.LENGTH_SHORT).show()
             return
         }
+        val taskId = item?.source?.taskId
         val input = android.widget.EditText(requireContext()).apply {
             hint = "拒绝原因 / 修改意见（必填）"
             textSize = 15f
@@ -255,12 +334,35 @@ class DeliveryItemDetailFragment : Fragment() {
                     return@setPositiveButton
                 }
                 viewLifecycleOwner.lifecycleScope.launch {
+                    // 权限检查：MR 申请者或任务发起人不能给自己拒绝 CQ（§46），无权限直接 Toast，不发请求
+                    val me = com.example.qgent.data.SessionStore.user()?.id
+                    val requester = taskId?.let {
+                        taskRepository.getTaskMergeRequestPreflight(projectId, it)
+                            .getOrNull()?.firstOrNull()?.requestedByUserId
+                    }
+                    val author = taskId?.let {
+                        taskRepository.getTaskDetail(projectId, it).getOrNull()?.createdByUser?.id
+                    }
+                    val noPermission = me != null && (me == requester || me == author)
+                    android.util.Log.d("Preflight", "doCqReject me=$me requester=$requester author=$author noPermission=$noPermission")
+                    if (noPermission) {
+                        Toast.makeText(requireContext(), "无权操作 CQ+1", Toast.LENGTH_LONG).show()
+                        return@launch
+                    }
+                    android.util.Log.d("Preflight", "doCqReject SEND projectId=$projectId dryRunId=$dryRunId reason=$reason")
                     taskRepository.dryRunCqReject(projectId, dryRunId, reason, UUID.randomUUID().toString())
                         .onSuccess {
+                            android.util.Log.d("Preflight", "doCqReject SUCCESS")
                             Toast.makeText(requireContext(), "已拒绝 CQ", Toast.LENGTH_SHORT).show()
+                            // 乐观更新：立即隐藏 CQ 操作按钮，再拉最新预检状态（后端应进入 CQ_REJECTED）
+                            binding.btnCqApprove.isVisible = false
+                            binding.btnCqReject.isVisible = false
+                            cqActionPending = true
+                            cqActionPendingText = "已拒绝 CQ，等待重新预检"
                             item?.let { loadPreflight(it) }
                         }
                         .onFailure { e ->
+                            android.util.Log.e("Preflight", "doCqReject FAILED: ${e.message}")
                             Toast.makeText(requireContext(), "拒绝 CQ 失败：${e.message}", Toast.LENGTH_LONG).show()
                         }
                 }
@@ -286,10 +388,32 @@ class DeliveryItemDetailFragment : Fragment() {
         // Diff 统计
         binding.tvDiffStats.text = "Diff ${it.filesChanged} 个文件 · +${it.additions} / -${it.deletions}"
 
-        // Review / Delivery 状态
+        // Review / Delivery 状态；交付被拒绝（REJECTED）展示拒绝意见 + 回群继续修改入口；
+        // diff 未确认（reviewStatus 非 ACCEPTED）时不显示"是否交付"
         val review = it.reviewStatus ?: "-"
         val delivery = it.deliveryStatus ?: "-"
-        binding.tvReviewDelivery.text = "Review $review · Delivery $delivery"
+        binding.tvReviewDelivery.text = when {
+            it.reviewStatus == "REJECTED" -> "已拒绝"
+            it.reviewStatus == "ACCEPTED" -> "Review $review · Delivery $delivery"
+            else -> "Review $review"   // diff 未确认，不显示是否交付
+        }
+        val rejectedReason = it.reviewReason?.takeIf { r -> r.isNotBlank() }
+        binding.tvRejectedReason.isVisible = it.reviewStatus == "REJECTED" && rejectedReason != null
+        if (rejectedReason != null) binding.tvRejectedReason.text = "已拒绝：$rejectedReason"
+        val requirementGroup = it.requirementGroup
+        val groupId = requirementGroup?.id?.takeIf { g -> g.isNotBlank() }
+        binding.btnContinueModify.isVisible = it.reviewStatus == "REJECTED" && groupId != null
+        if (groupId != null) {
+            binding.btnContinueModify.setOnClickListener {
+                findNavController().navigate(
+                    R.id.chatDetailFragment,
+                    bundleOf(
+                        "groupName" to requirementGroup?.name,
+                        "groupId" to groupId
+                    )
+                )
+            }
+        }
 
         // 逐仓库交付进度
         fillRepos(it.repositoryDeliveries.orEmpty())

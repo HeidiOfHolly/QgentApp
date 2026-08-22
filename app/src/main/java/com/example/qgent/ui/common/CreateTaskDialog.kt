@@ -245,6 +245,11 @@ class CreateTaskDialog(
                         Toast.makeText(context, R.string.start_task_no_active_repos, Toast.LENGTH_LONG).show()
                         return@onFailure
                     }
+                    // 引用 DIFF 续作错误（QUOTED_DIFF_* 等 422）：直接展示服务端 error.message
+                    if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("QUOTED_DIFF")) {
+                        Toast.makeText(context, e.message, Toast.LENGTH_LONG).show()
+                        return@onFailure
+                    }
                     val rid = if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("HTTP_500")) {
                         e.requestId?.let { "\nrequestId: $it" }.orEmpty()
                     } else {

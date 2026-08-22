@@ -15,13 +15,24 @@ interface DeliveryItemAction {
     fun onConfirm(item: DeliveryItemDto)
     fun onReject(item: DeliveryItemDto)
     fun onRetry(item: DeliveryItemDto)
+    /** 交付被拒绝（REJECTED）：回需求群引用 DIFF 根据拒绝意见继续修改 */
+    fun onContinueModify(item: DeliveryItemDto) {}
 }
 
 /** 交付物卡片构建：交付中心与交付物列表页共用同一卡片渲染与操作（布局 item_delivery_card） */
 object DeliveryItemCardBuilder {
 
-    /** 构建单张交付物卡片；点击卡片跳转交付物详情 */
-    fun build(context: android.content.Context, item: DeliveryItemDto, action: DeliveryItemAction, onOpenTask: (DeliveryItemDto) -> Unit): View {
+    /** 构建单张交付物卡片；点击卡片跳转交付物详情。
+     *  [canApprove]/[canReject]：客户端自判的交付确认/拒绝权限（null 时沿用后端能力位）。
+     *  仅任务创建者或项目管理员可确认/拒绝（DeliveryPermission）。 */
+    fun build(
+        context: android.content.Context,
+        item: DeliveryItemDto,
+        action: DeliveryItemAction,
+        onOpenTask: (DeliveryItemDto) -> Unit,
+        canApprove: Boolean? = null,
+        canReject: Boolean? = null
+    ): View {
         val binding = ItemDeliveryCardBinding.inflate(android.view.LayoutInflater.from(context))
 
         binding.root.setOnClickListener { onOpenTask(item) }
@@ -48,16 +59,24 @@ object DeliveryItemCardBuilder {
         }
 
 
-        // Review / Delivery 状态
+        // Review / Delivery 状态；交付被拒绝（REJECTED）展示拒绝意见；
+        // diff 未确认（reviewStatus 非 ACCEPTED）时不显示"是否交付"（Delivery 状态无意义）
         val review = item.reviewStatus ?: "-"
         val delivery = item.deliveryStatus ?: "-"
-        binding.tvReviewDelivery.text = "Review $review · Delivery $delivery"
+        binding.tvReviewDelivery.text = when {
+            item.reviewStatus == "REJECTED" -> {
+                val reason = item.reviewReason?.takeIf { it.isNotBlank() }
+                if (reason != null) "已拒绝：$reason" else "已拒绝"
+            }
+            item.reviewStatus == "ACCEPTED" -> "Review $review · Delivery $delivery"
+            else -> "Review $review"   // diff 未确认，不显示是否交付
+        }
 
         // 逐仓库交付状态
         fillRepos(binding, item.repositoryDeliveries.orEmpty())
 
-        // 操作行（按 capabilities 显示）
-        fillActions(binding, item, action)
+        // 操作行（按 capabilities + 客户端自判权限显示）
+        fillActions(binding, item, action, canApprove, canReject)
 
         // inflate(root=null) 不生成根视图 LayoutParams，layout_marginBottom 会丢失；
         // 显式设置（与 item_delivery_card.xml 根 layout_marginBottom 一致），否则卡片间距不生效
@@ -81,7 +100,13 @@ object DeliveryItemCardBuilder {
         }
     }
 
-    private fun fillActions(binding: ItemDeliveryCardBinding, item: DeliveryItemDto, action: DeliveryItemAction) {
+    private fun fillActions(
+        binding: ItemDeliveryCardBinding,
+        item: DeliveryItemDto,
+        action: DeliveryItemAction,
+        canApproveOverride: Boolean?,
+        canRejectOverride: Boolean?
+    ) {
         val container = binding.containerActions
         container.removeAllViews()
         val caps = item.capabilities
@@ -98,10 +123,24 @@ object DeliveryItemCardBuilder {
         if (!item.diffId.isNullOrBlank()) {
             container.addView(actionButton("查看 Diff") { action.onViewDiff(item) })
         }
-        if (caps?.canApprove == true && !item.source?.taskId.isNullOrBlank()) {
+        // 交付被拒绝（REJECTED）：隐藏确认/拒绝，提供「回群继续修改」入口
+        if (item.reviewStatus == "REJECTED") {
+            if (item.requirementGroup?.id != null) {
+                container.addView(actionButton("回群继续修改") { action.onContinueModify(item) })
+            }
+            return
+        }
+        // diff 已确认（ACCEPTED）：不再显示确认交付/拒绝入口（已确认的不再重复提示）
+        if (item.reviewStatus == "ACCEPTED") {
+            return
+        }
+        // 确认/拒绝：客户端自判（仅创建者或管理员）优先，缺省沿用后端能力位（已按同一规则派生）
+        val canApprove = canApproveOverride ?: (caps?.canApprove == true)
+        val canReject = canRejectOverride ?: (caps?.canReject == true)
+        if (canApprove && !item.source?.taskId.isNullOrBlank()) {
             container.addView(actionButton("确认交付") { action.onConfirm(item) })
         }
-        if (caps?.canReject == true && !item.source?.taskId.isNullOrBlank()) {
+        if (canReject && !item.source?.taskId.isNullOrBlank()) {
             container.addView(actionButton("拒绝") { action.onReject(item) })
         }
         if (caps?.canRetryDelivery == true && !item.source?.taskId.isNullOrBlank()) {

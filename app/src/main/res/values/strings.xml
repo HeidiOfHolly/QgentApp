@@ -127,6 +127,10 @@
     <string name="project_repo_description_too_long">仓库描述不能超过 500 个字符</string>
     <string name="task_diff_review">Diff 审核</string>
     <string name="diff_review_superseded">已被后续修改取代</string>
+    <!-- Diff 拒绝后回群引用续作：DIFF 卡 REJECTED 展示与操作 -->
+    <string name="diff_review_rejected">已拒绝</string>
+    <string name="diff_continue_modify">根据拒绝意见继续修改</string>
+    <string name="diff_continue_modify_prefill">请根据以下拒绝意见修改：\n%1$s\n\n请继续修改：</string>
     <string name="auto_create_repo_title">自动新建仓库</string>
     <string name="auto_create_repo_subtitle">自动创建多个 GitHub 仓库并与项目绑定（与绑定已有仓库二选一）</string>
     <string name="auto_create_repo_add">添加</string>
@@ -439,6 +443,8 @@
     <string name="restart_task">重新发起任务</string>
     <string name="task_failure_title">任务执行失败</string>
     <string name="task_delivery_failed_title">交付失败</string>
+    <!-- 交付被拒绝（diff-review reviewStatus=REJECTED）：展示拒绝原因 -->
+    <string name="task_delivery_rejected_title">⚠️ 交付被拒绝</string>
     <string name="task_failure_generic">任务执行失败，请查看执行记录</string>
     <string name="app_logo">qgents Logo</string>
     <string name="exit_group_placeholder">退出群聊（待接入后端）</string>

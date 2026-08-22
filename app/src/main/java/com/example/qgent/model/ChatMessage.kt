@@ -41,6 +41,8 @@ data class ChatMessage(
     val reviewBatchId: String? = null,
     val reviewStatus: String? = null,
     val deliveryStatus: String? = null,
+    /** DIFF 卡驳回/拒绝意见（reviewStatus=REJECTED 时非 null，用于展示拒绝意见 + 预填续作） */
+    val reviewReason: String? = null,
     /** DIFF 卡：任务标题（content.title，服务端保证必有，§v1.9.4 DIFF 卡契约） */
     val diffTitle: String? = null,
     /** DIFF 卡：总变更统计（content.additions / content.deletions） */

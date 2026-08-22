@@ -1048,6 +1048,11 @@ class ChatDetailFragment : Fragment() {
                     Toast.makeText(requireContext(), R.string.start_task_no_active_repos, Toast.LENGTH_LONG).show()
                     return@onFailure
                 }
+                // 引用 DIFF 续作错误（QUOTED_DIFF_* 等 422）：直接展示服务端 error.message，不加通用前缀
+                if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("QUOTED_DIFF")) {
+                    Toast.makeText(requireContext(), e.message, Toast.LENGTH_LONG).show()
+                    return@onFailure
+                }
                 val rid = if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("HTTP_500")) {
                     e.requestId?.let { "\nrequestId: $it" }.orEmpty()
                 } else {
@@ -1360,7 +1365,7 @@ class ChatDetailFragment : Fragment() {
      * 拉取 Task 详情后弹出 Diff Review 对话框（§12.3 + MR_FIRST B 方案）。
      * 也用于 delivery.started / 409 冲突后刷新状态。
      */
-    private fun showTaskDiffReviewDialog(projectId: String, taskId: String, detail: TaskDetailDto) {
+    private suspend fun showTaskDiffReviewDialog(projectId: String, taskId: String, detail: TaskDetailDto) {
         val diffSummary = detail.diffReviewSummary
         // 无代码变更任务（FINAL_DIFF_EMPTY）：无 Diff Review 可确认，仅提示空态，不弹确认对话框（§15.6.4/§20.3）
         if (mainViewModel.isNoCodeChangeTask(taskId)) {
@@ -1378,14 +1383,18 @@ class ChatDetailFragment : Fragment() {
             ?: detail.statusReason?.title
             ?: extractDeliveryFailedReason(diffSummary)
         // 按钮规则（MR_FIRST B 方案）：仅 PENDING_CONFIRMATION 且非 SYSTEM 显示确认/拒绝；
-        // Diff 审核仅任务发起人或 Project Admin 可确认/拒绝（后端能力位派生，§16.2；缺省按 true 兜底）。
+        // Diff 审核仅任务发起人或 Project Admin 可确认/拒绝（客户端自判：创建者比对 + 管理员校验）。
         // PARTIALLY_DELIVERED / FAILED 或任务 DELIVERY_FAILED 才显示重试（能力位优先）
-        val caps = detail.capabilities
         val canDecide = DiffReviewRules.canConfirmOrReject(reviewStatus, confirmationSource)
-        val canConfirm = canDecide && (caps?.canConfirmDiffReview ?: true)
-        val canReject = canDecide && (caps?.canRejectDiffReview ?: true)
+        val canOperate = com.example.qgent.ui.delivery.DeliveryPermission.canDecide(
+            com.example.qgent.data.SessionStore.user()?.id,
+            detail.createdByUser?.id,
+            mainViewModel.isProjectAdmin(projectId)
+        )
+        val canConfirm = canDecide && canOperate
+        val canReject = canDecide && canOperate
         val canRetry = !DiffReviewRules.isSuperseded(reviewStatus) && DiffReviewRules.canRetryDelivery(
-            deliveryStatus, detail.status, caps?.canRetryDelivery
+            deliveryStatus, detail.status, detail.capabilities?.canRetryDelivery
         )
         showDiffConfirmDialog(
             projectId, taskId, diffId, detail.title, detail.status,
@@ -1697,11 +1706,17 @@ class ChatDetailFragment : Fragment() {
     private fun onDiffCardClick(message: ChatMessage) {
         if (isOpeningDiffDialog) return
         isOpeningDiffDialog = true
-        Toast.makeText(requireContext(), "正在加载 Diff 审核...", Toast.LENGTH_SHORT).show()
         val projectId = mainViewModel.currentProjectId() ?: run {
             isOpeningDiffDialog = false
             return
         }
+        // REJECTED：回群引用续作（根据拒绝意见继续修改），不打开审核弹窗
+        if (message.reviewStatus == "REJECTED") {
+            startContinueModify(projectId, message)
+            isOpeningDiffDialog = false
+            return
+        }
+        Toast.makeText(requireContext(), "正在加载 Diff 审核...", Toast.LENGTH_SHORT).show()
         val taskId = message.taskId ?: message.diffId?.let { diffIdToTaskIdMap[it] }
         if (!taskId.isNullOrBlank()) {
             openTaskDiffReview(projectId, taskId) { isOpeningDiffDialog = false }
@@ -1715,6 +1730,40 @@ class ChatDetailFragment : Fragment() {
         }
         Toast.makeText(requireContext(), "DIFF 卡缺少 diffId", Toast.LENGTH_SHORT).show()
         isOpeningDiffDialog = false
+    }
+
+    /** REJECTED DIFF 卡 → 回群引用续作：先查预检状态阻止（预检中/有 MR），无阻止则引用 + 预填拒绝意见模板 */
+    private fun startContinueModify(projectId: String, message: ChatMessage) {
+        val taskId = message.taskId ?: message.diffId?.let { diffIdToTaskIdMap[it] }
+        viewLifecycleOwner.lifecycleScope.launch {
+            if (taskId != null && blockedByPreflight(projectId, taskId)) return@launch
+            // 预填：输入框为空才填拒绝意见模板，已有输入不覆盖
+            val reason = message.reviewReason?.takeIf { it.isNotBlank() }
+            if (reason != null && binding.etInput.text.isNullOrBlank()) {
+                binding.etInput.setText(getString(R.string.diff_continue_modify_prefill, reason))
+                binding.etInput.setSelection(binding.etInput.length())
+            }
+            setQuote(message)
+        }
+    }
+
+    /** 预检/已有 MR 阻止续作：返回 true 表示应阻止引用 */
+    private suspend fun blockedByPreflight(projectId: String, taskId: String): Boolean {
+        val status = taskRepo().getTaskMergeRequestPreflight(projectId, taskId).getOrNull()?.firstOrNull() ?: return false
+        val blocking = status.status in setOf("REQUESTED", "DRY_RUN_QUEUED", "DRY_RUN_RUNNING", "WAITING_CQ", "CREATING_MR", "MR_CREATED")
+        val hasMr = status.status == "MR_CREATED" || status.mergeRequest != null
+        if (blocking || hasMr) {
+            val msg = when (status.status) {
+                "REQUESTED", "DRY_RUN_QUEUED", "DRY_RUN_RUNNING" -> "预检进行中，暂不能继续修改"
+                "WAITING_CQ" -> "等待 CQ+1，暂不能继续修改"
+                "CREATING_MR" -> "正在创建 MR，暂不能继续修改"
+                "MR_CREATED" -> "该 Diff 已创建 MR，无需继续修改"
+                else -> "该 Diff 已有合并请求，暂不能继续修改"
+            }
+            Toast.makeText(requireContext(), msg, Toast.LENGTH_LONG).show()
+            return true
+        }
+        return false
     }
 
     /** 拉取任务详情 → 弹 Diff Review 审核对话框（TASK_STATUS 卡 / DIFF 卡共用） */

@@ -495,13 +495,22 @@ class ChatMessageAdapter(
                 ""
             }
             val superseded = message.reviewStatus == "SUPERSEDED"
-            binding.tvDiffStatusLine.isVisible = superseded
-            binding.tvDiffStatusLine.text = if (superseded) {
-                binding.root.context.getString(R.string.diff_review_superseded)
-            } else {
-                ""
+            val rejected = message.reviewStatus == "REJECTED"
+            binding.tvDiffStatusLine.isVisible = superseded || rejected
+            binding.tvDiffStatusLine.text = when {
+                superseded -> binding.root.context.getString(R.string.diff_review_superseded)
+                rejected -> {
+                    val reason = message.reviewReason?.takeIf { it.isNotBlank() }
+                    if (reason != null) "已拒绝：$reason" else binding.root.context.getString(R.string.diff_review_rejected)
+                }
+                else -> ""
             }
-            // 操作行：Diff 审核（确认/拒绝/重试）/ 完整 Diff 全屏查看
+            // 操作行：REJECTED → 根据拒绝意见继续修改（引用续作）；其余 → Diff 审核 / 完整 Diff 全屏查看
+            binding.tvActionReview.text = if (rejected) {
+                binding.root.context.getString(R.string.diff_continue_modify)
+            } else {
+                binding.root.context.getString(R.string.task_diff_review)
+            }
             binding.tvActionReview.setOnClickListener { onDiffCardClick?.invoke(message) }
             binding.tvActionFull.setOnClickListener { onViewFullDiff?.invoke(message, selectedFile()) }
             // 点击卡片 → 全屏查看完整代码（可滑动，绿加红减）

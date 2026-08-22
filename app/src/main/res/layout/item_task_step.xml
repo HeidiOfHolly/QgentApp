@@ -35,19 +35,4 @@
         android:textSize="15sp"
         tools:text="执行中" />
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnReplaceAgent"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:minHeight="30dp"
-        android:minWidth="0dp"
-        android:paddingStart="10dp"
-        android:paddingEnd="10dp"
-        android:text="替换"
-        android:textColor="@color/blue_tint"
-        android:textSize="15sp"
-        app:cornerRadius="10dp"
-        app:strokeColor="@color/blue_tint"
-        app:strokeWidth="1dp" />
 </LinearLayout>

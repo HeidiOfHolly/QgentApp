@@ -26,6 +26,7 @@ import com.example.qgent.ui.tasks.FilterChip
 import com.example.qgent.ui.tasks.FilterChipAdapter
 import com.example.qgent.ui.tasks.TaskFilterType
 import com.example.qgent.viewmodel.MainViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** 交付物列表页：展示当前项目全部交付物（布局同任务列表页），顶部可按需求群/发起人/仓库筛选 */
@@ -68,6 +69,9 @@ class DeliveryItemListFragment : Fragment() {
 
     /** 首次加载是否完成（加载结束无论成败置位）：控制骨架屏显示，筛选/刷新不再闪骨架 */
     private var deliveriesLoaded = false
+
+    /** 交付物加载协程：新加载取消上一次，避免并发（forEach 内 suspend 拉创建者）导致卡片重复渲染 */
+    private var deliveriesJob: Job? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentDeliveryItemListBinding.inflate(inflater, container, false)
@@ -188,8 +192,10 @@ class DeliveryItemListFragment : Fragment() {
 
     private fun loadDeliveries() {
         val projectId = mainViewModel.currentProjectId() ?: return
+        // 取消上一次加载，避免并发协程交错（forEach 内 suspend 拉创建者）导致卡片重复
+        deliveriesJob?.cancel()
         binding.swipeRefresh.isRefreshing = false
-        viewLifecycleOwner.lifecycleScope.launch {
+        deliveriesJob = viewLifecycleOwner.lifecycleScope.launch {
             // 骨架屏：首次加载完成前显示（不转圈），完成后隐藏（含失败）
             setSkeletonLoading(binding.viewSkeleton.root, !deliveriesLoaded)
             val items = runCatching {
@@ -214,9 +220,22 @@ class DeliveryItemListFragment : Fragment() {
                 val filtered = if (mrCreated == null) items
                     else items.filter { (it.mergeRequest != null) == mrCreated }
                 binding.tvEmpty.isVisible = filtered.isEmpty()
+                // 交付确认/拒绝权限：仅任务创建者或管理员可操作（客户端自判，拉任务详情取创建者）
+                val isAdmin = mainViewModel.isProjectAdmin(projectId)
+                val currentUserId = com.example.qgent.data.SessionStore.user()?.id
                 filtered.forEach { item ->
+                    val taskId = item.source?.taskId
+                    val canOperate = if (taskId.isNullOrBlank()) false
+                    else com.example.qgent.ui.delivery.DeliveryPermission.canDecide(
+                        currentUserId,
+                        taskRepo.getTaskDetail(projectId, taskId).getOrNull()?.createdByUser?.id,
+                        isAdmin
+                    )
                     binding.rvDeliveries.addView(
-                        DeliveryItemCardBuilder.build(requireContext(), item, deliveryActions, ::openTaskDetail)
+                        DeliveryItemCardBuilder.build(
+                            requireContext(), item, deliveryActions, ::openTaskDetail,
+                            canApprove = canOperate, canReject = canOperate
+                        )
                     )
                 }
             }

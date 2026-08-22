@@ -40,6 +40,8 @@ class DeliveryCenterFragment : Fragment() {
         get() = (requireActivity().application as QgentApp).container.diffRepository
 
     private var eventStreamJob: Job? = null
+    /** 交付物加载协程：新加载取消上一次，避免并发（fillDeliveries 内有 suspend 拉创建者）导致卡片重复渲染 */
+    private var deliveriesJob: Job? = null
     private var pendingLoads = 0
     private var loadingGeneration = 0
 
@@ -152,9 +154,11 @@ class DeliveryCenterFragment : Fragment() {
 
     private fun loadDeliveries(startLoading: Boolean = true, generation: Int? = null) {
         val projectId = mainViewModel.currentProjectId() ?: return
+        // 取消上一次加载，避免并发协程交错（fillDeliveries 内 suspend 拉创建者）导致卡片重复
+        deliveriesJob?.cancel()
         val activeGeneration = if (startLoading) beginLoading(1) else generation ?: beginLoading(1)
         if (startLoading) binding.deliveriesEmptyState.isVisible = false
-        viewLifecycleOwner.lifecycleScope.launch {
+        deliveriesJob = viewLifecycleOwner.lifecycleScope.launch {
             // 10s 超时：接口未就绪/网络差时快速显示空态，不阻塞页面
             try {
                 val items = runCatching {
@@ -169,7 +173,7 @@ class DeliveryCenterFragment : Fragment() {
                     binding.deliveriesEmptyState.isVisible = items.isEmpty()
                     binding.tvDeliveriesEmpty.text = getString(R.string.delivery_empty_title)
                     binding.tvDeliveriesEmptyHint.text = getString(R.string.delivery_empty_hint)
-                    fillDeliveries(items)
+                    fillDeliveries(items, projectId)
                 }
             } finally {
                 finishLoading(activeGeneration)
@@ -210,7 +214,7 @@ class DeliveryCenterFragment : Fragment() {
 
     // ── 交付物卡片（共享构建器，交付中心最多展示 5 条，完整列表走「更多交付物」） ──
 
-    private fun fillDeliveries(items: List<DeliveryItemDto>) {
+    private suspend fun fillDeliveries(items: List<DeliveryItemDto>, projectId: String) {
         // 排序：未创建 MR（mergeRequest==null）优先 → 已创建 MR 殿后，同级内按创建时间倒序（最新优先）
         val sorted = items.sortedWith(
             compareByDescending<DeliveryItemDto> { it.mergeRequest == null }
@@ -220,9 +224,23 @@ class DeliveryCenterFragment : Fragment() {
         val showMore = sorted.size > MAX_DELIVERIES
         // 交付物区标题行右侧「更多交付物 ›」（>5 条才显示），点击跳转全量列表页
         binding.tvDeliveriesMore.isVisible = showMore
-        sorted.take(MAX_DELIVERIES).forEach { item ->
+        val shown = sorted.take(MAX_DELIVERIES)
+        // 交付确认/拒绝权限：仅任务创建者或管理员可操作（客户端自判，拉任务详情取创建者）
+        val isAdmin = mainViewModel.isProjectAdmin(projectId)
+        val currentUserId = com.example.qgent.data.SessionStore.user()?.id
+        shown.forEach { item ->
+            val taskId = item.source?.taskId
+            val canOperate = if (taskId.isNullOrBlank()) false
+            else com.example.qgent.ui.delivery.DeliveryPermission.canDecide(
+                currentUserId,
+                taskRepo.getTaskDetail(projectId, taskId).getOrNull()?.createdByUser?.id,
+                isAdmin
+            )
             binding.rvDeliveries.addView(
-                DeliveryItemCardBuilder.build(requireContext(), item, deliveryActions, ::openTaskDetail)
+                DeliveryItemCardBuilder.build(
+                    requireContext(), item, deliveryActions, ::openTaskDetail,
+                    canApprove = canOperate, canReject = canOperate
+                )
             )
         }
     }

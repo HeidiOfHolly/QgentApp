@@ -437,6 +437,8 @@ data class MessageContentDto(
     @SerializedName("deletions") val deletions: Int? = null,
     @SerializedName("reviewStatus") val reviewStatus: String? = null,
     @SerializedName("deliveryStatus") val deliveryStatus: String? = null,
+    /** DIFF 卡驳回/拒绝意见（reviewStatus=REJECTED 时非 null；旧消息缺失按空值兼容） */
+    @SerializedName("reviewReason") val reviewReason: String? = null,
     // ── 附件内联预览（契约 v0.1 §6/§7）：IMAGE/FILE 消息必填 attachmentId；
     //    previewUrl/previewable/previewType/downloadUrl 由服务端回填（§7 可选增强）或前端调 preview-url 按需获取 ──
     @SerializedName("attachmentId") val attachmentId: String? = null,
@@ -841,6 +843,8 @@ data class DiffReviewBatchDto(
     @SerializedName("reviewStatus") val reviewStatus: String? = null,
     /** NOT_STARTED / DELIVERING / DELIVERED / PARTIALLY_DELIVERED / FAILED（校准后枚举，§v1.10.0） */
     @SerializedName("deliveryStatus") val deliveryStatus: String? = null,
+    /** 驳回/拒绝原因（reviewStatus=REJECTED 时非 null，交付被拒绝展示用） */
+    @SerializedName("reviewReason") val reviewReason: String? = null,
 
     /**
      * 确认来源：USER（用户确认）/ SYSTEM（后端自动判定交付）。
@@ -1310,6 +1314,8 @@ data class DeliveryItemDto(
     @SerializedName("displayStatus") val displayStatus: String,
     @SerializedName("reviewStatus") val reviewStatus: String?,
     @SerializedName("deliveryStatus") val deliveryStatus: String?,
+    /** 驳回/拒绝原因（reviewStatus=REJECTED 时非 null，展示"已拒绝：原因"） */
+    @SerializedName("reviewReason") val reviewReason: String? = null,
     @SerializedName("filesChanged") val filesChanged: Int = 0,
     val additions: Int = 0,
     val deletions: Int = 0,
@@ -1421,6 +1427,14 @@ data class RequestMergeRequestPreflightRequest(
     @SerializedName("repositoryId") val repositoryId: String
 )
 
+/** 预检 CQ+1 详情（嵌套对象，§46）：status=PENDING/APPROVED/REJECTED；REJECTED 时 reason 为拒绝意见 */
+data class CqPlusOneDetailDto(
+    val status: String?,
+    val reason: String?,
+    @SerializedName("reviewerUserId") val reviewerUserId: String?,
+    @SerializedName("reviewedAt") val reviewedAt: String?
+)
+
 /** 单仓库 MR 预检状态（计划 C2：GET /tasks/{taskId}/merge-request-preflight 每仓库一项） */
 data class MergeRequestPreflightDto(
     val id: String?,
@@ -1433,15 +1447,25 @@ data class MergeRequestPreflightDto(
     @SerializedName("targetCommit") val targetCommit: String?,
     /** 预检状态：REQUESTED / DRY_RUN_QUEUED / DRY_RUN_RUNNING / WAITING_CQ / CQ_REJECTED / CREATING_MR / MR_CREATED / FAILED / STALE */
     val status: String?,
+    /** MR 预检申请者 userId（§46 后端返回；MR 申请者与任务发起者均不能审批自己的 CQ+1） */
+    @SerializedName(
+        value = "requestedBy",
+        alternate = ["requestedByUserId", "requester", "createdBy", "createdByUserId"]
+    )
+    val requestedByUserId: String? = null,
     @SerializedName("dryRunId") val dryRunId: String?,
     @SerializedName("dryRunStatus") val dryRunStatus: String?,
     @SerializedName("cqPlusOneStatus") val cqPlusOneStatus: String?,
     @SerializedName("cqReviewerUserId") val cqReviewerUserId: String?,
+    /** CQ+1 详情（嵌套对象，§46 预检响应：status/reason/reviewerUserId；CQ 被拒时 reason 为拒绝意见） */
+    @SerializedName("cqPlusOne") val cqPlusOne: CqPlusOneDetailDto?,
     /** 当前用户是否可提交 CQ+1（服务端派生：Dry Run 通过 + 非发起人/作者/Agent） */
     @SerializedName("canCqApprove") val canCqApprove: Boolean?,
     val blockers: List<String>?,
     @SerializedName("failureCode") val failureCode: String?,
     @SerializedName("failureReason") val failureReason: String?,
+    /** CQ 拒绝意见平铺兜底（部分后端将拒绝原因放顶层而非 cqPlusOne.reason） */
+    @SerializedName("reviewReason") val reviewReason: String? = null,
     @SerializedName("canRetry") val canRetry: Boolean?,
     @SerializedName("mergeRequest") val mergeRequest: DeliveryMergeRequestSummaryDto?,
     @SerializedName("branchLockStatus") val branchLockStatus: String?,

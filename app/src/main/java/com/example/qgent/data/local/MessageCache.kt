@@ -50,7 +50,8 @@ class MessageCache(private val dao: MessageDao) {
         diffDeletions = diffDeletions,
         reviewBatchId = reviewBatchId,
         reviewStatus = reviewStatus,
-        deliveryStatus = deliveryStatus
+        deliveryStatus = deliveryStatus,
+        reviewReason = reviewReason
     )
 
     private fun ChatMessage.toEntity(groupId: String): MessageEntity = MessageEntity(
@@ -83,7 +84,8 @@ class MessageCache(private val dao: MessageDao) {
         diffDeletions = diffDeletions,
         reviewBatchId = reviewBatchId,
         reviewStatus = reviewStatus,
-        deliveryStatus = deliveryStatus
+        deliveryStatus = deliveryStatus,
+        reviewReason = reviewReason
     )
 
     companion object {

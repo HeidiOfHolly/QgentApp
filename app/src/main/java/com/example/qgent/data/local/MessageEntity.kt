@@ -44,5 +44,7 @@ data class MessageEntity(
     /** DIFF 卡片（v23）：审核批次 / 审核状态 / 交付状态 */
     val reviewBatchId: String?,
     val reviewStatus: String?,
-    val deliveryStatus: String?
+    val deliveryStatus: String?,
+    /** DIFF 卡片驳回/拒绝意见（reviewStatus=REJECTED 时非 null） */
+    val reviewReason: String?
 )

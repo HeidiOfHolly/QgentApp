@@ -20,10 +20,10 @@ import androidx.navigation.fragment.findNavController
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.ApiException
+import com.example.qgent.data.model.DiffReviewBatchDto
 import com.example.qgent.data.model.RepositoryDeliveryDto
 import com.example.qgent.data.model.TaskDetailDto
 import com.example.qgent.data.model.TaskRunDetailListItemDto
-import com.example.qgent.data.model.TaskStepListItemDto
 import com.example.qgent.data.model.formatFullTime
 import com.example.qgent.data.model.parseRfc3339
 import com.example.qgent.data.model.toDiffFile
@@ -74,6 +74,10 @@ class TaskDetailFragment : Fragment() {
 
     /** 正在请求日志的运行 ID，避免同一日志入口被连续点击后发出重复请求。 */
     private var loadingRunLogId: String? = null
+
+    /** 交付拒绝原因是否已展示：轮询/SSE 高频刷新时避免对同一拒绝原因反复重建布局（视觉闪烁）。
+     *  离开拒绝态（bindDetail 检测到 reviewStatus != REJECTED）时重置。 */
+    private var deliveryRejectedReasonShown = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -323,9 +327,6 @@ class TaskDetailFragment : Fragment() {
                         item.tvStepTitle.text = step.title.ifEmpty { step.role }
                         item.tvStepStatus.text = stepStatusLabel(step.status)
                         item.tvStepStatus.setTextColor(view.context.getColor(taskStatusColorRes(step.status)))
-                        // 仅 PENDING 步骤可替换 Agent（§11.3）
-                        item.btnReplaceAgent.isVisible = step.status == "PENDING"
-                        item.btnReplaceAgent.setOnClickListener { showReplaceAgentDialog(step) }
                     }
                 }
                 .onFailure { e ->
@@ -470,7 +471,8 @@ class TaskDetailFragment : Fragment() {
     private fun updateFailureReason() {
         val detail = lastDetail
         val failed = detail?.status == "FAILED" || detail?.status == "DELIVERY_FAILED"
-        binding.layoutFailureReason.isVisible = failed
+        // 交付被拒绝（REJECTED）的拒绝原因区块保持显示，不被本方法隐藏（REJECTED 非终态）
+        binding.layoutFailureReason.isVisible = failed || deliveryRejectedReasonShown
         if (!failed || detail == null) return
         val taskReason = detail.statusReason
         val failedRun = lastRuns.firstOrNull { it.status == "FAILED" }
@@ -578,8 +580,8 @@ class TaskDetailFragment : Fragment() {
             binding.tvDiffReviewEntry.setOnClickListener { showDiffReviewDialog(summaryDiffId) }
         }
 
-        // 逐仓库交付进度：MR_FIRST 任务或有交付状态时拉 diff-review 批次渲染
-        if (mrFirst || deliveryStatus != null) loadDiffReview()
+        // 逐仓库交付进度：MR_FIRST 任务或有交付状态，或批次被拒绝（需展示拒绝原因）时拉 diff-review 批次渲染
+        if (mrFirst || deliveryStatus != null || reviewStatus == "REJECTED") loadDiffReview()
     }
 
     /**
@@ -646,11 +648,15 @@ class TaskDetailFragment : Fragment() {
                     "Diff 审核 · ${detail.title}"
                 })
                 .setView(dialogBinding.root)
-            // Diff 审核：仅任务发起人或 Project Admin 可确认/拒绝（后端能力位派生，§16.2）。
-            // 能力位缺省按 true 兜底（DIFF_FIRST 旧后端回归），确认/拒绝分别判断。
+            // Diff 审核：仅任务发起人或 Project Admin 可确认/拒绝（客户端自判：创建者比对 + 管理员校验）。
             val canDecide = DiffReviewRules.canConfirmOrReject(reviewStatus, confirmationSource)
-            val canConfirm = canDecide && (detail.capabilities?.canConfirmDiffReview ?: true)
-            val canReject = canDecide && (detail.capabilities?.canRejectDiffReview ?: true)
+            val canOperate = com.example.qgent.ui.delivery.DeliveryPermission.canDecide(
+                com.example.qgent.data.SessionStore.user()?.id,
+                detail.createdByUser?.id,
+                mainViewModel.isProjectAdmin(projectId)
+            )
+            val canConfirm = canDecide && canOperate
+            val canReject = canDecide && canOperate
             if (canConfirm || canReject) {
                 if (canReject) {
                     builder.setNegativeButton(R.string.reject_diff) { _, _ -> rejectTaskDiffReview() }
@@ -732,16 +738,44 @@ class TaskDetailFragment : Fragment() {
             diffRepository.getTaskDiffReview(projectId, taskId)
                 .onSuccess { batch ->
                     renderRepoDeliveries(batch?.repositoryDeliveries.orEmpty())
+                    // 交付被拒绝（reviewStatus=REJECTED）：展示拒绝原因（§reviewReason 仅 REJECTED 非 null）
+                    showDeliveryRejectedReason(batch)
                 }
                 .onFailure { e ->
                     if (e is ApiException && (e.code == "DIFF_REVIEW_NOT_FOUND" || e.code == "HTTP_404")) {
                         renderRepoDeliveries(emptyList())
+                        showDeliveryRejectedReason(null)
                     } else {
                         Log.w("TaskDetail", "加载交付进度失败: ${e.message}")
                         renderRepoDeliveries(emptyList())
+                        showDeliveryRejectedReason(null)
                     }
                 }
         }
+    }
+
+    /** 交付被拒绝：reviewStatus=REJECTED 且 reviewReason 非空时，在失败原因区展示"交付被拒绝 + 原因"。
+     *  任务 FAILED/DELIVERY_FAILED 时 updateFailureReason 优先；REJECTED 状态（通常回到待确认）下，
+     *  updateFailureReason 不显示，此处补展示拒绝原因让用户明确交付为何被打回。
+     *  已展示过且仍处于拒绝态时跳过重建（轮询/SSE 高频触发不再反复刷新该区块）。 */
+    private fun showDeliveryRejectedReason(batch: DiffReviewBatchDto?) {
+        val rejected = batch?.reviewStatus == "REJECTED" && !batch.reviewReason.isNullOrBlank()
+        if (!rejected) {
+            // 非拒绝状态不覆盖 updateFailureReason 的展示；若此前显示过且已离开拒绝态，隐藏并允许再次展示
+            if (deliveryRejectedReasonShown) {
+                binding.layoutFailureReason.isVisible = false
+                deliveryRejectedReasonShown = false
+            }
+            return
+        }
+        if (!deliveryRejectedReasonShown) {
+            binding.tvFailureTitle.text = getString(R.string.task_delivery_rejected_title)
+            binding.tvFailureReason.text = batch!!.reviewReason
+            binding.btnRestartTask.isVisible = false
+            deliveryRejectedReasonShown = true
+        }
+        // 已展示过仍确保可见：updateFailureReason（每次 bindDetail）会因 REJECTED 非终态隐藏本区块，这里保持显示
+        binding.layoutFailureReason.isVisible = true
     }
 
     /** 渲染逐仓库交付进度列表（名称/状态/失败原因/MR 链接/更新时间） */
@@ -838,38 +872,6 @@ class TaskDetailFragment : Fragment() {
             }
         }
         return null
-    }
-
-    /** 替换步骤执行 Agent：弹出可选 Agent 列表（当前团队 Agent），选中后调用替换接口 */
-    private fun showReplaceAgentDialog(step: TaskStepListItemDto) {
-        val agents = mainViewModel.agents.value.orEmpty()
-        if (agents.isEmpty()) {
-            Toast.makeText(requireContext(), "暂无可选 Agent", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val names = agents.map { it.name }.toTypedArray()
-        AlertDialog.Builder(requireContext())
-            .setTitle("替换 ${step.title.ifEmpty { step.role }} 的执行 Agent")
-            .setItems(names) { _, which ->
-                replaceStepAgent(step, agents[which].id)
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    /** 调用替换 Agent 接口（§11.3），成功后刷新步骤列表 */
-    private fun replaceStepAgent(step: TaskStepListItemDto, agentId: String) {
-        if (projectId.isEmpty() || taskId.isEmpty()) return
-        viewLifecycleOwner.lifecycleScope.launch {
-            taskRepository.replaceAgent(projectId, taskId, step.id, agentId, UUID.randomUUID().toString())
-                .onSuccess {
-                    Toast.makeText(requireContext(), "已替换执行 Agent", Toast.LENGTH_SHORT).show()
-                    loadSteps()
-                }
-                .onFailure { e ->
-                    Toast.makeText(requireContext(), e.message ?: "替换失败，请稍后重试", Toast.LENGTH_SHORT).show()
-                }
-        }
     }
 
     private fun statusLabel(status: String): String =
