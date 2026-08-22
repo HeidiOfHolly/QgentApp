@@ -1,6 +1,7 @@
 package com.example.qgent.ui.personal
 
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -20,6 +21,7 @@ import com.example.qgent.data.model.GitHubRepositoryDto
 import com.example.qgent.data.model.PersonalGithubOAuthDto
 import com.example.qgent.data.model.TeamMemberDto
 import com.example.qgent.databinding.FragmentProjectSelectionBinding
+import com.example.qgent.ui.github.PersonalGithubOAuthFragment
 import com.example.qgent.viewmodel.NewProjectViewModel
 
 /**
@@ -82,7 +84,7 @@ class ProjectSelectionFragment : Fragment() {
         if (!isMembers) {
             binding.bnAddRepo.setOnClickListener { addNewRepoName() }
             binding.bnBindGithub.setOnClickListener {
-                findNavController().navigate(R.id.personalGithubOAuthFragment)
+                openPersonalGithubOAuth()
             }
             binding.swPrivate.isChecked = draft?.isPrivate ?: true
             draft?.let { newRepoNames.addAll(it.newRepoNames) }
@@ -127,24 +129,48 @@ class ProjectSelectionFragment : Fragment() {
      * - READY 但 scope 不足建私有 → 私有开关置灰并提示仅可建公开。
      */
     private fun renderAutoCreateState(status: PersonalGithubOAuthDto?) {
-        val ready = status != null && status.authorized && status.personalRepositorySetup == "READY"
-        val canPrivate = ready && status!!.canCreatePrivatePersonalRepository
-        binding.tvOauthHint.isVisible = !ready || !canPrivate
-        binding.tvOauthHint.setText(
-            when {
-                !ready -> R.string.auto_create_repo_oauth_locked
-                else -> R.string.auto_create_repo_scope_private_hint
+        val setup = status?.personalRepositorySetup
+        val ready = status?.authorized == true && setup == "READY"
+        val canPublic = ready && status?.canCreatePublicPersonalRepository == true
+        val canPrivate = canPublic && status?.canCreatePrivatePersonalRepository == true
+        Log.d(TAG, "Auto-create UI: status=${status != null}, authorized=${status?.authorized}, setup=$setup, canPublic=$canPublic, canPrivate=$canPrivate")
+        val hint = when {
+            !canPublic -> when (setup) {
+                "NOT_OWNER" -> getString(R.string.personal_github_oauth_setup_not_owner)
+                "NEED_INSTALLATION" -> getString(R.string.personal_github_oauth_setup_need_installation)
+                "NEED_OAUTH" -> getString(R.string.personal_github_oauth_setup_need_oauth)
+                "ACCOUNT_MISMATCH" -> getString(
+                    R.string.personal_github_oauth_setup_account_mismatch,
+                    status?.expectedInstallationLogin ?: getString(R.string.personal_github_oauth_unknown_account)
+                )
+                else -> getString(R.string.auto_create_repo_scope_public_hint)
             }
-        )
-        binding.bnBindGithub.isVisible = !ready
-        binding.etNewRepoName.isEnabled = ready
-        binding.bnAddRepo.isEnabled = ready
+            !canPrivate -> getString(R.string.auto_create_repo_scope_private_hint)
+            else -> null
+        }
+        binding.tvOauthHint.isVisible = hint != null
+        binding.tvOauthHint.text = hint
+        // 仅 OAuth 未绑定、账号不一致或 scope 不足时引导个人 OAuth；未安装 App/非 Owner 不误导到 OAuth。
+        binding.bnBindGithub.isVisible = !canPublic && (
+            status == null || !status.authorized || setup == "NEED_OAUTH" ||
+                setup == "ACCOUNT_MISMATCH" || setup == "READY"
+            )
+        binding.etNewRepoName.isEnabled = canPublic
+        binding.bnAddRepo.isEnabled = canPublic
         binding.swPrivate.isEnabled = canPrivate
         if (!canPrivate) {
             binding.swPrivate.isChecked = false
         } else if (ready) {
             binding.swPrivate.isChecked = newProjectViewModel.draft.value?.isPrivate ?: true
         }
+    }
+
+    private fun openPersonalGithubOAuth() {
+        val forceReauthorization = newProjectViewModel.oauthStatus.value?.authorized == true
+        findNavController().navigate(
+            R.id.personalGithubOAuthFragment,
+            androidx.core.os.bundleOf(PersonalGithubOAuthFragment.ARG_FORCE_REAUTH to forceReauthorization)
+        )
     }
 
     private fun onToggle(id: String, checked: Boolean) {
@@ -233,5 +259,6 @@ class ProjectSelectionFragment : Fragment() {
         const val ARG_MODE = "mode"
         const val MODE_MEMBERS = "members"
         const val MODE_REPOS = "repos"
+        private const val TAG = "NewProjectGitHub"
     }
 }

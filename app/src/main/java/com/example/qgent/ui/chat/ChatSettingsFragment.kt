@@ -337,7 +337,13 @@ class ChatSettingsFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             val initialLoad = binding.containerMembers.childCount == 0
-            if (initialLoad) setInlineSkeletonLoading(binding.containerMembers, true)
+            if (initialLoad) {
+                setInlineSkeletonLoading(
+                    binding.containerMembers,
+                    true,
+                    R.layout.view_skeleton_rows_compact
+                )
+            }
             try {
                 chatRepo.getGroup(projectId, groupId).onSuccess { dto ->
                     binding.tvGroupName.text = dto.title
@@ -366,7 +372,11 @@ class ChatSettingsFragment : Fragment() {
             val initialLoad = binding.containerRepositories.childCount == 0
             if (initialLoad) {
                 binding.tvRepositoriesEmpty.isVisible = false
-                setInlineSkeletonLoading(binding.containerRepositories, true)
+                setInlineSkeletonLoading(
+                    binding.containerRepositories,
+                    true,
+                    R.layout.view_skeleton_rows_compact
+                )
             }
             try {
                 val repos = (requireActivity().application as QgentApp).container.githubRepository
@@ -498,7 +508,15 @@ class ChatSettingsFragment : Fragment() {
             WindowManager.LayoutParams.MATCH_PARENT
         )
 
-        val adapter = SearchMessageAdapter()
+        val adapter = SearchMessageAdapter { message ->
+            val navController = findNavController()
+            val chatDetailEntry = navController.previousBackStackEntry
+            if (chatDetailEntry != null) {
+                chatDetailEntry.savedStateHandle[ChatDetailFragment.RESULT_SEARCH_TARGET_MESSAGE_ID] = message.id
+                dialog.dismiss()
+                navController.popBackStack()
+            }
+        }
         searchBinding.rvSearchResults.layoutManager = LinearLayoutManager(requireContext())
         searchBinding.rvSearchResults.adapter = adapter
 

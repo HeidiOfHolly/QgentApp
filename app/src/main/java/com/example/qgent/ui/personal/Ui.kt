@@ -18,14 +18,15 @@ import com.example.qgent.data.model.ApiException
 
 /**
  * 接受团队邀请失败提示（§19.3）：
- * 网络错误 / 邀请已过期（INVITATION_EXPIRED）/ 已接受或已撤销（INVITATION_NOT_PENDING）/
+ * 网络错误 / 邀请已过期（INVITATION_EXPIRED）/ 已撤销或已不再可接受（INVITATION_NOT_PENDING）/
  * 后端其余业务提示 / 通用兜底。
  */
 fun joinTeamErrorMessage(context: Context, e: Throwable, fallback: String): String = when {
     e is java.io.IOException -> context.getString(R.string.join_team_network_error)
     e is ApiException -> when (e.code) {
         "INVITATION_EXPIRED" -> context.getString(R.string.join_team_expired)
-        "INVITATION_NOT_PENDING" -> context.getString(R.string.join_team_processed)
+        // 旧接口用 INVITATION_NOT_PENDING 统称已接受/已撤销；提示不可暗示用户自行处理过。
+        "INVITATION_NOT_PENDING", "INVITATION_REVOKED" -> context.getString(R.string.join_team_unavailable)
         else -> e.message?.takeIf { it.isNotBlank() } ?: fallback
     }
     else -> fallback
@@ -116,12 +117,16 @@ fun setSkeletonLoading(view: View, active: Boolean) {
  * 在纵向内容区旁动态放入通用骨架，避免每个列表页重复维护一套 XML。
  * 仅支持可安全容纳多个子 View 的 LinearLayout / FrameLayout。
  */
-fun setInlineSkeletonLoading(content: View, active: Boolean) {
+fun setInlineSkeletonLoading(
+    content: View,
+    active: Boolean,
+    skeletonLayoutRes: Int = R.layout.view_skeleton_rows
+) {
     val parent = content.parent as? ViewGroup ?: return
     if (parent !is LinearLayout && parent !is FrameLayout) return
     val skeleton = (content.getTag(R.id.inline_skeleton_view) as? View)
         ?: LayoutInflater.from(content.context)
-            .inflate(R.layout.view_skeleton_rows, parent, false)
+            .inflate(skeletonLayoutRes, parent, false)
             .also { placeholder ->
                 if (parent is LinearLayout) {
                     parent.addView(placeholder, parent.indexOfChild(content) + 1)

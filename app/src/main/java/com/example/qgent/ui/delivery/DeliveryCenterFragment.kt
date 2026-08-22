@@ -42,6 +42,8 @@ class DeliveryCenterFragment : Fragment() {
     private var eventStreamJob: Job? = null
     private var pendingLoads = 0
     private var loadingGeneration = 0
+    /** 同一时刻只允许一种刷新来源，避免页面加载层与下拉刷新圈同时出现。 */
+    private var isRefreshInFlight = false
 
     /** 交付物操作（查看 Diff / 确认 / 拒绝 / 重试），成功后刷新本页交付物列表 */
     private val deliveryActions by lazy {
@@ -55,7 +57,7 @@ class DeliveryCenterFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        binding.swipeRefresh.setOnRefreshListener { refreshAll() }
+        binding.swipeRefresh.setOnRefreshListener { refreshAll(showOverlay = false) }
         binding.tvMRMore.setOnClickListener {
             findNavController().navigate(R.id.action_deliveryCenter_to_mrList)
         }
@@ -102,16 +104,28 @@ class DeliveryCenterFragment : Fragment() {
         eventStreamJob = null
     }
 
-    private fun refreshAll() {
-        val generation = beginLoading(2)
+    private fun refreshAll(showOverlay: Boolean = true) {
+        if (isRefreshInFlight) {
+            binding.swipeRefresh.isRefreshing = false
+            return
+        }
+        if (mainViewModel.currentProjectId() == null) {
+            binding.swipeRefresh.isRefreshing = false
+            return
+        }
+        val generation = beginLoading(2, showOverlay)
         loadDeliveries(startLoading = false, generation = generation)
         loadMRs(startLoading = false, generation = generation)
     }
 
-    private fun beginLoading(requestCount: Int): Int {
+    private fun beginLoading(requestCount: Int, showOverlay: Boolean = true): Int {
         loadingGeneration += 1
         pendingLoads = requestCount
-        binding.deliveryLoadingState.isVisible = true
+        isRefreshInFlight = true
+        binding.deliveryLoadingState.isVisible = showOverlay
+        // 自动刷新使用页面加载层并暂时禁止下拉；手动下拉只保留 SwipeRefreshLayout 的圈。
+        binding.swipeRefresh.isEnabled = !showOverlay
+        if (showOverlay) binding.swipeRefresh.isRefreshing = false
         if (requestCount > 1) {
             binding.deliveriesEmptyState.isVisible = false
             binding.mrEmptyState.isVisible = false
@@ -123,8 +137,10 @@ class DeliveryCenterFragment : Fragment() {
         if (generation != loadingGeneration) return
         pendingLoads = (pendingLoads - 1).coerceAtLeast(0)
         if (pendingLoads == 0) {
+            isRefreshInFlight = false
             binding.deliveryLoadingState.isVisible = false
             binding.swipeRefresh.isRefreshing = false
+            binding.swipeRefresh.isEnabled = true
         }
     }
 
@@ -152,6 +168,7 @@ class DeliveryCenterFragment : Fragment() {
 
     private fun loadDeliveries(startLoading: Boolean = true, generation: Int? = null) {
         val projectId = mainViewModel.currentProjectId() ?: return
+        if (startLoading && isRefreshInFlight) return
         val activeGeneration = if (startLoading) beginLoading(1) else generation ?: beginLoading(1)
         if (startLoading) binding.deliveriesEmptyState.isVisible = false
         viewLifecycleOwner.lifecycleScope.launch {
@@ -179,12 +196,14 @@ class DeliveryCenterFragment : Fragment() {
 
     private fun loadMRs(startLoading: Boolean = true, generation: Int? = null) {
         val projectId = mainViewModel.currentProjectId() ?: return
+        if (startLoading && isRefreshInFlight) return
         val activeGeneration = if (startLoading) beginLoading(1) else generation ?: beginLoading(1)
         if (startLoading) binding.mrEmptyState.isVisible = false
         viewLifecycleOwner.lifecycleScope.launch {
             // MR 区仅项目管理员可见：非管理员隐藏并跳过加载
             if (!mainViewModel.isProjectAdmin(projectId)) {
                 binding.mrSection.isVisible = false
+                finishLoading(activeGeneration)
                 return@launch
             }
             try {

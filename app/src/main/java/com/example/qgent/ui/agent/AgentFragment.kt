@@ -25,6 +25,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Agent 页：Agent 卡片列表 + Memory / Skill 预览（真实接口，失败由数据层 mock 保底）。
@@ -39,6 +40,9 @@ class AgentFragment : Fragment() {
 
     private lateinit var agentAdapter: AgentCardAdapter
     private var workingPollJob: Job? = null
+    private var manualRefreshGeneration = 0
+    private var pendingManualRefreshes = 0
+    private var waitingForAgentRefresh = false
 
     /** 运行中视为「工作流中」的 TaskRun 状态：排队/执行/等待输入或审批 */
     private val ACTIVE_RUN_STATUSES = setOf("QUEUED", "RUNNING", "WAITING_INPUT", "WAITING_APPROVAL", "BLOCKED")
@@ -83,6 +87,10 @@ class AgentFragment : Fragment() {
                 binding.rvAgents,
                 loading && mainViewModel.agents.value.orEmpty().isEmpty()
             )
+            if (!loading && waitingForAgentRefresh) {
+                waitingForAgentRefresh = false
+                finishManualRefresh(manualRefreshGeneration)
+            }
         }
 
         // 「+ 新建」→ 新建 Agent 表单（任何人都可创建自己的 PRIVATE Agent）
@@ -105,35 +113,61 @@ class AgentFragment : Fragment() {
         loadPreviews()
     }
 
-    /** 下拉刷新：Agent 列表 + Memory/Skill 预览（加载完成后收起动画） */
+    /** 下拉刷新：等待 Agent 列表、Memory/Skill 预览和运行状态均结束再收起动画。 */
     private fun refreshAll() {
-        mainViewModel.refreshAgents()
-        loadPreviews()
+        val generation = ++manualRefreshGeneration
+        pendingManualRefreshes = 3
+
+        waitingForAgentRefresh = mainViewModel.refreshAgents()
+        if (!waitingForAgentRefresh) finishManualRefresh(generation)
+
+        loadPreviews { finishManualRefresh(generation) }
         viewLifecycleOwner.lifecycleScope.launch {
-            refreshWorkingState()
-            binding.swipeRefresh.isRefreshing = false
+            try {
+                withTimeoutOrNull(10_000) { refreshWorkingState() }
+            } finally {
+                finishManualRefresh(generation)
+            }
         }
     }
 
-    private fun loadPreviews() {
-        val projectId = mainViewModel.currentProjectId() ?: return
+    private fun finishManualRefresh(generation: Int) {
+        if (generation != manualRefreshGeneration) return
+        pendingManualRefreshes -= 1
+        if (pendingManualRefreshes <= 0) {
+            _binding?.swipeRefresh?.isRefreshing = false
+        }
+    }
+
+    private fun loadPreviews(onDone: (() -> Unit)? = null) {
+        val projectId = mainViewModel.currentProjectId() ?: run {
+            onDone?.invoke()
+            return
+        }
         val app = requireActivity().application as QgentApp
         viewLifecycleOwner.lifecycleScope.launch {
-            val memoryRepo = app.container.memoryRepository
-            val skillRepo = app.container.skillRepository
+            try {
+                val memoryRepo = app.container.memoryRepository
+                val skillRepo = app.container.skillRepository
 
-            val approvedMemories = memoryRepo.getMemories(projectId).getOrNull().orEmpty()
-                .filter { it.status == "APPROVED" }
-                .take(3)
-                .map { it.toMemoryItem() }
-            renderMemoryPreview(approvedMemories)
+                val approvedMemories = withTimeoutOrNull(10_000) {
+                    memoryRepo.getMemories(projectId).getOrNull().orEmpty()
+                }.orEmpty()
+                    .filter { it.status == "APPROVED" }
+                    .take(3)
+                    .map { it.toMemoryItem() }
+                renderMemoryPreview(approvedMemories)
 
-            val publishedSkills = skillRepo.getSkills(projectId).getOrNull().orEmpty()
-                .filter { it.status == "PUBLISHED" && it.visibility != "PRIVATE" }
-                .take(3)
-                .map { it.toSkillItem() }
-            renderSkillPreview(publishedSkills)
-            binding.swipeRefresh.isRefreshing = false
+                val publishedSkills = withTimeoutOrNull(10_000) {
+                    skillRepo.getSkills(projectId).getOrNull().orEmpty()
+                }.orEmpty()
+                    .filter { it.status == "PUBLISHED" && it.visibility != "PRIVATE" }
+                    .take(3)
+                    .map { it.toSkillItem() }
+                renderSkillPreview(publishedSkills)
+            } finally {
+                onDone?.invoke()
+            }
         }
     }
 

@@ -14,6 +14,7 @@ import androidx.navigation.navOptions
 import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.databinding.FragmentNewProjectBinding
+import com.example.qgent.ui.github.PersonalGithubOAuthFragment
 import com.example.qgent.viewmodel.CreateProjectState
 import com.example.qgent.viewmodel.MainViewModel
 import com.example.qgent.viewmodel.NewProjectViewModel
@@ -92,6 +93,18 @@ class NewProjectFragment : Fragment() {
                 }
                 is CreateProjectState.Error -> {
                     Toast.makeText(requireContext(), state.message, Toast.LENGTH_SHORT).show()
+                    mainViewModel.consumeCreateProjectState()
+                    if (state.code?.let { it in OAUTH_BINDING_ERROR_CODES } == true) {
+                        // 先刷新服务端状态，再进入绑定页；草稿保存在 activity ViewModel 中不会丢失。
+                        newProjectViewModel.refreshOAuthStatus()
+                        findNavController().navigate(
+                            R.id.personalGithubOAuthFragment,
+                            bundleOf(
+                                PersonalGithubOAuthFragment.ARG_FORCE_REAUTH to
+                                    (state.code != "GITHUB_OAUTH_REQUIRED")
+                            )
+                        )
+                    }
                 }
                 else -> Unit
             }
@@ -146,5 +159,13 @@ class NewProjectFragment : Fragment() {
 
     companion object {
         const val ARG_TEAM_ID = "teamId"
+
+        private val OAUTH_BINDING_ERROR_CODES = setOf(
+            "GITHUB_OAUTH_REQUIRED",
+            "GITHUB_OAUTH_REVOKED",
+            "GITHUB_OAUTH_TOKEN_INVALID",
+            "GITHUB_OAUTH_SCOPE_INSUFFICIENT",
+            "GITHUB_OAUTH_ACCOUNT_MISMATCH"
+        )
     }
 }

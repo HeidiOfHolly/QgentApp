@@ -29,7 +29,8 @@
             android:layout_marginTop="4dp"
             android:orientation="vertical"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintLeft_toLeftOf="parent">
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/btnNotification">
 
             <TextView
                 android:id="@+id/tvTeamName"
@@ -42,8 +43,10 @@
 
             <TextView
                 android:id="@+id/tvProjectName"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
                 android:text="@string/short_test"
                 android:textColor="@color/white"
                 android:textSize="22sp"
@@ -162,7 +165,7 @@
             <!-- 最近任务加载占位（骨架屏）：标题下闪烁，数据到位隐藏 -->
             <include
                 android:id="@+id/viewSkeletonRecent"
-                layout="@layout/view_skeleton_rows"
+                layout="@layout/view_skeleton_rows_compact"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:visibility="gone" />
@@ -232,7 +235,7 @@
             <!-- 任务列表加载占位（骨架屏）：标题下闪烁，数据到位隐藏 -->
             <include
                 android:id="@+id/viewSkeletonTaskList"
-                layout="@layout/view_skeleton_rows"
+                layout="@layout/view_skeleton_rows_compact"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:visibility="gone" />

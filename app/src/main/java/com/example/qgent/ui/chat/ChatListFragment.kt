@@ -229,20 +229,22 @@ class ChatListFragment : Fragment() {
 
         // 下拉刷新：重新拉取当前项目群聊列表（摘要/未读）
         binding.swipeRefresh.setOnRefreshListener {
-            mainViewModel.refreshGroups()
+            // 数据未变化时 StateFlow 不会重新发射，不能依赖 groups observer 结束刷新。
+            if (!mainViewModel.refreshGroups(showLoading = true)) {
+                binding.swipeRefresh.isRefreshing = false
+            }
         }
 
         // 群聊列表随项目切换而变化（API → mock fallback）
         mainViewModel.groups.observe(viewLifecycleOwner) { groups ->
             adapter.submitList(groups)
             binding.tvChatListEmpty.isVisible = groups.isEmpty()
-            // 下拉刷新完成后收起刷新动画（groups 更新即视为刷新结束）
-            binding.swipeRefresh.isRefreshing = false
         }
 
-        // 切换项目加载群聊列表期间显示 ProgressBar；下拉刷新时隐藏中央转圈避免与刷新动画重叠
+        // 手动下拉由 groupsLoading 的请求完成状态结束，而不是依赖列表内容变化。
         mainViewModel.groupsLoading.observe(viewLifecycleOwner) { loading ->
             binding.loading.isVisible = loading && !binding.swipeRefresh.isRefreshing
+            if (!loading) binding.swipeRefresh.isRefreshing = false
         }
     }
 
