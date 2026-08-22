@@ -15,6 +15,7 @@ import com.example.qgent.QgentApp
 import com.example.qgent.R
 import com.example.qgent.data.model.DeliveryItemDto
 import com.example.qgent.data.model.DeliveryRepositoryDeliveryDto
+import com.example.qgent.data.model.MergeRequestPreflightDto
 import com.example.qgent.data.repository.TaskRepository
 import com.example.qgent.databinding.FragmentDeliveryItemDetailBinding
 import com.example.qgent.viewmodel.MainViewModel
@@ -38,11 +39,6 @@ class DeliveryItemDetailFragment : Fragment() {
         arguments?.getString(ARG_ITEM_JSON)?.let { Gson().fromJson(it, DeliveryItemDto::class.java) }
     }
     private var eventStreamJob: kotlinx.coroutines.Job? = null
-
-    /** CQ+1 操作后的乐观状态：提交成功但后端尚未落库推进时，loadPreflight 刷新不覆盖"正在创建/已拒绝"文案，
-     *  避免点击后状态短暂回 WAITING_CQ 让用户误以为操作无效。 */
-    private var cqActionPending = false
-    private var cqActionPendingText = ""
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentDeliveryItemDetailBinding.inflate(inflater, container, false)
@@ -114,15 +110,13 @@ class DeliveryItemDetailFragment : Fragment() {
         val projectId = mainViewModel.currentProjectId() ?: return
         val taskId = itemDto.source?.taskId ?: return
         viewLifecycleOwner.lifecycleScope.launch {
-            // 复位操作区
-            binding.btnCqApprove.isVisible = false
-            binding.btnCqReject.isVisible = false
+            // 复位：清空多仓库容器 + 无记录占位
+            binding.containerPreflights.removeAllViews()
+            binding.tvPreflightStatus.isVisible = false
             binding.btnCreateMr.isVisible = false
-            binding.tvCqRejectReason.isVisible = false
-            val status = taskRepository.getTaskMergeRequestPreflight(projectId, taskId)
-                .getOrNull()?.firstOrNull()   // 交付物详情按首个仓库展示
-            android.util.Log.d("Preflight", "loadPreflight status=$status cqPlusOneStatus=${status?.cqPlusOneStatus} cqPlusOne=${status?.cqPlusOne} canCqApprove=${status?.canCqApprove} dryRunId=${status?.dryRunId}")
-            if (status == null) {
+            val statuses = taskRepository.getTaskMergeRequestPreflight(projectId, taskId)
+                .getOrNull().orEmpty()   // 多仓库：每个预检项独立渲染
+            if (statuses.isEmpty()) {
                 // DIFF_FIRST：用户确认 Diff 后需手动创建 MR（§46），无预检记录时提供「创建 MR」入口启动 Dry Run；
                 // MR_FIRST：交付后由后端自动发起 Dry Run（§27.10/§46），前端无需手动创建，只读等待自动推进。
                 // 未交付（diff 未确认，reviewStatus != ACCEPTED）时无法申请创建 MR
@@ -143,99 +137,117 @@ class DeliveryItemDetailFragment : Fragment() {
                 }
                 return@launch
             }
-            // 真实 MR 已创建 → 展示链接，无操作按钮（仅 MR_CREATED 才显示 MR 链接，§46）
-            if (status.status == "MR_CREATED") {
-                binding.tvPreflightStatus.isVisible = true
-                val mr = status.mergeRequest
-                binding.tvPreflightStatus.text = "MR 已创建：MR #${mr?.number ?: "?"} ${mr?.title.orEmpty()}"
-                return@launch
+            // 逐仓库渲染预检状态块（每个仓库独立状态与操作，不能把一个仓库的 WAITING_CQ 当整个任务状态）
+            statuses.forEach { st ->
+                binding.containerPreflights.addView(buildPreflightItem(projectId, taskId, itemDto, st))
             }
-            // CQ+1 操作刚提交、后端尚未落库推进（仍返回 WAITING_CQ）：保留乐观文案，不恢复按钮/回退状态
-            if (cqActionPending && status.status == "WAITING_CQ") {
-                binding.tvPreflightStatus.isVisible = true
-                binding.tvPreflightStatus.text = cqActionPendingText
-                return@launch
+        }
+    }
+
+    /** 构建单个仓库的预检状态块（item_preflight_status）：按状态机展示状态文本与 CQ+1/拒绝/重试按钮 */
+    private fun buildPreflightItem(
+        projectId: String,
+        taskId: String,
+        itemDto: DeliveryItemDto,
+        status: MergeRequestPreflightDto
+    ): View {
+        val binding = com.example.qgent.databinding.ItemPreflightStatusBinding.inflate(layoutInflater)
+        binding.tvRepoName.text = status.repositoryName?.takeIf { it.isNotBlank() } ?: "仓库"
+        // CQ+1 已操作判定：后端顶层 status 可能未同步推进，综合 cqPlusOne/cqPlusOneStatus 容错
+        val cqStatus = status.cqPlusOne?.status?.takeIf { it.isNotBlank() } ?: status.cqPlusOneStatus
+        val effective = when {
+            cqStatus == "APPROVED" && status.status == "WAITING_CQ" -> "CREATING_MR"
+            cqStatus == "REJECTED" && status.status == "WAITING_CQ" -> "CQ_REJECTED"
+            else -> status.status
+        }
+        when (effective) {
+            "MR_CREATED" -> {
+                binding.tvStatus.text = "MR 已创建：MR #${status.mergeRequest?.number ?: "?"} ${status.mergeRequest?.title.orEmpty()}"
             }
-            // CQ+1 已操作判定：后端顶层 status 可能未同步推进（仍 WAITING_CQ），综合 cqPlusOne 状态容错——
-            // APPROVED=已同意、REJECTED=已拒绝，均不再显示 CQ 操作按钮
-            val cqStatus = status.cqPlusOne?.status?.takeIf { it.isNotBlank() } ?: status.cqPlusOneStatus
-            if (cqStatus == "APPROVED") {
-                cqActionPending = false
-                binding.tvPreflightStatus.isVisible = true
-                binding.tvPreflightStatus.text = "CQ+1 已通过，正在创建 MR…"
-                return@launch
-            }
-            if (cqStatus == "REJECTED") {
-                cqActionPending = false
-                binding.tvPreflightStatus.isVisible = true
-                binding.tvPreflightStatus.text = "CQ 被拒绝${status.failureCode?.let { "（$it）" } ?: ""}"
-                val rejectReason = status.cqPlusOne?.reason?.takeIf { it.isNotBlank() }
-                    ?: status.reviewReason?.takeIf { it.isNotBlank() }
-                    ?: status.failureReason?.takeIf { it.isNotBlank() }
-                binding.tvCqRejectReason.isVisible = rejectReason != null
-                if (rejectReason != null) binding.tvCqRejectReason.text = "CQ+1 被拒原因：$rejectReason"
-                binding.btnCreateMr.isVisible = true
-                binding.btnCreateMr.text = "重新预检"
-                binding.btnCreateMr.setOnClickListener { requestPreflight(projectId, taskId, itemDto) }
-                return@launch
-            }
-            when (status.status) {
-                // Dry Run 通过，等待 CQ+1：可批准（CQ+1）或拒绝（拒绝 CQ，reason 必填）。
-                // CQ+1 按钮始终可见；点击时在 doCqApprove 内检查权限（非独立成员/发起人 → 直接 Toast，不发请求）
-                "WAITING_CQ" -> {
-                    binding.btnCqApprove.isVisible = true
-                    binding.btnCqReject.isVisible = true
-                    binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "DryRun 通过，等待独立成员 CQ+1"
+            // 等待 CQ+1：仅 canCqApprove==true 才显示通过/拒绝按钮（§清单 §2/§5）
+            "WAITING_CQ" -> {
+                binding.tvStatus.text = if (status.canCqApprove == true) {
+                    "DryRun 通过，等待独立成员 CQ+1"
+                } else {
+                    "DryRun 通过，等待其他成员 CQ+1"
+                }
+                val canOperate = status.canCqApprove == true
+                binding.btnRow.isVisible = canOperate
+                if (canOperate) {
                     binding.btnCqApprove.setOnClickListener { doCqApprove(projectId, status.dryRunId) }
                     binding.btnCqReject.setOnClickListener { doCqReject(projectId, status.dryRunId) }
                 }
-                // 正在创建 MR（CQ+1 已通过，后端异步创建）：真实状态推进，清除乐观标记
-                "CREATING_MR" -> {
-                    cqActionPending = false
-                    binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "CQ+1 已通过，正在创建 MR…"
-                }
-                // CQ 被拒绝：状态行 + 独立拒绝原因突出展示
-                // 拒绝原因来源优先 cqPlusOne.reason（§46 嵌套对象），兜底 failureReason
-                "CQ_REJECTED" -> {
-                    cqActionPending = false
-                    android.util.Log.d("Preflight", "CQ_REJECTED status=$status cqPlusOne=${status.cqPlusOne} reviewReason=${status.reviewReason} failureReason=${status.failureReason}")
-                    binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "CQ 被拒绝${status.failureCode?.let { "（$it）" } ?: ""}"
-                    val rejectReason = status.cqPlusOne?.reason?.takeIf { it.isNotBlank() }
-                        ?: status.reviewReason?.takeIf { it.isNotBlank() }
-                        ?: status.failureReason?.takeIf { it.isNotBlank() }
-                    binding.tvCqRejectReason.isVisible = rejectReason != null
-                    if (rejectReason != null) {
-                        binding.tvCqRejectReason.text = "CQ+1 被拒原因：$rejectReason"
-                    }
-                    binding.btnCreateMr.isVisible = true
-                    binding.btnCreateMr.text = "重新预检"
-                    binding.btnCreateMr.setOnClickListener {
-                        requestPreflight(projectId, taskId, itemDto)
-                    }
-                }
-                // 预检失败：展示 failureReason + failureCode
-                "FAILED", "STALE" -> {
-                    binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "预检失败：${status.failureReason ?: status.status}${status.failureCode?.let { "（$it）" } ?: ""}"
-                    binding.btnCreateMr.isVisible = true
-                    binding.btnCreateMr.text = "重试预检"
-                    binding.btnCreateMr.setOnClickListener {
-                        requestPreflight(projectId, taskId, itemDto)
-                    }
-                }
-                // 进行中
-                "REQUESTED", "DRY_RUN_QUEUED", "DRY_RUN_RUNNING" -> {
-                    binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "预检中（${status.status}）…"
-                }
-                else -> {
-                    binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "预检状态：${status.status}"
-                }
             }
+            "CREATING_MR" -> {
+                binding.tvStatus.text = "CQ+1 已通过，正在创建 MR…"
+            }
+            "CQ_REJECTED" -> {
+                binding.tvStatus.text = "CQ 被拒绝${status.failureCode?.let { "（$it）" } ?: ""}"
+                val rejectReason = status.cqPlusOne?.reason?.takeIf { it.isNotBlank() }
+                    ?: status.cqReviewReason?.takeIf { it.isNotBlank() }
+                    ?: status.reviewReason?.takeIf { it.isNotBlank() }
+                    ?: status.failureReason?.takeIf { it.isNotBlank() }
+                binding.tvRejectReason.isVisible = rejectReason != null
+                if (rejectReason != null) binding.tvRejectReason.text = "CQ+1 被拒原因：$rejectReason"
+                // 重试：仅 canRetry==true 显示（§清单 §6）
+                binding.btnRow.isVisible = status.canRetry == true
+                binding.btnRetry.isVisible = status.canRetry == true
+                binding.btnRetry.setOnClickListener { retryPreflight(projectId, status.id) }
+            }
+            "FAILED", "STALE" -> {
+                binding.tvStatus.text = buildFailureText(status)
+                // 重试：仅 canRetry==true 显示（§清单 §6）
+                binding.btnRow.isVisible = status.canRetry == true
+                binding.btnRetry.isVisible = status.canRetry == true
+                binding.btnRetry.setOnClickListener { retryPreflight(projectId, status.id) }
+            }
+            "REQUESTED", "DRY_RUN_QUEUED", "DRY_RUN_RUNNING" -> {
+                binding.tvStatus.text = "预检中（${status.status}）…"
+            }
+            else -> binding.tvStatus.text = "预检状态：${status.status}"
+        }
+        return binding.root
+    }
+
+    /** 预检失败文案：INVALID_REQUEST 时优先 failureDetails，另拼 failureStage/workerCode/workerHttpStatus 便于排查 */
+    private fun buildFailureText(status: MergeRequestPreflightDto): String {
+        val sb = StringBuilder("预检失败")
+        val details = status.failureDetails?.takeIf { it.isNotEmpty() }
+        val reason = if (!details.isNullOrEmpty()) {
+            details.joinToString("；") { d ->
+                listOfNotNull(d.field, d.reason).joinToString(" ").ifBlank { d.value ?: "" }
+            }
+        } else {
+            status.failureReason?.takeIf { it.isNotBlank() } ?: status.status
+        }
+        sb.append("：").append(reason)
+        status.failureCode?.let { sb.append("（$it）") }
+        val stage = status.failureStage?.takeIf { it.isNotBlank() }
+        val worker = listOfNotNull(
+            status.workerCode?.takeIf { it.isNotBlank() },
+            status.workerHttpStatus?.takeIf { it.isNotBlank() }
+        ).joinToString("/")
+        if (!stage.isNullOrBlank() || worker.isNotBlank()) {
+            sb.append(" ").append(listOfNotNull(stage, worker).joinToString(" "))
+        }
+        return sb.toString()
+    }
+
+    /** 重试预检：仅 canRetry=true 且 CQ_REJECTED/FAILED 时调用；创建新 Dry Run，成功后刷新 */
+    private fun retryPreflight(projectId: String, preflightId: String?) {
+        if (preflightId.isNullOrBlank()) {
+            Toast.makeText(requireContext(), "缺少预检记录", Toast.LENGTH_SHORT).show()
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            taskRepository.retryMergeRequestPreflight(projectId, preflightId, UUID.randomUUID().toString())
+                .onSuccess {
+                    Toast.makeText(requireContext(), "已重新发起预检，正在运行 DryRun", Toast.LENGTH_SHORT).show()
+                    item?.let { loadPreflight(it) }
+                }
+                .onFailure { e ->
+                    Toast.makeText(requireContext(), "重试预检失败：${e.message}", Toast.LENGTH_LONG).show()
+                }
         }
     }
 
@@ -288,13 +300,7 @@ class DeliveryItemDetailFragment : Fragment() {
                 .onSuccess {
                     android.util.Log.d("Preflight", "doCqApprove SUCCESS")
                     Toast.makeText(requireContext(), "已提交 CQ+1", Toast.LENGTH_SHORT).show()
-                    // 乐观更新：立即隐藏 CQ 操作按钮并提示推进中，再拉最新预检状态（后端可能异步进入 CREATING_MR）
-                    binding.btnCqApprove.isVisible = false
-                    binding.btnCqReject.isVisible = false
-                    binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "CQ+1 已提交，正在创建 MR…"
-                    cqActionPending = true
-                    cqActionPendingText = "CQ+1 已提交，正在创建 MR…"
+                    // 操作成功：重查最新预检状态（多仓库容器由 loadPreflight 重建）
                     item?.let { loadPreflight(it) }
                 }
                 .onFailure { e ->
@@ -354,11 +360,7 @@ class DeliveryItemDetailFragment : Fragment() {
                         .onSuccess {
                             android.util.Log.d("Preflight", "doCqReject SUCCESS")
                             Toast.makeText(requireContext(), "已拒绝 CQ", Toast.LENGTH_SHORT).show()
-                            // 乐观更新：立即隐藏 CQ 操作按钮，再拉最新预检状态（后端应进入 CQ_REJECTED）
-                            binding.btnCqApprove.isVisible = false
-                            binding.btnCqReject.isVisible = false
-                            cqActionPending = true
-                            cqActionPendingText = "已拒绝 CQ，等待重新预检"
+                            // 操作成功：重查最新预检状态（多仓库容器由 loadPreflight 重建）
                             item?.let { loadPreflight(it) }
                         }
                         .onFailure { e ->

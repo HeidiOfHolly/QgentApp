@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [MessageEntity::class], version = 9, exportSchema = false)
+@Database(entities = [MessageEntity::class], version = 10, exportSchema = false)
 abstract class QgentDatabase : RoomDatabase() {
 
     abstract fun messageDao(): MessageDao
@@ -27,6 +27,15 @@ abstract class QgentDatabase : RoomDatabase() {
                 }
                 if (!hasColumn(database, "currentRepositoryPathsJson")) {
                     database.execSQL("ALTER TABLE chat_message ADD COLUMN currentRepositoryPathsJson TEXT")
+                }
+            }
+        }
+
+        /** v9→v10：新增 DIFF 卡驳回/拒绝意见 reviewReason 列（diff 拒绝后回群引用续作） */
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                if (!hasColumn(database, "reviewReason")) {
+                    database.execSQL("ALTER TABLE chat_message ADD COLUMN reviewReason TEXT")
                 }
             }
         }
@@ -52,7 +61,7 @@ abstract class QgentDatabase : RoomDatabase() {
                     QgentDatabase::class.java,
                     "qgent.db"
                 )
-                    .addMigrations(MIGRATION_8_9)
+                    .addMigrations(MIGRATION_8_9, MIGRATION_9_10)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }

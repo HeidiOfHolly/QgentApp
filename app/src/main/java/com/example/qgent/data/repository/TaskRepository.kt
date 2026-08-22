@@ -155,6 +155,9 @@ interface TaskRepository {
     /** 单条 MR 预检详情（§46.7：页面刷新/SSE 断线后恢复状态） */
     suspend fun getMergeRequestPreflight(projectId: String, preflightId: String): Result<MergeRequestPreflightDto>
 
+    /** 重试 MR 预检（§清单 §6：仅 canRetry=true 且 CQ_REJECTED/FAILED 时调用；创建新 Dry Run） */
+    suspend fun retryMergeRequestPreflight(projectId: String, preflightId: String, idempotencyKey: String): Result<MergeRequestPreflightDto>
+
     /** Dry Run 预检 CQ+1（§27.10：通过后触发自动创建 MR） */
     suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit>
 

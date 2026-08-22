@@ -209,6 +209,13 @@
                     android:visibility="gone" />
             </LinearLayout>
 
+            <!-- 多仓库预检状态块（每仓库一份 item_preflight_status；无记录时用 tvPreflightStatus 占位） -->
+            <LinearLayout
+                android:id="@+id/containerPreflights"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
             <TextView
                 android:id="@+id/tvPreflightStatus"
                 android:layout_width="match_parent"
