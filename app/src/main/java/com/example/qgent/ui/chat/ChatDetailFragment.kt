@@ -308,7 +308,6 @@ class ChatDetailFragment : Fragment() {
         if (text.isEmpty()) return
         // v2.0.6 §1：mentions 随消息体提交（@用户通知 / @Agent 自动触发任务）
         val mentions = extractMentions(text)
-        val agentMentioned = mentions.any { it.type == "AGENT" }
         val replyToId = quoteTarget?.id
         val replyToSummary = quoteTarget?.let { "${it.senderName}：${it.displayContent()}" }
         // B2/C2：引用 DIFF 卡发送 = 增量修改续作（服务端复用源 Workspace）
@@ -366,14 +365,14 @@ class ChatDetailFragment : Fragment() {
                         .onSuccess { dto ->
                             Log.d("SendMsg", "send success id=${dto.id} senderId=${dto.senderId} mentions=${dto.mentions} replyTo=${dto.replyToId}")
                             replaceLocalMessage(local.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
-                            // 触发任务弹窗：@Agent（契约 §7）或 引用 DIFF 卡（续作自动路径，无需 @Agent，
-                            // 服务端按 replyToId 指向 DIFF 消息判定续作、复用源 Workspace）
-                            if (agentMentioned || quotingDiff) {
+                            // 触发任务弹窗：仅引用 DIFF 卡续作需显式触发（服务端按 replyToId 指向 DIFF 消息
+                            // 判定续作、复用源 Workspace）；普通 @Agent 消息由服务端自动创建任务，不再额外触发
+                            if (quotingDiff) {
                                 showCreateTaskDialog(
                                     prefillTitle = text.take(30),
                                     prefillRequirement = text,
                                     messageId = dto.id,
-                                    quotingDiff = quotingDiff
+                                    quotingDiff = true
                                 )
                             }
                         }
@@ -1031,6 +1030,11 @@ class ChatDetailFragment : Fragment() {
                     OpenMrGuidance.show(requireContext(), projectId, e)
                     return@onFailure
                 }
+                // §46：项目无可用的 ACTIVE 仓库，后端不自动建任务
+                if (e is com.example.qgent.data.model.ApiException && e.code == "PROJECT_NO_ACTIVE_REPOSITORIES") {
+                    Toast.makeText(requireContext(), R.string.start_task_no_active_repos, Toast.LENGTH_LONG).show()
+                    return@onFailure
+                }
                 val rid = if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("HTTP_500")) {
                     e.requestId?.let { "\nrequestId: $it" }.orEmpty()
                 } else {
@@ -1180,7 +1184,6 @@ class ChatDetailFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             // v2.0.6 §1：mentions 随消息体提交
             val mentions = extractMentions(message.content)
-            val agentMentioned = mentions.any { it.type == "AGENT" }
             // 引用消息重发保持 type=QUOTE，并从 replyToSummary（"发送者：被引用文本"）还原引用信息
             val sendType = if (message.replyToId != null) "QUOTE" else "TEXT"
             val content = if (message.replyToId != null) {
@@ -1205,14 +1208,14 @@ class ChatDetailFragment : Fragment() {
                 )
                     .onSuccess { dto ->
                         replaceLocalMessage(message.id, dto.toChatMessage(SessionStore.user()?.id, memberNamesById))
-                        // 触发任务弹窗：@Agent 或 引用 DIFF 卡（续作自动路径，无需 @Agent；判定同 sendTextMessage）
+                        // 触发任务弹窗：仅引用 DIFF 卡续作需显式触发（普通 @Agent 由服务端自动创建；判定同 sendTextMessage）
                         val quotingDiff = messages.firstOrNull { it.id == message.replyToId }?.type == MessageType.DIFF
-                        if (agentMentioned || quotingDiff) {
+                        if (quotingDiff) {
                             showCreateTaskDialog(
                                 prefillTitle = message.content.take(30),
                                 prefillRequirement = message.content,
                                 messageId = dto.id,
-                                quotingDiff = quotingDiff
+                                quotingDiff = true
                             )
                         }
                     }

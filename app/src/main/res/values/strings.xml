@@ -88,6 +88,8 @@
     <!-- §27.3/§27.4：分支存在未合并 MR 时引导查看 MR -->
     <string name="open_mr_blocked_title">存在未合并的合并请求</string>
     <string name="open_mr_blocked_view">查看合并请求</string>
+    <!-- §46：trigger-task 项目无可用的 ACTIVE 仓库 -->
+    <string name="start_task_no_active_repos">项目暂无可用仓库，请先绑定或创建仓库</string>
     <string name="task_realtime_preview">🛠 实时预览</string>
     <string name="view_task_run_logs">查看执行日志</string>
     <string name="task_run_logs_title">执行日志</string>

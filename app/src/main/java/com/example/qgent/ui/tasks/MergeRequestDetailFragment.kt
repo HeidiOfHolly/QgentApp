@@ -157,15 +157,22 @@ class MergeRequestDetailFragment : Fragment() {
     private fun userRepository(): com.example.qgent.data.repository.UserRepository =
         (requireActivity().application as QgentApp).container.userRepository
 
-    /** Project Admin 合并 */
+    /** Project Admin 合并：弹窗内可选填合并提交说明（commitMessage，留空用 GitHub 默认） */
     private fun confirmMerge() {
+        val input = android.widget.EditText(requireContext()).apply {
+            hint = "合并提交说明（可选，留空用默认）"
+            textSize = 15f
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
         MaterialAlertDialogBuilder(requireContext())
             .setTitle("确认合并")
             .setMessage("通过质量门禁后将合并该 MR，GitHub 返回 merged=true 后状态更新为已合并。确认执行？")
+            .setView(input)
             .setNegativeButton("取消", null)
             .setPositiveButton("合并") { _, _ ->
+                val commitMessage = input.text.toString().trim().ifEmpty { null }
                 viewLifecycleOwner.lifecycleScope.launch {
-                    taskRepository.mergeRequest(projectId, mergeRequestId, UUID.randomUUID().toString())
+                    taskRepository.mergeRequest(projectId, mergeRequestId, UUID.randomUUID().toString(), commitMessage)
                         .onSuccess { Toast.makeText(requireContext(), "已发起合并", Toast.LENGTH_SHORT).show() }
                         .onFailure { e -> Toast.makeText(requireContext(), "合并失败：${e.message}", Toast.LENGTH_LONG).show() }
                     loadDetail()
@@ -188,6 +195,10 @@ class MergeRequestDetailFragment : Fragment() {
         binding.tvMrTitle.text = "#${detail.number} ${detail.title.orEmpty()}"
         binding.tvMrStatus.text = statusLabel(detail.status)
         binding.tvMrBranches.text = "${detail.sourceBranch} → ${detail.targetBranch}"
+        // 合并失败：展示 mergeOperationFailureReason（优先 reason，缺省回退 code/状态）
+        val failedReason = detail.mergeOperationFailureReason
+        binding.tvMrFailure.isVisible = detail.mergeOperationStatus == "FAILED" && !failedReason.isNullOrBlank()
+        if (binding.tvMrFailure.isVisible) binding.tvMrFailure.text = failedReason
         // 仓库名反查
         viewLifecycleOwner.lifecycleScope.launch {
             githubRepository.getProjectRepositories(projectId)

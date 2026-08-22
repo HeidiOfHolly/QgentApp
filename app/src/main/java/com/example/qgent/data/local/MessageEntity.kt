@@ -33,6 +33,9 @@ data class MessageEntity(
     val taskDeliveryMode: String?,
     val taskPlanSummary: String?,
     val taskPlanStepsJson: String?,
+    /** TASK_STATUS 卡片（§39）：仓库映射（JSON 数组串）+ 实际涉及路径（JSON 数组串） */
+    val repositoryMappingsJson: String?,
+    val currentRepositoryPathsJson: String?,
     /** DIFF 卡片：diffId / 标题 / 总变更统计（缺这些字段缓存恢复后点卡片会报"缺少 diffId"） */
     val diffId: String?,
     val diffTitle: String?,

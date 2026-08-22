@@ -53,4 +53,19 @@
         android:textSize="14sp"
         app:layout_constraintTop_toBottomOf="@id/tvMrRepo"
         tools:text="feature/login-api → main" />
+
+    <!-- 合并失败原因：mergeOperationStatus=FAILED 时展示 mergeOperationFailureReason（缺省隐藏） -->
+    <TextView
+        android:id="@+id/tvMrFailure"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="@color/exit_red"
+        android:textSize="13sp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/tvMrBranches"
+        tools:text="GitHub 拒绝了合并请求：…"
+        tools:visibility="visible" />
 </androidx.constraintlayout.widget.ConstraintLayout>

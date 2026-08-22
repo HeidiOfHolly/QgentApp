@@ -2,6 +2,7 @@ package com.example.qgent.ui.tasks
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import com.example.qgent.data.model.MergeRequestDto
 import com.example.qgent.databinding.ItemMrCardBinding
@@ -38,6 +39,10 @@ class MergeRequestAdapter(
         b.tvMrRepo.text = repoNameById[mr.repositoryId] ?: "仓库"
         b.tvMrBranches.text = "${mr.sourceBranch} → ${mr.targetBranch}"
         b.tvMrStatus.text = statusText(mr.status)
+        // 合并失败：展示 mergeOperationFailureReason（优先 reason，缺省回退 code/状态）
+        val failedReason = mr.mergeOperationFailureReason
+        b.tvMrFailure.isVisible = mr.mergeOperationStatus == "FAILED" && !failedReason.isNullOrBlank()
+        if (b.tvMrFailure.isVisible) b.tvMrFailure.text = failedReason
         b.root.setOnClickListener {
             // PENDING_CREATE 是列表投影占位（§43：number=0/webUrl=null，真实 MR 未创建），
             // 不得用占位 id 调真实 MR 详情；点击仅提示，不跳转

@@ -32,6 +32,9 @@ data class ChatMessage(
     val taskDeliveryMode: String? = null,
     val taskPlanSummary: String? = null,
     val taskPlanSteps: List<TaskStepSnapshot>? = null,
+    /** TASK_STATUS 卡片（§39）：Workspace 完整仓库映射 + 实际涉及路径（currentRepositoryPaths 按 workspacePath 匹配） */
+    val repositoryMappings: List<TaskRepositoryMapping>? = null,
+    val currentRepositoryPaths: List<String>? = null,
     /** DIFF 卡片：content 含 diffId，展示时用 DiffRepository 拉取文件内容 */
     val diffId: String? = null,
     /** DIFF 卡片（v23）：审核批次 / 审核状态 / 交付状态 */

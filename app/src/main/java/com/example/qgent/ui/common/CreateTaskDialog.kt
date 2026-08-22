@@ -240,6 +240,11 @@ class CreateTaskDialog(
                         OpenMrGuidance.show(context, projectId, e)
                         return@onFailure
                     }
+                    // §46：项目无可用的 ACTIVE 仓库，后端不自动建任务
+                    if (e is com.example.qgent.data.model.ApiException && e.code == "PROJECT_NO_ACTIVE_REPOSITORIES") {
+                        Toast.makeText(context, R.string.start_task_no_active_repos, Toast.LENGTH_LONG).show()
+                        return@onFailure
+                    }
                     val rid = if (e is com.example.qgent.data.model.ApiException && e.code.startsWith("HTTP_500")) {
                         e.requestId?.let { "\nrequestId: $it" }.orEmpty()
                     } else {

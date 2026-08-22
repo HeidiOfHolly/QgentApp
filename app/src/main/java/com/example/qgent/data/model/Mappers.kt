@@ -94,6 +94,10 @@ fun GroupMessageDto.toChatMessage(myUserId: String?, memberNamesById: Map<String
         taskDeliveryMode = if (parsedType == MessageType.TASK_STATUS) content?.deliveryMode else null,
         taskPlanSummary = if (parsedType == MessageType.TASK_STATUS) content?.plan?.summary else null,
         taskPlanSteps = if (parsedType == MessageType.TASK_STATUS) content?.plan?.steps?.map { it.toTaskStepSnapshot() } else null,
+        // §39：TASK_STATUS 卡片仓库映射 + 实际涉及路径
+        repositoryMappings = if (parsedType == MessageType.TASK_STATUS)
+            content?.repositoryMappings?.map { it.toTaskRepositoryMapping() } else null,
+        currentRepositoryPaths = if (parsedType == MessageType.TASK_STATUS) content?.currentRepositoryPaths else null,
         diffId = if (parsedType == MessageType.DIFF) content?.diffId else null,
         diffTitle = if (parsedType == MessageType.DIFF) content?.title else null,
         diffAdditions = if (parsedType == MessageType.DIFF) content?.additions else null,
@@ -123,6 +127,18 @@ private fun TaskStepSnapshotDto.toTaskStepSnapshot(): TaskStepSnapshot = TaskSte
     status = status,
     message = message
 )
+
+/** §39：TaskRepositoryMappingDto → UI TaskRepositoryMapping */
+private fun TaskRepositoryMappingDto.toTaskRepositoryMapping(): com.example.qgent.model.TaskRepositoryMapping =
+    com.example.qgent.model.TaskRepositoryMapping(
+        workspacePath = workspacePath,
+        repositoryId = repositoryId,
+        name = name,
+        fullName = fullName,
+        provider = provider,
+        baseRef = baseRef,
+        sourceBranch = sourceBranch
+    )
 
 /** TASK_STATUS 卡片摘要：content JSON 含 taskId/status/node/message，拼成「状态 · 节点 · 说明」 */
 private fun GroupMessageDto.taskStatusSummary(): String {

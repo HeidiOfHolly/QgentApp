@@ -178,10 +178,33 @@ class ChatMessageAdapter(
             binding.tvTaskStatus.text = if (isSystem) "系统" else (message.taskStatus ?: "运行中")
             binding.tvTaskNode.isVisible = !isSystem && !message.taskNode.isNullOrBlank()
             if (!isSystem) message.taskNode?.let { binding.tvTaskNode.text = it }
+            bindRepos(message)
             binding.tvTaskMessage.isVisible = message.content.isNotBlank()
             binding.tvTaskMessage.text = message.content
             // 点击卡片 → 查看任务状态/Diff 确认详情
             binding.root.setOnClickListener { onTaskStatusClick?.invoke(message) }
+        }
+
+        /** §39 步骤仓库展示：currentRepositoryPaths 缺失 → 展示全部映射；空数组 → 不展示；
+         *  非空 → 仅展示按 workspacePath 命中的映射。展示名 fullName → name → repositoryId。 */
+        private fun bindRepos(message: ChatMessage) {
+            val mappings = message.repositoryMappings.orEmpty()
+            val paths = message.currentRepositoryPaths
+            if (mappings.isEmpty() || paths == null) {
+                // 无映射数据，或 currentRepositoryPaths 缺失（兼容旧数据：展示全部映射仓库）
+                val shown = mappings
+                binding.tvTaskRepos.isVisible = shown.isNotEmpty()
+                if (shown.isNotEmpty()) binding.tvTaskRepos.text = "仓库：${shown.joinToString("、") { it.displayName }}"
+                return
+            }
+            if (paths.isEmpty()) {
+                // currentRepositoryPaths 为空数组：当前步骤未选定操作仓库，不展示
+                binding.tvTaskRepos.isVisible = false
+                return
+            }
+            val shown = mappings.filter { it.workspacePath in paths }
+            binding.tvTaskRepos.isVisible = shown.isNotEmpty()
+            if (shown.isNotEmpty()) binding.tvTaskRepos.text = "仓库：${shown.joinToString("、") { it.displayName }}"
         }
     }
 

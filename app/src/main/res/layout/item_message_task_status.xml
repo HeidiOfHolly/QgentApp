@@ -63,6 +63,18 @@
             android:textSize="11sp"
             tools:text="执行节点：DEVELOPER" />
 
+        <!-- §39：当前步骤实际涉及的仓库（currentRepositoryPaths 过滤 repositoryMappings；缺省隐藏） -->
+        <TextView
+            android:id="@+id/tvTaskRepos"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:gravity="center"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:visibility="gone"
+            tools:text="仓库：auth-service" />
+
         <TextView
             android:id="@+id/tvTaskPhase"
             android:layout_width="wrap_content"

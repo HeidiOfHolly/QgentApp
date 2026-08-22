@@ -131,8 +131,8 @@ class DeliveryItemDetailFragment : Fragment() {
                 }
                 return@launch
             }
-            // 真实 MR 已创建 → 展示链接，无操作按钮
-            if (status.status == "MR_CREATED" || status.mergeRequest != null) {
+            // 真实 MR 已创建 → 展示链接，无操作按钮（仅 MR_CREATED 才显示 MR 链接，§46）
+            if (status.status == "MR_CREATED") {
                 binding.tvPreflightStatus.isVisible = true
                 val mr = status.mergeRequest
                 binding.tvPreflightStatus.text = "MR 已创建：MR #${mr?.number ?: "?"} ${mr?.title.orEmpty()}"
@@ -161,17 +161,17 @@ class DeliveryItemDetailFragment : Fragment() {
                 // CQ 被拒绝
                 "CQ_REJECTED" -> {
                     binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "CQ 被拒绝：${status.failureReason ?: "见审查意见"}"
+                    binding.tvPreflightStatus.text = "CQ 被拒绝：${status.failureReason ?: "见审查意见"}${status.failureCode?.let { "（$it）" } ?: ""}"
                     binding.btnCreateMr.isVisible = true
                     binding.btnCreateMr.text = "重新预检"
                     binding.btnCreateMr.setOnClickListener {
                         requestPreflight(projectId, taskId, itemDto)
                     }
                 }
-                // 预检失败
+                // 预检失败：展示 failureReason + failureCode
                 "FAILED", "STALE" -> {
                     binding.tvPreflightStatus.isVisible = true
-                    binding.tvPreflightStatus.text = "预检失败：${status.failureReason ?: status.status}"
+                    binding.tvPreflightStatus.text = "预检失败：${status.failureReason ?: status.status}${status.failureCode?.let { "（$it）" } ?: ""}"
                     binding.btnCreateMr.isVisible = true
                     binding.btnCreateMr.text = "重试预检"
                     binding.btnCreateMr.setOnClickListener {

@@ -425,6 +425,9 @@ data class MessageContentDto(
     @SerializedName("message") val message: String? = null,
     @SerializedName("currentStepId") val currentStepId: String? = null,
     @SerializedName("plan") val plan: PlanSnapshotDto? = null,
+    // ── TASK_STATUS 卡片仓库映射（§39）：repositoryMappings 全量映射 + currentRepositoryPaths 实际涉及路径 ──
+    @SerializedName("repositoryMappings") val repositoryMappings: List<TaskRepositoryMappingDto>? = null,
+    @SerializedName("currentRepositoryPaths") val currentRepositoryPaths: List<String>? = null,
     // ── DIFF 卡片（v23 §23.4）：content 至少含 diffId，另带 reviewBatchId/reviewStatus/deliveryStatus ──
     @SerializedName(value = "diffId", alternate = ["reviewId", "resourceId"])
     val diffId: String? = null,
@@ -448,6 +451,21 @@ data class MessageContentDto(
 data class PlanSnapshotDto(
     val summary: String? = null,
     val steps: List<TaskStepSnapshotDto>? = null
+)
+
+/**
+ * TASK_STATUS 卡片仓库映射项（§39 repositoryMappings[]）。
+ * workspacePath 为 Workspace 内一级相对目录（如 repo-2），currentRepositoryPaths 按它匹配；
+ * repositoryId 为 project_repositories.id。展示优先 fullName → name → repositoryId。
+ */
+data class TaskRepositoryMappingDto(
+    @SerializedName("workspacePath") val workspacePath: String?,
+    @SerializedName("repositoryId") val repositoryId: String?,
+    val name: String?,
+    @SerializedName("fullName") val fullName: String?,
+    val provider: String?,
+    @SerializedName("baseRef") val baseRef: String?,
+    @SerializedName("sourceBranch") val sourceBranch: String?
 )
 
 /** TASK_STATUS 卡 plan.steps 单步快照（v23 §23.3；stepId 为数据库 TaskStepEntity.id） */
@@ -1228,6 +1246,10 @@ data class MergeRequestDto(
     val status: String,                 // OPEN / MERGED / CLOSED
     @SerializedName("headCommit") val headCommit: String?,
     @SerializedName("qualityGate") val qualityGate: MergeRequestQualityGateDto?,
+    /** 合并操作状态：SUCCEEDED / FAILED 等；FAILED 时展示 mergeOperationFailureReason（§合并失败字段） */
+    @SerializedName("mergeOperationStatus") val mergeOperationStatus: String?,
+    @SerializedName("mergeOperationFailureCode") val mergeOperationFailureCode: String?,
+    @SerializedName("mergeOperationFailureReason") val mergeOperationFailureReason: String?,
     @SerializedName("createdAt") val createdAt: String?
 )
 
@@ -1248,6 +1270,10 @@ data class MergeRequestDetailDto(
     @SerializedName("headCommit") val headCommit: String?,
     @SerializedName("qualityGate") val qualityGate: MergeRequestQualityGateDto?,
     @SerializedName("diffId") val diffId: String?,
+    /** 合并操作状态：SUCCEEDED / FAILED 等；FAILED 时展示 mergeOperationFailureReason（§合并失败字段） */
+    @SerializedName("mergeOperationStatus") val mergeOperationStatus: String?,
+    @SerializedName("mergeOperationFailureCode") val mergeOperationFailureCode: String?,
+    @SerializedName("mergeOperationFailureReason") val mergeOperationFailureReason: String?,
     @SerializedName("createdAt") val createdAt: String?,
     /** GitHub MR 链接（§13/§21.2 详情应返回；webUrl 为空时前端不渲染链接） */
     @SerializedName("webUrl") val webUrl: String? = null
@@ -1360,6 +1386,11 @@ data class DeliveryUserDto(val id: String?, @SerializedName("displayName") val d
 
 /** CQ+1 / CQ 拒绝请求体（reason 可选） */
 data class CqActionRequest(val reason: String? = null)
+
+/** 合并 MR 请求体：commitMessage 可选，留空/null 时后端用 GitHub 默认提交说明 */
+data class MergeCommitMessageRequest(
+    @SerializedName("commitMessage") val commitMessage: String? = null
+)
 
 /** 空请求体（merge / sync 等无 body 的 POST） */
 class EmptyBody

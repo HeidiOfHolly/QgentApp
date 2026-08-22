@@ -104,6 +104,18 @@
                 android:textSize="15sp"
                 tools:text="feature/login-api → main" />
 
+            <!-- 合并失败原因：mergeOperationStatus=FAILED 时展示 mergeOperationFailureReason（缺省隐藏） -->
+            <TextView
+                android:id="@+id/tvMrFailure"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="@color/exit_red"
+                android:textSize="14sp"
+                android:visibility="gone"
+                tools:text="GitHub 拒绝了合并请求：…"
+                tools:visibility="visible" />
+
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"

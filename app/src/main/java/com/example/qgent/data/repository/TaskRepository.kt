@@ -125,8 +125,8 @@ interface TaskRepository {
     /** 拒绝 CQ（必填 reason） */
     suspend fun cqReject(projectId: String, mergeRequestId: String, reason: String, idempotencyKey: String): Result<Unit>
 
-    /** 通过门禁后合并（Project Admin） */
-    suspend fun mergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit>
+    /** 通过门禁后合并（Project Admin）；commitMessage 可选，留空/null 用 GitHub 默认说明 */
+    suspend fun mergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String, commitMessage: String? = null): Result<Unit>
 
     /** 触发从 GitHub 同步 MR 状态 */
     suspend fun syncMergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit>

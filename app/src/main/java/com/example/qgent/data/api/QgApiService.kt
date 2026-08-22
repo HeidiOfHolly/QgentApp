@@ -78,6 +78,7 @@ import com.example.qgent.data.model.DryRunListItemDto
 import com.example.qgent.data.model.DryRunReportDto
 import com.example.qgent.data.model.DryRunRetryResponse
 import com.example.qgent.data.model.EmptyBody
+import com.example.qgent.data.model.MergeCommitMessageRequest
 import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestPreflightDto
 import com.example.qgent.data.model.MergeRequestReviewDto
@@ -861,13 +862,13 @@ interface QgApiService {
         @Body body: CqActionRequest
     ): Response<ApiResponse<Unit>>
 
-    /** 通过门禁后执行合并（Project Admin） */
+    /** 通过门禁后执行合并（Project Admin）；commitMessage 可选，留空用 GitHub 默认说明 */
     @POST("projects/{projectId}/merge-requests/{mergeRequestId}/merge")
     suspend fun mergeRequest(
         @Path("projectId") projectId: String,
         @Path("mergeRequestId") mergeRequestId: String,
         @Header("Idempotency-Key") idempotencyKey: String,
-        @Body body: EmptyBody
+        @Body body: MergeCommitMessageRequest
     ): Response<ApiResponse<Unit>>
 
     /** 触发从 GitHub 同步 MR 最新状态 */
@@ -895,12 +896,13 @@ interface QgApiService {
         @Body body: RequestMergeRequestPreflightRequest
     ): Response<ApiResponse<RequestMergeRequestPreflightResponse>>
 
-    /** 按 Task 查询全部仓库 MR 预检状态（§46.7） */
+    /** 按 Task 查询全部仓库 MR 预检状态（§46.7）。
+     *  响应信封兼容 {data:[...]} / 裸数组 / {items:[...]}，故返回 JsonElement 由调用方解析。 */
     @GET("projects/{projectId}/tasks/{taskId}/merge-request-preflight")
     suspend fun getTaskMergeRequestPreflight(
         @Path("projectId") projectId: String,
         @Path("taskId") taskId: String
-    ): Response<ApiResponse<List<MergeRequestPreflightDto>>>
+    ): Response<com.google.gson.JsonElement>
 
     /** 单条 MR 预检详情（§46.7：页面刷新/SSE 断线后恢复状态） */
     @GET("projects/{projectId}/merge-requests/preflight/{preflightId}")

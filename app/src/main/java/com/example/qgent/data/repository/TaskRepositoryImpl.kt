@@ -13,6 +13,7 @@ import com.example.qgent.data.model.DryRunListItemDto
 import com.example.qgent.data.model.DryRunReportDto
 import com.example.qgent.data.model.DryRunRetryResponse
 import com.example.qgent.data.model.EmptyBody
+import com.example.qgent.data.model.MergeCommitMessageRequest
 import com.example.qgent.data.model.MergeRequestCheckDto
 import com.example.qgent.data.model.MergeRequestDetailDto
 import com.example.qgent.data.model.MergeRequestDto
@@ -34,6 +35,7 @@ import com.example.qgent.data.model.WorkspaceDiffPreviewDto
 import com.example.qgent.data.model.WorkspaceDiffPreviewFileDto
 import com.example.qgent.data.model.toDataOrThrow
 import com.example.qgent.data.model.toUnitOrThrow
+import com.google.gson.JsonElement
 
 class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
 
@@ -171,8 +173,13 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
     override suspend fun cqReject(projectId: String, mergeRequestId: String, reason: String, idempotencyKey: String): Result<Unit> =
         apiCall { service.cqReject(projectId, mergeRequestId, idempotencyKey, CqActionRequest(reason)).toUnitOrThrow() }
 
-    override suspend fun mergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit> =
-        apiCall { service.mergeRequest(projectId, mergeRequestId, idempotencyKey, EmptyBody()).toUnitOrThrow() }
+    override suspend fun mergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String, commitMessage: String?): Result<Unit> =
+        apiCall {
+            service.mergeRequest(
+                projectId, mergeRequestId, idempotencyKey,
+                MergeCommitMessageRequest(commitMessage)
+            ).toUnitOrThrow()
+        }
 
     override suspend fun syncMergeRequest(projectId: String, mergeRequestId: String, idempotencyKey: String): Result<Unit> =
         apiCall { service.syncMergeRequest(projectId, mergeRequestId, idempotencyKey, EmptyBody()).toUnitOrThrow() }
@@ -206,7 +213,50 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
         }
 
     override suspend fun getTaskMergeRequestPreflight(projectId: String, taskId: String): Result<List<MergeRequestPreflightDto>> =
-        apiCall { service.getTaskMergeRequestPreflight(projectId, taskId).toDataOrThrow() }
+        apiCall { parsePreflightList(service.getTaskMergeRequestPreflight(projectId, taskId)) }
+
+    /** 解析预检列表响应：兼容 {data:[...]} / 裸数组 / {items:[...]} 三形态（§46 预检列表）。
+     *  非 2xx 或 error 分支按统一错误契约抛 ApiException。 */
+    private fun parsePreflightList(resp: retrofit2.Response<com.google.gson.JsonElement>): List<MergeRequestPreflightDto> {
+        if (!resp.isSuccessful) resp.throwPreflightHttpError()
+        val body = resp.body()
+        val gson = com.google.gson.Gson()
+        val type = object : com.google.gson.reflect.TypeToken<List<MergeRequestPreflightDto>>() {}.type
+        val parse: (JsonElement) -> List<MergeRequestPreflightDto> = { el ->
+            if (el.isJsonArray) {
+                gson.fromJson(el, type) ?: emptyList()
+            } else if (el.isJsonObject) {
+                val obj = el.asJsonObject
+                obj.get("error")?.takeIf { !it.isJsonNull }?.let { errObj ->
+                    val code = errObj.asJsonObject.get("code")?.asString
+                    val message = errObj.asJsonObject.get("message")?.asString ?: "请求失败"
+                    throw com.example.qgent.data.model.ApiException(code ?: "UNKNOWN", message)
+                }
+                val data = obj.get("data")
+                val items = obj.get("items")
+                val list = (data ?: items)?.takeIf { !it.isJsonNull }
+                if (list?.isJsonArray == true) gson.fromJson(list, type) ?: emptyList()
+                else emptyList()
+            } else emptyList()
+        }
+        return body?.let { parse(it) } ?: throw com.example.qgent.data.model.ApiException("EMPTY_RESPONSE", "响应为空")
+    }
+
+    /** 非 2xx 预检响应：解析 errorBody 统一转 ApiException（与 toDataOrThrow 的 throwHttpError 一致） */
+    private fun retrofit2.Response<*>.throwPreflightHttpError(): Nothing {
+        val gson = com.google.gson.Gson()
+        val parsed = runCatching {
+            errorBody()?.string()?.let { gson.fromJson(it, com.google.gson.JsonObject::class.java) }
+        }.getOrNull()
+        val err = parsed?.get("error")?.takeIf { it.isJsonObject }?.asJsonObject
+        throw com.example.qgent.data.model.ApiException(
+            code = err?.get("code")?.asString ?: "HTTP_${code()}",
+            message = err?.get("message")?.asString ?: "请求失败 (${code()})",
+            requestId = parsed?.get("requestId")?.takeIf { it.isJsonPrimitive }?.asString,
+            details = err?.get("details")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?.mapNotNull { if (it.isJsonPrimitive && it.asJsonPrimitive.isString) com.google.gson.JsonPrimitive(it.asString) else it }
+        )
+    }
 
     override suspend fun getMergeRequestPreflight(projectId: String, preflightId: String): Result<MergeRequestPreflightDto> =
         apiCall { service.getMergeRequestPreflight(projectId, preflightId).toDataOrThrow() }
