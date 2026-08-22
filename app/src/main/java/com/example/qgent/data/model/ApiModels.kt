@@ -1433,7 +1433,15 @@ data class CqPlusOneDetailDto(
     val status: String?,
     val reason: String?,
     @SerializedName("reviewerUserId") val reviewerUserId: String?,
+    @SerializedName("reviewerName") val reviewerName: String?,
     @SerializedName("reviewedAt") val reviewedAt: String?
+)
+
+/** 预检失败明细（§INVALID_REQUEST）：field/value/reason，优先于 failureReason 展示 */
+data class PreflightFailureDetailDto(
+    val field: String?,
+    val value: String?,
+    val reason: String?
 )
 
 /** 单仓库 MR 预检状态（计划 C2：GET /tasks/{taskId}/merge-request-preflight 每仓库一项） */
@@ -1458,6 +1466,10 @@ data class MergeRequestPreflightDto(
     @SerializedName("dryRunStatus") val dryRunStatus: String?,
     @SerializedName("cqPlusOneStatus") val cqPlusOneStatus: String?,
     @SerializedName("cqReviewerUserId") val cqReviewerUserId: String?,
+    @SerializedName("cqReviewerName") val cqReviewerName: String?,
+    /** CQ+1 拒绝意见（平铺，§清单 §3；REJECTED 时非 null） */
+    @SerializedName("cqReviewReason") val cqReviewReason: String? = null,
+    @SerializedName("cqReviewedAt") val cqReviewedAt: String?,
     /** CQ+1 详情（嵌套对象，§46 预检响应：status/reason/reviewerUserId；CQ 被拒时 reason 为拒绝意见） */
     @SerializedName("cqPlusOne") val cqPlusOne: CqPlusOneDetailDto?,
     /** 当前用户是否可提交 CQ+1（服务端派生：Dry Run 通过 + 非发起人/作者/Agent） */
@@ -1467,6 +1479,11 @@ data class MergeRequestPreflightDto(
     @SerializedName("failureReason") val failureReason: String?,
     /** CQ 拒绝意见平铺兜底（部分后端将拒绝原因放顶层而非 cqPlusOne.reason） */
     @SerializedName("reviewReason") val reviewReason: String? = null,
+    /** 失败明细（INVALID_REQUEST 时优先展示） */
+    @SerializedName("failureDetails") val failureDetails: List<PreflightFailureDetailDto>? = null,
+    @SerializedName("failureStage") val failureStage: String? = null,
+    @SerializedName("workerCode") val workerCode: String? = null,
+    @SerializedName("workerHttpStatus") val workerHttpStatus: String? = null,
     @SerializedName("canRetry") val canRetry: Boolean?,
     @SerializedName("mergeRequest") val mergeRequest: DeliveryMergeRequestSummaryDto?,
     @SerializedName("branchLockStatus") val branchLockStatus: String?,
@@ -1489,6 +1506,10 @@ data class RequestMergeRequestPreflightResponse(
     val status: String?,
     @SerializedName("dryRunId") val dryRunId: String?,
     val blockers: List<String>?,
+    @SerializedName("canRetry") val canRetry: Boolean? = null,
+    @SerializedName("failureCode") val failureCode: String? = null,
+    @SerializedName("failureReason") val failureReason: String? = null,
+    @SerializedName("branchLockStatus") val branchLockStatus: String? = null,
     @SerializedName("mergeRequest") val mergeRequest: DeliveryMergeRequestSummaryDto?
 )
 

@@ -918,6 +918,15 @@ interface QgApiService {
         @Path("preflightId") preflightId: String
     ): Response<ApiResponse<MergeRequestPreflightDto>>
 
+    /** 重试 MR 预检（§清单 §6：仅 canRetry=true 且 CQ_REJECTED/FAILED 时调用；创建新 Dry Run） */
+    @POST("projects/{projectId}/merge-requests/preflight/{preflightId}/retries")
+    suspend fun retryMergeRequestPreflight(
+        @Path("projectId") projectId: String,
+        @Path("preflightId") preflightId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: EmptyBody
+    ): Response<ApiResponse<MergeRequestPreflightDto>>
+
     /** Dry Run 预检 CQ+1（§27.10：通过后触发自动创建 MR） */
     @POST("projects/{projectId}/dry-runs/{dryRunId}/cq-approvals")
     suspend fun dryRunCqApprove(

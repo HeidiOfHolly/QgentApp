@@ -119,16 +119,23 @@ class MergeRequestDetailFragment : Fragment() {
         for (task in tasks) {
             val preflights = taskRepository.getTaskMergeRequestPreflight(projectId, task.id).getOrNull().orEmpty()
             preflights.firstOrNull {
-                it.mergeRequest?.id == mrId || (it.repositoryId == mrRepositoryId && it.mergeRequest?.number == detail.number)
+                it.mergeRequest?.id == mrId ||
+                    (it.repositoryId == mrRepositoryId && it.mergeRequest?.number == detail.number) ||
+                    // 预检 mergeRequest 未回填（MR 由后端异步创建）时，用源分支匹配（MR 源分支 = 预检 sourceBranch）
+                    (it.repositoryId == mrRepositoryId && it.sourceBranch == detail.sourceBranch)
             }?.let { return it }
         }
         return null
     }
 
-    /** CQ+1 通过者姓名：取匹配预检的 cqReviewerUserId 反查成员 displayName；未命中返回「暂无」 */
+    /** CQ+1 通过者姓名：取匹配预检的 CQ+1 审查者（cqPlusOne.reviewerUserId 优先，兜底 cqReviewerUserId）
+     *  反查成员 displayName；未命中返回「暂无」 */
     private suspend fun loadCqPasser(projectId: String, detail: MergeRequestDetailDto): String {
         val hit = findMatchingPreflight(projectId, detail) ?: return "暂无"
-        val passerId = hit.cqReviewerUserId
+        // 优先后端返回的审查者姓名（cqPlusOne.reviewerName / cqReviewerName），缺失时按 userId 反查团队
+        hit.cqPlusOne?.reviewerName?.takeIf { it.isNotBlank() }?.let { return it }
+        hit.cqReviewerName?.takeIf { it.isNotBlank() }?.let { return it }
+        val passerId = hit.cqPlusOne?.reviewerUserId?.takeIf { it.isNotBlank() } ?: hit.cqReviewerUserId
         if (passerId.isNullOrBlank()) return "暂无"
         return userRepository().getTeamMembers(mainViewModel.currentTeamId().orEmpty())
             .getOrNull().orEmpty().firstOrNull { it.userId == passerId }?.displayName ?: "成员"

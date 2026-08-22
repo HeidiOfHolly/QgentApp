@@ -261,6 +261,9 @@ class TaskRepositoryImpl(private val service: QgApiService) : TaskRepository {
     override suspend fun getMergeRequestPreflight(projectId: String, preflightId: String): Result<MergeRequestPreflightDto> =
         apiCall { service.getMergeRequestPreflight(projectId, preflightId).toDataOrThrow() }
 
+    override suspend fun retryMergeRequestPreflight(projectId: String, preflightId: String, idempotencyKey: String): Result<MergeRequestPreflightDto> =
+        apiCall { service.retryMergeRequestPreflight(projectId, preflightId, idempotencyKey, EmptyBody()).toDataOrThrow() }
+
     override suspend fun dryRunCqApprove(projectId: String, dryRunId: String, reason: String?, idempotencyKey: String): Result<Unit> =
         apiCall { service.dryRunCqApprove(projectId, dryRunId, idempotencyKey, CqActionRequest(reason)).toUnitOrThrow() }
 
