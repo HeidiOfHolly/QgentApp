@@ -36,10 +36,10 @@ fun joinTeamErrorMessage(context: Context, e: Throwable, fallback: String): Stri
 fun bindCollapsibleSection(header: View, arrow: View, content: View) {
     header.setOnClickListener {
         val skeleton = content.getTag(R.id.inline_skeleton_view) as? View
-        val skeletonActive = skeleton?.getTag(R.id.inline_skeleton_active) as? Boolean ?: false
-        val expanded = content.isVisible || (skeletonActive && skeleton?.isVisible == true)
+        val skeletonActive = skeleton?.getTag(R.id.inline_skeleton_active) == true
+        val expanded = content.isVisible || (skeletonActive && skeleton != null && skeleton.isVisible)
         content.isVisible = !expanded && !skeletonActive
-        if (skeletonActive) setSkeletonLoading(skeleton, !expanded)
+        if (skeletonActive && skeleton != null) setSkeletonLoading(skeleton, !expanded)
         // 展开时强制内容区重新布局：收起状态下 RecyclerView 测量高度不准确（不可见时测为 0），
         // 直接 toggle 可见性不会触发重新测量，导致列表只渲染部分项
         if (!expanded) content.requestLayout()
